@@ -18,10 +18,6 @@
 
 Sampling Predictively Oriented Posteriors for Gaussian Processes
 
-This project is developed in collaboration with the
-[Centre for Advanced Research Computing](https://ucl.ac.uk/arc), University
-College London.
-
 ## About
 
 ### Project Team
@@ -29,11 +25,6 @@ College London.
 Callum Lau ([callum_lau@hotmail.com](mailto:callum_lau@hotmail.com))
 
 <!-- TODO: how do we have an array of collaborators ? -->
-
-### Research Software Engineering Contact
-
-Centre for Advanced Research Computing, University College London
-([arc.collaborations@ucl.ac.uk](mailto:arc.collaborations@ucl.ac.uk))
 
 ## Built With
 
