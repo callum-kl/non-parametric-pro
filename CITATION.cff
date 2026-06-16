@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+authors:
+  - family-names: "Lau"
+    given-names: "Callum"
+    email: "callum_lau@hotmail.com"
+repository-code: "https://github.com/callum-kl/non-parametric-pro"
+title: "nonparametricpro: Sampling Predictively Oriented Posteriors for Gaussian Processes"
+license: "MIT"
