@@ -5,6 +5,7 @@ import jax.random as jr
 
 from non_parametric_pro.util import (
     draw_predictive_samples,
+    posterior_function_draws,
     predictive_moments,
     project_particles,
 )
@@ -52,3 +53,20 @@ def test_draw_predictive_samples_shape() -> None:
     )
 
     assert samples.shape == (3, 5)
+
+
+def test_posterior_function_draws_shape() -> None:
+    """Smooth function draws have one column per requested draw."""
+    test_basis = jnp.eye(3)
+    test_covariance = jnp.eye(3)
+    particles = jnp.arange(12.0).reshape(3, 4)
+
+    draws = posterior_function_draws(
+        jr.key(0),
+        test_basis,
+        test_covariance,
+        particles,
+        num_draws=5,
+    )
+
+    assert draws.shape == (3, 5)

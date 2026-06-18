@@ -74,3 +74,36 @@ def draw_predictive_samples(  # noqa: PLR0913
         sample_std = sample_std[:, None]
     noise = sample_std * jr.normal(noise_key, selected.shape)
     return selected + noise
+
+
+def posterior_function_draws(  # noqa: PLR0913
+    rng_key: PRNGKey,
+    test_basis: jax.Array,
+    test_covariance: jax.Array,
+    particles: jax.Array,
+    *,
+    num_draws: int = 120,
+    jitter: float = 1e-6,
+) -> jax.Array:
+    """
+    Draw smooth posterior function trajectories from retained particles.
+
+    ``test_basis`` should be the same projection matrix used for
+    ``predictive_moments``. In the full-GP case this is ``V.T``, where
+    ``V = solve(train_cholesky, K_test_train.T)``.
+    """
+    particle_matrix = _as_particle_matrix(particles)
+    num_test = test_covariance.shape[0]
+
+    index_key, noise_key = jr.split(rng_key)
+    particle_indices = jr.randint(index_key, (num_draws,), 0, particle_matrix.shape[1])
+    conditional_means = test_basis @ particle_matrix[:, particle_indices]
+
+    conditional_covariance = (
+        test_covariance
+        - test_basis @ test_basis.T
+        + jitter * jnp.eye(num_test, dtype=test_covariance.dtype)
+    )
+    residual_cholesky = jnp.linalg.cholesky(conditional_covariance)
+    residual_noise = jr.normal(noise_key, (num_test, num_draws))
+    return conditional_means + residual_cholesky @ residual_noise
