@@ -41,6 +41,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
+    "blackjax>=1.5",
 ]
 description = "Sampling Predictively Oriented Posteriors for Gaussian Processes"
 dynamic = [
@@ -89,6 +90,7 @@ lint.ignore = [
     "D212", # multi-line-summary-first-line
     "D407", # removed dashes lines under sections
     "D417", # argument description in docstring (unreliable)
+    "ANN", # type annotations are enforced by type checkers, not Ruff
     "ISC001", # simplify implicit str concatenation (ruff-format recommended)
 ]
 lint.per-file-ignores = {"tests*" = [
