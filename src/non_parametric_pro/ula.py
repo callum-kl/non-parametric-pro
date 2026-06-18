@@ -1,51 +1,46 @@
+"""BlackJAX-style ULA sampler."""
+
 from collections.abc import Callable
 from typing import NamedTuple
 
 import jax
-import jax.numpy as jnp
+from blackjax.base import SamplingAlgorithm
 from blackjax.mcmc import diffusions
-from blackjax.types import PRNGKey, ArrayTree
+from blackjax.types import PRNGKey
 
 from non_parametric_pro.density import (
     ProParameters,
-    normal_pdf,
-    pro_logdensity_grad_fn,
+    predictive_score,
 )
 
 
 class ULAState(NamedTuple):
     """Particle state carried between ULA iterations."""
 
-    position: ArrayTree
-    logdensity: ArrayTree | float
-    logdensity_grad: ArrayTree
+    position: jax.Array
+    logdensity: jax.Array
+    logdensity_grad: jax.Array
 
 
 class ULAInfo(NamedTuple):
     """Diagnostics returned by an ULA iteration."""
 
-    score: ArrayTree
+    score: jax.Array
 
 
-def init(position: ArrayTree, parameters: ProParameters) -> ULAState:
+def init(
+    position: jax.Array,
+    parameters: ProParameters,
+    logdensity_fn: Callable,
+) -> ULAState:
     """Initialize a ULA state from particle positions."""
-    logdensity, logdensity_grad = pro_logdensity_grad_fn(position, parameters)
+    grad_fn = build_density_fn(logdensity_fn, parameters)
+    logdensity, logdensity_grad = grad_fn(position)
     return ULAState(position, logdensity, logdensity_grad)
-
-
-def score(state: ULAState, parameters: ProParameters) -> ArrayTree:
-    """Compute the predictive score."""
-    density = normal_pdf(parameters.y, parameters.basis @ state.position, parameters.nu)
-    marginal = jnp.maximum(
-        jnp.mean(density, axis=1),
-        parameters.tolerance,
-    )
-    return -parameters.alpha * jnp.mean(jnp.log(marginal))
 
 
 def build_kernel() -> Callable:
     """Build a ULA kernel using BlackJAX's overdamped Langevin diffusion."""
-    one_step = diffusions.overdamped_langevin(pro_logdensity_grad_fn)
 
     def kernel(
         rng_key: PRNGKey,
@@ -53,16 +48,51 @@ def build_kernel() -> Callable:
         logdensity_fn: Callable,
         parameters: ProParameters,
     ) -> tuple[ULAState, ULAInfo]:
-        del logdensity_fn
+
+        _logdensity_grad_fn = build_density_fn(logdensity_fn, parameters)
+        one_step = diffusions.overdamped_langevin(_logdensity_grad_fn)
 
         new_state = one_step(
             rng_key,
-            state, # type: ignore  # noqa: PGH003
+            state,  # type: ignore  # noqa: PGH003
             parameters.step_size,
-            (parameters,),
         )
-        new_state = ULAState(*new_state)
+        new_state = ULAState(*new_state)  # type: ignore  # noqa: PGH003
 
-        return new_state, ULAInfo(score(new_state, parameters))
+        return new_state, ULAInfo(predictive_score(new_state.position, parameters))
 
     return kernel
+
+
+def as_top_level_api(
+    logdensity_fn: Callable,
+    parameters: ProParameters,
+) -> SamplingAlgorithm:
+    """Create a BlackJAX-style ULA sampler with ``init`` and ``step`` methods."""
+    kernel = build_kernel()
+
+    def init_fn(position: jax.Array, rng_key: PRNGKey | None = None) -> ULAState:
+        del rng_key
+        return init(position, parameters, logdensity_fn)
+
+    def step_fn(rng_key: PRNGKey, state: ULAState) -> tuple[ULAState, ULAInfo]:
+        return kernel(rng_key, state, logdensity_fn, parameters)
+
+    return SamplingAlgorithm(init_fn, step_fn)
+
+
+def build_density_fn(base: Callable, parameters: ProParameters) -> Callable:
+    """Build a density function for the ULA kernel."""
+
+    def density_fn(z: jax.Array) -> tuple[jax.Array, jax.Array]:
+        return base(z, parameters)
+
+    return density_fn
+
+
+def pro_ula(
+    logdensity_fn,
+    parameters: ProParameters,
+) -> SamplingAlgorithm:
+    """Build a top-level predictively oriented ULA sampler."""
+    return as_top_level_api(logdensity_fn, parameters)

@@ -42,6 +42,8 @@ classifiers = [
 ]
 dependencies = [
     "blackjax>=1.5",
+    "gpjax>=0.15.0",
+    "matplotlib>=3.11.0",
 ]
 description = "Sampling Predictively Oriented Posteriors for Gaussian Processes"
 dynamic = [
