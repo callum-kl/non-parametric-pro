@@ -15,7 +15,7 @@ def test_ula_info_contains_average_predictive_score() -> None:
     """Transition info reports the average negative predictive log score."""
     key = jr.key(0)
     basis = jnp.eye(3)
-    y = jnp.array([0.0, 1.0, 2.0])
+    y = jnp.array([[0.0], [1.0], [2.0]])
     position = jr.normal(key, (3, 4))
     parameters = ProParameters(
         y=y,

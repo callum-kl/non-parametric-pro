@@ -34,28 +34,25 @@ def init(
     logdensity_fn: Callable,
 ) -> ULAState:
     """Initialize a ULA state from particle positions."""
-    grad_fn = build_density_fn(logdensity_fn, parameters)
-    logdensity, logdensity_grad = grad_fn(position)
+    logdensity, logdensity_grad = logdensity_fn(position, parameters)
     return ULAState(position, logdensity, logdensity_grad)
 
 
-def build_kernel() -> Callable:
+def build_kernel(logdensity_fn: Callable) -> Callable:
     """Build a ULA kernel using BlackJAX's overdamped Langevin diffusion."""
+    one_step = diffusions.overdamped_langevin(logdensity_fn)
 
     def kernel(
         rng_key: PRNGKey,
         state: ULAState,
-        logdensity_fn: Callable,
         parameters: ProParameters,
     ) -> tuple[ULAState, ULAInfo]:
-
-        _logdensity_grad_fn = build_density_fn(logdensity_fn, parameters)
-        one_step = diffusions.overdamped_langevin(_logdensity_grad_fn)
 
         new_state = one_step(
             rng_key,
             state,  # type: ignore  # noqa: PGH003
             parameters.step_size,
+            (parameters,),
         )
         new_state = ULAState(*new_state)  # type: ignore  # noqa: PGH003
 
@@ -69,25 +66,16 @@ def as_top_level_api(
     parameters: ProParameters,
 ) -> SamplingAlgorithm:
     """Create a BlackJAX-style ULA sampler with ``init`` and ``step`` methods."""
-    kernel = build_kernel()
+    kernel = build_kernel(logdensity_fn)
 
     def init_fn(position: jax.Array, rng_key: PRNGKey | None = None) -> ULAState:
         del rng_key
         return init(position, parameters, logdensity_fn)
 
     def step_fn(rng_key: PRNGKey, state: ULAState) -> tuple[ULAState, ULAInfo]:
-        return kernel(rng_key, state, logdensity_fn, parameters)
+        return kernel(rng_key, state, parameters)
 
     return SamplingAlgorithm(init_fn, step_fn)
-
-
-def build_density_fn(base: Callable, parameters: ProParameters) -> Callable:
-    """Build a density function for the ULA kernel."""
-
-    def density_fn(z: jax.Array) -> tuple[jax.Array, jax.Array]:
-        return base(z, parameters)
-
-    return density_fn
 
 
 def pro_ula(

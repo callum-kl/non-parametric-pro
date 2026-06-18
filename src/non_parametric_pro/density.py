@@ -21,8 +21,6 @@ class ProParameters(NamedTuple):
 
 def normal_logpdf(y, mean, nu):
     """Evaluate the Gaussian observation density for each particle."""
-    if y.ndim == 1:
-        y = y[:, None]
     return (
         -0.5 * ((y - mean) / nu) ** 2
         - jnp.log(nu)
@@ -36,16 +34,15 @@ def pro_logdensity_grad_fn(
 ) -> tuple[jax.Array, jax.Array]:
     """Temp."""
     a = parameters.basis @ z
-    y = parameters.y[:, None] if parameters.y.ndim == 1 else parameters.y
 
-    log_density = normal_logpdf(y, a, parameters.nu)
+    log_density = normal_logpdf(parameters.y, a, parameters.nu)
 
     log_marginal = logsumexp(log_density, axis=1, keepdims=True) - jnp.log(
         log_density.shape[1]
     )
 
     weights = jnp.exp(log_density - log_marginal) * (
-        y - a
+        parameters.y - a
     ) / parameters.nu**2
 
     grad = parameters.alpha * (parameters.basis.T @ weights) - z
