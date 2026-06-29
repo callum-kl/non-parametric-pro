@@ -28,17 +28,31 @@ def normal_logpdf(y, mean, nu):
     )
 
 
-def pro_logdensity_grad_fn(
+def pro_logdensity_fn(
+    z: jax.Array,
+    parameters: ProParameters,
+) -> jax.Array:
+    """Compute the log density of the posterior over latent particles."""
+    a = parameters.basis @ z
+    log_density = normal_logpdf(parameters.y, a, parameters.nu)
+    num_particles = log_density.shape[1]
+    log_marginal = logsumexp(log_density, axis=1) - jnp.log(num_particles)
+    likelihood = num_particles * parameters.alpha * jnp.sum(log_marginal)
+    return likelihood - 0.5 * jnp.sum(z**2)
+
+
+def pro_logdensity_and_grad_fn(
     z: jax.Array,
     parameters: ProParameters,
 ) -> tuple[jax.Array, jax.Array]:
-    """Temp."""
+    """Compute the scalar PRO log density and its hand-derived gradient."""
     a = parameters.basis @ z
 
     log_density = normal_logpdf(parameters.y, a, parameters.nu)
+    num_particles = log_density.shape[1]
 
     log_marginal = logsumexp(log_density, axis=1, keepdims=True) - jnp.log(
-        log_density.shape[1]
+        num_particles
     )
 
     weights = jnp.exp(log_density - log_marginal) * (
@@ -47,10 +61,8 @@ def pro_logdensity_grad_fn(
 
     grad = parameters.alpha * (parameters.basis.T @ weights) - z
 
-    logdensity = (
-        parameters.alpha * jnp.sum(log_marginal[:, 0])
-        - 0.5 * jnp.sum(z**2)
-    )
+    likelihood = num_particles * parameters.alpha * jnp.sum(log_marginal[:, 0])
+    logdensity = likelihood - 0.5 * jnp.sum(z**2)
 
     return logdensity, grad
 
