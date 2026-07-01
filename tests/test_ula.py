@@ -4,6 +4,7 @@ import blackjax
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+from gpjax.parameters import NonNegativeReal
 
 from non_parametric_pro.density import (
     ProParameters,
@@ -24,7 +25,7 @@ def test_ula_info_contains_average_predictive_score() -> None:
         y=y,
         basis=basis,
         step_size=1e-3,
-        nu=0.2,
+        sigma=NonNegativeReal(0.2),
         alpha=1.0,
         tolerance=1e-12,
         jitter=1e-5,
@@ -48,7 +49,7 @@ def test_pro_logdensity_fn_initializes_blackjax_mala() -> None:
         y=y,
         basis=basis,
         step_size=1e-3,
-        nu=0.2,
+        sigma=NonNegativeReal(0.2),
         alpha=1.0,
         tolerance=1e-12,
         jitter=1e-5,
@@ -72,7 +73,7 @@ def test_pro_manual_gradient_matches_scalar_logdensity_gradient() -> None:
         y=y,
         basis=basis,
         step_size=1e-3,
-        nu=0.4,
+        sigma=NonNegativeReal(0.4),
         alpha=1.2,
         tolerance=1e-12,
         jitter=1e-5,
@@ -98,7 +99,7 @@ def test_ula_state_can_be_refreshed_after_basis_change() -> None:
         y=y,
         basis=basis,
         step_size=1e-3,
-        nu=0.2,
+        sigma=NonNegativeReal(0.2),
         alpha=1.0,
         tolerance=1e-12,
         jitter=1e-5,

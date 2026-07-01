@@ -1,156 +1,73 @@
-"""Adaptation of kernel hyperparameters"""
+"""
+Adaptation of `sigma` and the kernel hyperparameters behind `basis`.
+
+Runs a fixed warmup with no parameter adaptation, then alternates between a
+gradient step on `sigma` and a gradient step on a gpjax kernel's hyperparameters
+that determine `basis`, on a user-defined schedule.
+"""
 
 from collections.abc import Callable
 from typing import NamedTuple
 
-from blackjax.base import AdaptationAlgorithm
-from blackjax.types import Array, ArrayLikeTree, PRNGKey
-from blackjax.progress_bar import gen_scan_fn
-from blackjax.adaptation.base import AdaptationResults
-
+import equinox as eqx
+import gpjax as gpx
 import jax
 import jax.numpy as jnp
+import optax
+import paramax
+from blackjax.adaptation.base import AdaptationResults
+from blackjax.base import AdaptationAlgorithm
+from blackjax.progress_bar import gen_scan_fn
+from blackjax.types import ArrayLikeTree, PRNGKey
+
+from non_parametric_pro.density import ProParameters
+from non_parametric_pro.inducing import InducingBasis, compute_inducing_basis
+
+# Schedule stage labels, dispatched via jax.lax.switch.
+_WARMUP, _ADAPT_NU, _ADAPT_BASIS, _ADAPT_BOTH = 0, 1, 2, 3
+
 
 class ParameterAdaptationState(NamedTuple):
-    """State of the parameter adaptation algorithm."""
-    
-    nu: jax.Array
+    """
+    Carry for the sigma/basis adaptation loop.
+
+    `sigma` is expected to be a `paramax.AbstractUnwrappable` (e.g.
+    `gpjax.parameters.NonNegativeReal`), optimised in its unconstrained
+    space; `sigma_opt_state` carries optax state for that unconstrained
+    representation.
+    """
+
+    sigma: paramax.AbstractUnwrappable
+    sigma_opt_state: optax.OptState
+    kernel: gpx.kernels.AbstractKernel
+    kernel_opt_state: optax.OptState
+    basis: jax.Array
+    residual_std: jax.Array | None = None  # None for full GP, (N,1) for inducing
 
 
-def base(
-    is_mass_matrix_diagonal: bool,
-    target_acceptance_rate: float = 0.80,
-    initial_inverse_mass_matrix: Array | None = None,
-    imm_shrinkage_to_previous: float = 0.0,
-) -> tuple[Callable, Callable, Callable]:
+class ParameterAdaptationInfo(NamedTuple):
+    """
+    Per-step diagnostics, stacked by `lax.scan` over the whole run.
 
-    mm_init, mm_update, mm_final = mass_matrix_adaptation(
-        is_mass_matrix_diagonal, imm_shrinkage_to_previous
-    )
-    da_init, da_update, da_final = dual_averaging_adaptation(target_acceptance_rate)
+    `sampler_info` is whatever `algorithm`'s kernel returns as transition
+    info (e.g. `ULAInfo`). `sigma`/`kernel` are the adaptation state *after*
+    that step, stacked with a leading `num_steps` axis on every leaf -- both
+    are `paramax`-wrapped (`sigma` as a `NonNegativeReal`-like type, `kernel`
+    as the gpjax kernel), so read them with `paramax.unwrap(...)` (and, for
+    `kernel`, `jax.tree.map(lambda x: x[i], ...)` first to pick a step).
+    """
 
-    def init(
-        position: ArrayLikeTree, initial_step_size: float
-    ) -> WindowAdaptationState:
-        """Initialze the adaptation state and parameter values.
+    sampler_info: ArrayLikeTree
+    sigma: paramax.AbstractUnwrappable
+    kernel: gpx.kernels.AbstractKernel
 
-        Unlike the original Stan window adaptation we do not use the
-        `find_reasonable_step_size` algorithm which we found to be unnecessary.
-        We may reconsider this choice in the future.
-
-        """
-        num_dimensions = pytree_size(position)
-        imm_state = mm_init(num_dimensions, initial_inverse_mass_matrix)
-
-        ss_state = da_init(initial_step_size)
-
-        return WindowAdaptationState(
-            ss_state,
-            imm_state,
-            initial_step_size,
-            imm_state.inverse_mass_matrix,
-        )
-
-    def fast_update(
-        position: ArrayLikeTree,
-        acceptance_rate: float,
-        warmup_state: WindowAdaptationState,
-    ) -> WindowAdaptationState:
-        del position
-
-        new_ss_state = da_update(warmup_state.ss_state, acceptance_rate)
-        new_step_size = jnp.exp(new_ss_state.log_step_size)
-
-        return WindowAdaptationState(
-            new_ss_state,
-            warmup_state.imm_state,
-            new_step_size,
-            warmup_state.inverse_mass_matrix,
-        )
-
-    def slow_update(
-        position: ArrayLikeTree,
-        acceptance_rate: float,
-        warmup_state: WindowAdaptationState,
-    ) -> WindowAdaptationState:
-        new_imm_state = mm_update(warmup_state.imm_state, position)
-        new_ss_state = da_update(warmup_state.ss_state, acceptance_rate)
-        new_step_size = jnp.exp(new_ss_state.log_step_size)
-
-        return WindowAdaptationState(
-            new_ss_state, new_imm_state, new_step_size, warmup_state.inverse_mass_matrix
-        )
-
-    def slow_final(warmup_state: WindowAdaptationState) -> WindowAdaptationState:
-
-        new_imm_state = mm_final(warmup_state.imm_state)
-        new_ss_state = da_init(da_final(warmup_state.ss_state))
-        new_step_size = jnp.exp(new_ss_state.log_step_size)
-
-        return WindowAdaptationState(
-            new_ss_state,
-            new_imm_state,
-            new_step_size,
-            new_imm_state.inverse_mass_matrix,
-        )
-
-    def update(
-        adaptation_state: WindowAdaptationState,
-        adaptation_stage: tuple,
-        position: ArrayLikeTree,
-        acceptance_rate: float,
-    ) -> WindowAdaptationState:
-        """Update the adaptation state and parameter values.
-
-        Parameters
-        ----------
-        adaptation_state
-            Current adptation state.
-        adaptation_stage
-            The current stage of the warmup: whether this is a slow window,
-            a fast window and if we are at the last step of a slow window.
-        position
-            Current value of the model parameters.
-        acceptance_rate
-            Value of the acceptance rate for the last mcmc step.
-
-        Returns
-        -------
-        The updated adaptation state.
-
-        """
-        stage, is_middle_window_end = adaptation_stage
-
-        warmup_state = jax.lax.switch(
-            stage,
-            (fast_update, slow_update),
-            position,
-            acceptance_rate,
-            adaptation_state,
-        )
-
-        warmup_state = jax.lax.cond(
-            is_middle_window_end,
-            slow_final,
-            lambda x: x,
-            warmup_state,
-        )
-
-        return warmup_state
-
-    def final(warmup_state: WindowAdaptationState) -> tuple[float, Array]:
-        """Return the final values for the step size and mass matrix."""
-        step_size = jnp.exp(warmup_state.ss_state.log_step_size_avg)
-        inverse_mass_matrix = warmup_state.imm_state.inverse_mass_matrix
-        return step_size, inverse_mass_matrix
-
-    return init, update, final
 
 def merge_parameters(
     base: NamedTuple,
     new: NamedTuple,
     transforms: dict[str, Callable] | None = None,
 ) -> NamedTuple:
+    """Override `base`'s fields with `new`'s, for fields present on both."""
     transforms = transforms or {}
     updates = {
         f: transforms.get(f, lambda v: v)(v)
@@ -160,84 +77,312 @@ def merge_parameters(
     return base._replace(**updates)
 
 
-def parameter_adaptation(
-        algorithm,
-        logdensity_fn: Callable,
-        adaptation_info_fn: Callable,
-        base_parameters: NamedTuple,
-        progress_bar: bool = False,
-):
-    """Adapt kernel hyperparameters"""
-    
-    kernel = algorithm.build_kernel(logdensity_fn)
+def build_schedule(
+    num_steps: int,
+    *,
+    warmup_steps: int,
+    sigma_adapt_every: int,
+    kernel_adapt_every: int,
+) -> jax.Array:
+    """
+    Stage 0 (no-op) during warmup; afterwards adapt sigma/kernel independently.
 
-    adapt_init, adapt_step, adapt_final = base()
-    
+    After `warmup_steps`, `sigma` is adapted every `sigma_adapt_every` steps and
+    the kernel every `kernel_adapt_every` steps -- independently, not
+    alternating, so they can have entirely different cadences. Pass -1 for
+    either to disable that parameter's adaptation entirely. If both would
+    fire on the same step, both run that step (see `_ADAPT_BOTH`/`both_update`).
+    """
+    idx = jnp.arange(num_steps)
+    steps_since_warmup = idx - warmup_steps
+    post_warmup = idx >= warmup_steps
+
+    is_nu_step = (
+        post_warmup
+        & (sigma_adapt_every != -1)
+        & (steps_since_warmup % sigma_adapt_every == 0)
+    )
+    is_kernel_step = (
+        post_warmup
+        & (kernel_adapt_every != -1)
+        & (steps_since_warmup % kernel_adapt_every == 0)
+    )
+
+    return jnp.where(
+        is_nu_step & is_kernel_step,
+        _ADAPT_BOTH,
+        jnp.where(
+            is_nu_step, _ADAPT_NU, jnp.where(is_kernel_step, _ADAPT_BASIS, _WARMUP)
+        ),
+    )
+
+
+def base(
+    *,
+    x_train: jax.Array,
+    jitter: float,
+    sigma_optimizer: optax.GradientTransformation,
+    kernel_optimizer: optax.GradientTransformation,
+    objective_fn: Callable,
+    inducing_basis: InducingBasis | None = None,
+) -> tuple[Callable, Callable, Callable]:
+    """
+    Build the (init, update, final) triple for sigma/basis adaptation.
+
+    Parameters
+    ----------
+    x_train
+        Training inputs used to recompute `basis` whenever the kernel
+        hyperparameters change.
+    jitter
+        Diagonal jitter added before the training Gram matrix's Cholesky.
+    sigma_optimizer, kernel_optimizer
+        Optax optimisers for the two adapted quantities.
+    inducing_basis
+        An :class:`InducingBasis` instance (e.g. ``PointInducingBasis(z)``).
+        If ``None`` (default), a full GP Cholesky basis is used and
+        ``residual_std`` is ``None``. If given, the basis is
+        ``K_xz L_zz^{-T}`` and ``residual_std`` is
+        ``sqrt(diag(K_xx) - diag(basis @ basis^T))``.
+
+    """
+
+    def basis_fn(
+        kernel: gpx.kernels.AbstractKernel,
+    ) -> tuple[jax.Array, jax.Array | None]:
+        """Recompute basis (and residual_std for inducing) from kernel."""
+        unwrapped = paramax.unwrap(kernel)
+        x = x_train.reshape(-1, 1) if x_train.ndim == 1 else x_train
+        if inducing_basis is None:
+            k_train = unwrapped.gram(x).as_matrix()
+            basis = jnp.linalg.cholesky(k_train + jitter * jnp.eye(k_train.shape[0]))
+            return basis, None
+        return compute_inducing_basis(inducing_basis, unwrapped, x, jitter)
+
+    def sigma_loss(
+        sigma: paramax.AbstractUnwrappable,
+        position: ArrayLikeTree,
+        base_parameters: ProParameters,
+    ) -> jax.Array:
+        # objective_fn (pro_logdensity_fn) unwraps parameters.sigma itself,
+        # so the paramax constraint is applied transparently here.
+        return -objective_fn(position, base_parameters._replace(sigma=sigma))
+
+    def kernel_loss(
+        kernel: gpx.kernels.AbstractKernel,
+        position: ArrayLikeTree,
+        base_parameters: ProParameters,
+    ) -> jax.Array:
+        new_basis, new_residual_std = basis_fn(kernel)
+        return -objective_fn(
+            position,
+            base_parameters._replace(basis=new_basis, residual_std=new_residual_std),
+        )
+
+    def init(
+        initial_sigma: paramax.AbstractUnwrappable,
+        initial_kernel: gpx.kernels.AbstractKernel,
+    ) -> ParameterAdaptationState:
+        initial_basis, initial_residual_std = basis_fn(initial_kernel)
+        return ParameterAdaptationState(
+            sigma=initial_sigma,
+            sigma_opt_state=sigma_optimizer.init(
+                eqx.filter(initial_sigma, eqx.is_array)
+            ),
+            kernel=initial_kernel,
+            kernel_opt_state=kernel_optimizer.init(
+                eqx.filter(initial_kernel, eqx.is_array)
+            ),
+            basis=initial_basis,
+            residual_std=initial_residual_std,
+        )
+
+    def no_op(
+        state: ParameterAdaptationState,
+        position: ArrayLikeTree,
+        base_parameters: ProParameters,
+    ) -> ParameterAdaptationState:
+        del position, base_parameters
+        return state
+
+    def sigma_update(
+        state: ParameterAdaptationState,
+        position: ArrayLikeTree,
+        base_parameters: ProParameters,
+    ) -> ParameterAdaptationState:
+        _, grad = eqx.filter_value_and_grad(sigma_loss)(
+            state.sigma, position, base_parameters
+        )
+        updates, new_opt_state = sigma_optimizer.update(
+            grad, state.sigma_opt_state, eqx.filter(state.sigma, eqx.is_array)
+        )
+        new_sigma = eqx.apply_updates(state.sigma, updates)
+        return state._replace(sigma=new_sigma, sigma_opt_state=new_opt_state)
+
+    def basis_update(
+        state: ParameterAdaptationState,
+        position: ArrayLikeTree,
+        base_parameters: ProParameters,
+    ) -> ParameterAdaptationState:
+        # Mirrors gpjax's own gpx.fit step: filter to the array (trainable)
+        # leaves, differentiate the paramax-wrapped model, apply updates back
+        # onto the full pytree (static fields like compute_engine untouched).
+        _, grad = eqx.filter_value_and_grad(kernel_loss)(
+            state.kernel, position, base_parameters
+        )
+        updates, new_opt_state = kernel_optimizer.update(
+            grad, state.kernel_opt_state, eqx.filter(state.kernel, eqx.is_array)
+        )
+        new_kernel = eqx.apply_updates(state.kernel, updates)
+        new_basis, new_residual_std = basis_fn(new_kernel)
+        return state._replace(
+            kernel=new_kernel,
+            kernel_opt_state=new_opt_state,
+            basis=new_basis,
+            residual_std=new_residual_std,
+        )
+
+    def both_update(
+        state: ParameterAdaptationState,
+        position: ArrayLikeTree,
+        base_parameters: ProParameters,
+    ) -> ParameterAdaptationState:
+        # Each loss receives the current merged parameters (including the other's
+        # current value), so sigma_update sees the current adapted basis and
+        # basis_update sees the current adapted sigma.
+        state = sigma_update(state, position, base_parameters)
+        return basis_update(state, position, base_parameters)
+
+    def update(
+        state: ParameterAdaptationState,
+        stage: jax.Array,
+        position: ArrayLikeTree,
+        base_parameters: ProParameters,
+    ) -> ParameterAdaptationState:
+        return jax.lax.switch(
+            stage,
+            (no_op, sigma_update, basis_update, both_update),
+            state,
+            position,
+            base_parameters,
+        )
+
+    def final(
+        state: ParameterAdaptationState,
+    ) -> tuple[jax.Array, jax.Array, gpx.kernels.AbstractKernel]:
+        return state.sigma, state.basis, state.kernel
+
+    return init, update, final
+
+
+def parameter_adaptation(  # noqa: PLR0913
+    algorithm,
+    logdensity_fn: Callable,
+    base_parameters: ProParameters,
+    *,
+    x_train: jax.Array,
+    initial_kernel: gpx.kernels.AbstractKernel,
+    warmup_steps: int,
+    sigma_adapt_every: int,
+    kernel_adapt_every: int,
+    objective_fn: Callable,
+    sigma_optimizer: optax.GradientTransformation | None = None,
+    kernel_optimizer: optax.GradientTransformation | None = None,
+    jitter: float = 1e-6,
+    progress_bar: bool = False,
+    inducing_basis: InducingBasis | None = None,
+) -> AdaptationAlgorithm:
+    """
+    Adapt `sigma` and the kernel hyperparameters behind `basis`.
+
+    `algorithm` is a module exposing `build_kernel(logdensity_fn)` and
+    `init(position, parameters, logdensity_fn)` (e.g. `non_parametric_pro.ula`),
+    matching how `blackjax.adaptation.window_adaptation` consumes `blackjax.mala`.
+
+    `sigma_adapt_every`/`kernel_adapt_every` control each parameter's adaptation
+    cadence independently (see `build_schedule`); pass -1 to disable a given
+    parameter's adaptation entirely.
+
+    The returned `AdaptationAlgorithm.run` yields
+    `(AdaptationResults(state, parameters), info)` -- `parameters` is a
+    `ProParameters` with `sigma`/`basis` set from the final step, ready to feed
+    straight into a sampler. `info` is a `ParameterAdaptationInfo` stacked
+    over every step (via `lax.scan`), so `info.sigma`/`info.kernel` are full
+    `num_steps`-length traces -- `info.kernel` is not part of `ProParameters`
+    since the density never reads it directly, but is needed for downstream
+    uses like predicting at new inputs; index `jax.tree.map(lambda x: x[-1],
+    info.kernel)` to recover the final optimised kernel on its own.
+    """
+    if sigma_optimizer is None:
+        sigma_optimizer = optax.adam(1e-2)
+    if kernel_optimizer is None:
+        kernel_optimizer = optax.adam(1e-2)
+
+    kernel = algorithm.build_kernel(logdensity_fn)
+    adapt_init, adapt_step, _ = base(
+        x_train=x_train,
+        jitter=jitter,
+        sigma_optimizer=sigma_optimizer,
+        kernel_optimizer=kernel_optimizer,
+        objective_fn=objective_fn,
+        inducing_basis=inducing_basis,
+    )
+
     def one_step(carry, xs):
-        _, rng_key, adaptation_stage = xs
+        _, rng_key, stage = xs
         state, adaptation_state = carry
 
-        base_parameters = merge_parameters(base_parameters, adaptation_state)
+        parameters = merge_parameters(base_parameters, adaptation_state)
+        new_state, sampler_info = kernel(rng_key, state, parameters)
 
-        new_state, info = kernel(
-            rng_key,
-            state,
-            adaptation_state
-        )
         new_adaptation_state = adapt_step(
-            adaptation_state,
-            adaptation_stage,
-            new_state.position,
-            info.acceptance_rate,
+            adaptation_state, stage, new_state.position, parameters
         )
 
-        return (
-            (new_state, new_adaptation_state),
-            adaptation_info_fn(new_state, info, new_adaptation_state),
+        # If this step changed sigma/basis, new_state's cached logdensity/grad
+        # (computed above under the *old* parameters) are stale relative to
+        # new_adaptation_state -- they'd otherwise drive the Langevin drift
+        # on the *next* kernel call under the wrong parameters. Refresh only
+        # fires on actual adaptation steps, not every step.
+        new_parameters = merge_parameters(base_parameters, new_adaptation_state)
+        new_state = jax.lax.cond(
+            stage == _WARMUP,
+            lambda s: s,
+            lambda s: algorithm.refresh(s, new_parameters, logdensity_fn),
+            new_state,
         )
-    
+
+        info = ParameterAdaptationInfo(
+            sampler_info=sampler_info,
+            sigma=new_adaptation_state.sigma,
+            kernel=new_adaptation_state.kernel,
+        )
+
+        return (new_state, new_adaptation_state), info
+
     def run(rng_key: PRNGKey, position: ArrayLikeTree, num_steps: int = 1000):
-        init_state = algorithm.init(position, parameters, logdensity_fn)
-        init_adaptation_state = adapt_init(position, parameters)
+        init_adaptation_state = adapt_init(base_parameters.sigma, initial_kernel)
+        init_parameters = merge_parameters(base_parameters, init_adaptation_state)
+        init_state = algorithm.init(position, init_parameters, logdensity_fn)
 
         if progress_bar:
-            print("Running window adaptation")
-        scan_fn = gen_scan_fn(num_steps, progress_bar=progress_bar)
-        start_state = (init_state, init_adaptation_state)
+            print("Running parameter adaptation")  # noqa: T201
+        schedule = build_schedule(
+            num_steps,
+            warmup_steps=warmup_steps,
+            sigma_adapt_every=sigma_adapt_every,
+            kernel_adapt_every=kernel_adapt_every,
+        )
         keys = jax.random.split(rng_key, num_steps)
-        schedule = build_schedule(num_steps)
-        last_state, info = scan_fn(
+
+        scan_fn = gen_scan_fn(num_steps, progress_bar=progress_bar)
+        (last_state, last_adaptation_state), info = scan_fn(
             one_step,
-            start_state,
+            (init_state, init_adaptation_state),
             (jnp.arange(num_steps), keys, schedule),
         )
 
-        last_chain_state, last_warmup_state, *_ = last_state
-
-        step_size, inverse_mass_matrix = adapt_final(last_warmup_state)
-        parameters = {
-            "step_size": step_size,
-            "inverse_mass_matrix": inverse_mass_matrix,
-            **extra_parameters,
-        }
-
-        return (
-            AdaptationResults(
-                last_chain_state,
-                parameters,
-            ),
-            info,
-        )
+        final_parameters = merge_parameters(base_parameters, last_adaptation_state)
+        return AdaptationResults(last_state, final_parameters), info
 
     return AdaptationAlgorithm(run)
-
-def build_schedule(num_steps: int) -> jax.Array:
-    """Build a schedule for the adaptation stages."""
-    warmup_steps = num_steps // 2
-    adaptation_schedule = jnp.concatenate(
-        [
-            jnp.zeros(warmup_steps, dtype=jnp.int32),
-            jnp.ones(num_steps - warmup_steps, dtype=jnp.int32),
-        ]
-    )
-    return adaptation_schedule

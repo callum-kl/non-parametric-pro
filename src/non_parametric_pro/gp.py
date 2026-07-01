@@ -14,9 +14,10 @@ import jax.numpy as jnp
 import jax.random as jr
 import optax as ox
 from gpjax.objectives import _val
-from jax.scipy.linalg import solve_triangular
+from gpjax.parameters import NonNegativeReal
 
 from non_parametric_pro.density import ProParameters
+from non_parametric_pro.inducing import PointInducingBasis, compute_inducing_basis
 
 
 def _full_gp_basis(
@@ -34,20 +35,11 @@ def _sparse_gp_basis(
     variational_family: gpx.variational_families.CollapsedVariationalGaussian,
     x_train: jnp.ndarray,
     jitter: float,
-) -> jnp.ndarray:
-    """
-    Basis mapping inducing-point coefficients to training-input function values.
-
-    Models ``f(x) ~= K_xz K_zz^-1 u`` with ``u = L_z @ z``, ``L_z L_z^T = K_zz``,
-    so the basis satisfying ``f(x) = basis @ z`` is ``K_xz L_z^-T``.
-    """
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Basis and residual std for the fitted sparse GP, via ``PointInducingBasis``."""
     kernel = variational_family.posterior.prior.kernel
     z = _val(variational_family.inducing_inputs)
-    k_zz = kernel.gram(z).as_matrix()
-    k_zx = kernel.cross_covariance(z, x_train)
-    l_z = jnp.linalg.cholesky(k_zz + jitter * jnp.eye(k_zz.shape[0]))
-    l_z_inv_k_zx = solve_triangular(l_z, k_zx, lower=True)
-    return l_z_inv_k_zx.T
+    return compute_inducing_basis(PointInducingBasis(z), kernel, x_train, jitter)
 
 
 def base_gp_adaptation(  # noqa: PLR0913
@@ -93,7 +85,7 @@ def base_gp_adaptation(  # noqa: PLR0913
             verbose=False,
         )
         basis = _full_gp_basis(opt_posterior, x_train, jitter)
-        nu = _val(opt_posterior.likelihood.obs_stddev).squeeze()
+        sigma = NonNegativeReal(_val(opt_posterior.likelihood.obs_stddev).squeeze())
     else:
         inducing_idx = jr.choice(
             rng_key, x_train.shape[0], (num_inducing,), replace=False
@@ -111,15 +103,18 @@ def base_gp_adaptation(  # noqa: PLR0913
             num_iters=num_iters,
             verbose=False,
         )
-        basis = _sparse_gp_basis(opt_variational_family, x_train, jitter)
-        nu = _val(opt_variational_family.posterior.likelihood.obs_stddev).squeeze()
+        basis, residual_std = _sparse_gp_basis(opt_variational_family, x_train, jitter)
+        sigma = NonNegativeReal(
+            _val(opt_variational_family.posterior.likelihood.obs_stddev).squeeze()
+        )
 
     return ProParameters(
         y=y_train,
         basis=basis,
         step_size=step_size,
-        nu=nu,
+        sigma=sigma,
         alpha=alpha,
         tolerance=tolerance,
         jitter=jitter,
+        residual_std=residual_std if num_inducing is not None else None,
     )
