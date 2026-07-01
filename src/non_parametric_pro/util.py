@@ -140,6 +140,104 @@ def prediction_basis(
     return test_basis, test_covariance
 
 
+def nlpd_gp(
+    y_test: jax.Array,
+    predictive_mean: jax.Array,
+    predictive_std: jax.Array,
+) -> jax.Array:
+    """
+    Mean negative log predictive density for a Gaussian GP predictive.
+
+    Parameters
+    ----------
+    y_test
+        Observed test targets, shape ``(N_test,)`` or ``(N_test, 1)``.
+    predictive_mean
+        GP predictive mean, same shape as ``y_test``.
+    predictive_std
+        GP predictive standard deviation (including observation noise),
+        same shape as ``y_test``.
+
+    Returns
+    -------
+    Scalar NLPD averaged over test points.
+    """
+    y = y_test.squeeze()
+    mu = predictive_mean.squeeze()
+    std = predictive_std.squeeze()
+    log_p = (
+        -0.5 * jnp.log(2 * jnp.pi)
+        - jnp.log(std)
+        - 0.5 * ((y - mu) / std) ** 2
+    )
+    return -jnp.mean(log_p)
+
+
+def nlpd_pro(
+    y_test: jax.Array,
+    test_basis: jax.Array,
+    test_covariance: jax.Array,
+    particles: jax.Array,
+    *,
+    sigma: jax.Array | float,
+) -> jax.Array:
+    """
+    Mean negative log predictive density for the PRO GP mixture predictive.
+
+    The predictive is a mixture of Gaussians, one per retained particle:
+
+    .. math::
+
+        p(y^* | \\mathcal{D}) \\approx \\frac{1}{J} \\sum_j
+            \\mathcal{N}(y^* \\mid B^* z_j,\\; \\sigma_{\\text{eff}}^2)
+
+    where :math:`\\sigma_{\\text{eff},i}^2 = \\sigma^2 + s_i^2` and
+    :math:`s_i = \\sqrt{\\max(k(x^*_i, x^*_i) - \\|B^*_{i,:}\\|^2, 0)}` is the
+    sparse-approximation residual at each test point (zero for the full GP).
+
+    Parameters
+    ----------
+    y_test
+        Observed test targets, shape ``(N_test, 1)``.
+    test_basis
+        Test projection matrix from :func:`prediction_basis`,
+        shape ``(N_test, M)`` (inducing) or ``(N_test, N)`` (full GP).
+    test_covariance
+        Prior kernel matrix at test points ``K(x_*, x_*)``,
+        shape ``(N_test, N_test)``, also from :func:`prediction_basis`.
+    particles
+        Retained latent particles, shape ``(M, J)`` or
+        ``(num_steps, M, J)`` (scanned output from
+        :func:`blackjax.util.run_inference_algorithm`).
+    sigma
+        Observation noise standard deviation (plain array or
+        ``paramax``-wrapped; unwrapped automatically).
+
+    Returns
+    -------
+    Scalar NLPD averaged over test points.
+    """
+    sigma_val = paramax.unwrap(sigma)
+    particle_matrix = _as_particle_matrix(particles)       # (M, J_total)
+    projected = test_basis @ particle_matrix               # (N_test, J_total)
+    j_total = projected.shape[1]
+
+    # Sparse-approximation residual at test points; 0 for full GP.
+    q_diag = jnp.sum(test_basis**2, axis=1)               # (N_test,)
+    k_diag = jnp.diag(test_covariance)                    # (N_test,)
+    test_residual_std = jnp.sqrt(jnp.maximum(k_diag - q_diag, 0.0))
+    sigma_eff = jnp.sqrt(sigma_val**2 + test_residual_std**2).reshape(-1, 1)
+
+    y = y_test.reshape(-1, 1) if y_test.ndim == 1 else y_test   # (N_test, 1)
+    log_normals = (
+        -0.5 * jnp.log(2 * jnp.pi)
+        - jnp.log(sigma_eff)
+        - 0.5 * ((y - projected) / sigma_eff) ** 2
+    )                                                      # (N_test, J_total)
+    log_p = jax.nn.logsumexp(log_normals, axis=1) - jnp.log(j_total)
+    return -jnp.mean(log_p)
+
+
 def posterior_function_draws(  # noqa: PLR0913
     rng_key: PRNGKey,
     test_basis: jax.Array,

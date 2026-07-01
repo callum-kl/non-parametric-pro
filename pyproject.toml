@@ -45,6 +45,7 @@ dependencies = [
     "blackjax>=1.5",
     "gpjax>=0.15.0",
     "matplotlib>=3.11.0",
+    "scikit-learn>=1.9.0",
     "tqdm>=4.68.3",
 ]
 description = "Sampling Predictively Oriented Posteriors for Gaussian Processes"

@@ -64,7 +64,7 @@ def compute_inducing_basis(
     inducing_basis: InducingBasis,
     kernel: gpx.kernels.AbstractKernel,
     x: jax.Array,
-    jitter: float,
+    jitter: float = 1e-6,
 ) -> tuple[jax.Array, jax.Array]:
     """
     Build the basis ``B = K_xz L_zz^{-T}`` and residual std for any ``InducingBasis``.

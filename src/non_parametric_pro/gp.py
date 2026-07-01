@@ -23,7 +23,7 @@ from non_parametric_pro.inducing import PointInducingBasis, compute_inducing_bas
 def _full_gp_basis(
     posterior: gpx.gps.AbstractPosterior,
     x_train: jnp.ndarray,
-    jitter: float,
+    jitter: float = 1e-6,
 ) -> jnp.ndarray:
     """Cholesky basis of the training Gram matrix under the fitted kernel."""
     kernel = posterior.prior.kernel
@@ -34,7 +34,7 @@ def _full_gp_basis(
 def _sparse_gp_basis(
     variational_family: gpx.variational_families.CollapsedVariationalGaussian,
     x_train: jnp.ndarray,
-    jitter: float,
+    jitter: float = 1e-6,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Basis and residual std for the fitted sparse GP, via ``PointInducingBasis``."""
     kernel = variational_family.posterior.prior.kernel
@@ -51,7 +51,7 @@ def base_gp_adaptation(  # noqa: PLR0913
     step_size: float,
     alpha: float,
     tolerance: float,
-    jitter: float,
+    jitter: float = 1e-6,
     num_inducing: int | None = None,
     optim: ox.GradientTransformation | None = None,
     num_iters: int = 500,
