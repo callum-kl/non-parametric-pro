@@ -274,7 +274,7 @@ def base(
 
     return init, update, final
 
-
+# ToDo: better handling of case where ProParameters does not have basis field precomputed
 def parameter_adaptation(  # noqa: PLR0913
     algorithm,
     logdensity_fn: Callable,
@@ -286,11 +286,11 @@ def parameter_adaptation(  # noqa: PLR0913
     sigma_adapt_every: int,
     kernel_adapt_every: int,
     objective_fn: Callable,
+    inducing_basis: InducingBasis | None = None,
     sigma_optimizer: optax.GradientTransformation | None = None,
     kernel_optimizer: optax.GradientTransformation | None = None,
     jitter: float = 1e-6,
     progress_bar: bool = False,
-    inducing_basis: InducingBasis | None = None,
 ) -> AdaptationAlgorithm:
     """
     Adapt `sigma` and the kernel hyperparameters behind `basis`.

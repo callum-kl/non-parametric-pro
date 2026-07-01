@@ -8,7 +8,7 @@ from blackjax.base import SamplingAlgorithm
 from blackjax.mcmc import diffusions
 from blackjax.types import PRNGKey
 
-from non_parametric_pro.density import predictive_score
+from non_parametric_pro.density import pro_score_fn
 
 
 class ULAState(NamedTuple):
@@ -84,7 +84,7 @@ def build_kernel(logdensity_fn: Callable) -> Callable:
         )
         new_state = ULAState(*new_state)    # type: ignore  # noqa: PGH003
 
-        score = predictive_score(new_state.position, parameters)
+        score = pro_score_fn(new_state.position, parameters)
         return new_state, ULAInfo(score)
 
     return kernel

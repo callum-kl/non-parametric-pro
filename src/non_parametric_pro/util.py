@@ -1,9 +1,15 @@
 """Utilities for posterior predictive summaries."""
 
+import gpjax as gpx
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+import paramax
 from blackjax.types import PRNGKey
+from jax.scipy.linalg import solve_triangular
+
+from non_parametric_pro.density import ProParameters
+from non_parametric_pro.inducing import InducingBasis
 
 PARTICLE_MATRIX_NDIM = 2
 SCANNED_PARTICLES_NDIM = 3
@@ -74,6 +80,64 @@ def draw_predictive_samples(  # noqa: PLR0913
         sample_std = sample_std[:, None]
     noise = sample_std * jr.normal(noise_key, selected.shape)
     return selected + noise
+
+
+def prediction_basis(
+    kernel: gpx.kernels.AbstractKernel,
+    x_train: jax.Array,
+    x_test: jax.Array,
+    parameters: ProParameters,
+    *,
+    inducing_basis: InducingBasis | None = None,
+) -> tuple[jax.Array, jax.Array]:
+    """
+    Compute ``(test_basis, test_covariance)`` for ``posterior_function_draws``.
+
+    Both cases share the same formula ``B* = K(·, anchors) L⁻ᵀ``; what differs
+    is the choice of anchors and the Cholesky ``L``:
+
+    - **Full GP** (``inducing_basis=None``): anchors are the ``N`` training
+      inputs; ``L`` is ``parameters.basis`` (the ``N×N`` training Cholesky).
+    - **Inducing** (``inducing_basis`` given): anchors are the ``M`` inducing
+      features; ``L_zz`` is recomputed from the kernel and
+      ``inducing_basis.inducing_cov``.
+
+    The returned ``test_covariance`` is ``K(x_test, x_test)`` in both cases.
+    ``posterior_function_draws`` subtracts ``test_basis @ test_basis.T`` from
+    it to get the residual epistemic uncertainty at test points.
+
+    Parameters
+    ----------
+    kernel
+        The fitted/adapted kernel (paramax-wrapped or plain).
+    x_train
+        Training inputs ``(N, D)``. Only used in the full GP case.
+    x_test
+        Test inputs ``(N_test, D)``.
+    parameters
+        Current ``ProParameters``; ``parameters.jitter`` is reused when
+        recomputing ``L_zz`` for the inducing case.
+    inducing_basis
+        An :class:`InducingBasis` instance, or ``None`` for the full GP path.
+    """
+    k = paramax.unwrap(kernel)
+    x_tr = x_train.reshape(-1, 1) if x_train.ndim == 1 else x_train
+    x_te = x_test.reshape(-1, 1) if x_test.ndim == 1 else x_test
+    test_covariance = k.gram(x_te).as_matrix()
+
+    if inducing_basis is None:
+        L = parameters.basis  # (N, N) — the training Cholesky
+        K_test_train = k.cross_covariance(x_te, x_tr)  # (N_test, N)
+        test_basis = solve_triangular(L, K_test_train.T, lower=True).T
+    else:
+        K_zz = inducing_basis.inducing_cov(k)  # (M, M)
+        L_zz = jnp.linalg.cholesky(
+            K_zz + parameters.jitter * jnp.eye(K_zz.shape[0])
+        )
+        K_z_test = inducing_basis.cross_cov(k, x_te)  # (M, N_test)
+        test_basis = solve_triangular(L_zz, K_z_test, lower=True).T  # (N_test, M)
+
+    return test_basis, test_covariance
 
 
 def posterior_function_draws(  # noqa: PLR0913
