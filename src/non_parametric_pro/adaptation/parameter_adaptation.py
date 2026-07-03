@@ -20,6 +20,8 @@ from blackjax.base import AdaptationAlgorithm
 from blackjax.progress_bar import gen_scan_fn
 from blackjax.types import ArrayLikeTree, PRNGKey
 
+from jax.scipy.linalg import solve_triangular
+
 from non_parametric_pro.density import ProParameters
 from non_parametric_pro.inducing import InducingBasis, compute_inducing_basis
 
@@ -43,6 +45,8 @@ class ParameterAdaptationState(NamedTuple):
     kernel_opt_state: optax.OptState
     basis: jax.Array
     residual_std: jax.Array | None = None  # None for full GP, (N,1) for inducing
+    val_basis: jax.Array | None = None          # prediction basis at x_val
+    val_residual_std: jax.Array | None = None   # approximation residual at x_val
 
 
 class ParameterAdaptationInfo(NamedTuple):
@@ -125,6 +129,8 @@ def base(
     kernel_optimizer: optax.GradientTransformation,
     objective_fn: Callable,
     inducing_basis: InducingBasis | None = None,
+    x_val: jax.Array | None = None,
+    y_val: jax.Array | None = None,
 ) -> tuple[Callable, Callable, Callable]:
     """
     Build the (init, update, final) triple for sigma/basis adaptation.
@@ -159,14 +165,41 @@ def base(
             return basis, None
         return compute_inducing_basis(inducing_basis, unwrapped, x, jitter)
 
+    def val_basis_fn(
+        kernel: gpx.kernels.AbstractKernel,
+    ) -> tuple[jax.Array | None, jax.Array | None]:
+        """Prediction basis at validation points; (None, None) if no x_val."""
+        if x_val is None:
+            return None, None
+        unwrapped = paramax.unwrap(kernel)
+        x_v = x_val.reshape(-1, 1) if x_val.ndim == 1 else x_val
+        if inducing_basis is None:
+            x_tr = x_train.reshape(-1, 1) if x_train.ndim == 1 else x_train
+            k_train = unwrapped.gram(x_tr).as_matrix()
+            L = jnp.linalg.cholesky(k_train + jitter * jnp.eye(k_train.shape[0]))
+            K_val_train = unwrapped.cross_covariance(x_v, x_tr)
+            return solve_triangular(L, K_val_train.T, lower=True).T, None
+        return compute_inducing_basis(inducing_basis, unwrapped, x_v, jitter)
+
+    def _objective_parameters(
+        base_parameters: ProParameters,
+        vb: jax.Array | None,
+        vr: jax.Array | None,
+    ) -> ProParameters:
+        """Swap to validation y/basis if available, else use training parameters."""
+        if x_val is None:
+            return base_parameters
+        return base_parameters._replace(y=y_val, basis=vb, residual_std=vr)
+
     def sigma_loss(
         sigma: paramax.AbstractUnwrappable,
         position: ArrayLikeTree,
         base_parameters: ProParameters,
+        val_basis: jax.Array | None,
+        val_residual_std: jax.Array | None,
     ) -> jax.Array:
-        # objective_fn (pro_logdensity_fn) unwraps parameters.sigma itself,
-        # so the paramax constraint is applied transparently here.
-        return -objective_fn(position, base_parameters._replace(sigma=sigma))
+        obj_params = _objective_parameters(base_parameters, val_basis, val_residual_std)
+        return -objective_fn(position, obj_params._replace(sigma=sigma))
 
     def kernel_loss(
         kernel: gpx.kernels.AbstractKernel,
@@ -174,16 +207,19 @@ def base(
         base_parameters: ProParameters,
     ) -> jax.Array:
         new_basis, new_residual_std = basis_fn(kernel)
-        return -objective_fn(
-            position,
+        vb, vr = val_basis_fn(kernel)
+        obj_params = _objective_parameters(
             base_parameters._replace(basis=new_basis, residual_std=new_residual_std),
+            vb, vr,
         )
+        return -objective_fn(position, obj_params)
 
     def init(
         initial_sigma: paramax.AbstractUnwrappable,
         initial_kernel: gpx.kernels.AbstractKernel,
     ) -> ParameterAdaptationState:
         initial_basis, initial_residual_std = basis_fn(initial_kernel)
+        initial_val_basis, initial_val_residual_std = val_basis_fn(initial_kernel)
         return ParameterAdaptationState(
             sigma=initial_sigma,
             sigma_opt_state=sigma_optimizer.init(
@@ -195,6 +231,8 @@ def base(
             ),
             basis=initial_basis,
             residual_std=initial_residual_std,
+            val_basis=initial_val_basis,
+            val_residual_std=initial_val_residual_std,
         )
 
     def no_op(
@@ -211,7 +249,8 @@ def base(
         base_parameters: ProParameters,
     ) -> ParameterAdaptationState:
         _, grad = eqx.filter_value_and_grad(sigma_loss)(
-            state.sigma, position, base_parameters
+            state.sigma, position, base_parameters,
+            state.val_basis, state.val_residual_std,
         )
         updates, new_opt_state = sigma_optimizer.update(
             grad, state.sigma_opt_state, eqx.filter(state.sigma, eqx.is_array)
@@ -235,11 +274,14 @@ def base(
         )
         new_kernel = eqx.apply_updates(state.kernel, updates)
         new_basis, new_residual_std = basis_fn(new_kernel)
+        new_val_basis, new_val_residual_std = val_basis_fn(new_kernel)
         return state._replace(
             kernel=new_kernel,
             kernel_opt_state=new_opt_state,
             basis=new_basis,
             residual_std=new_residual_std,
+            val_basis=new_val_basis,
+            val_residual_std=new_val_residual_std,
         )
 
     def both_update(
@@ -287,6 +329,8 @@ def parameter_adaptation(  # noqa: PLR0913
     kernel_adapt_every: int,
     objective_fn: Callable,
     inducing_basis: InducingBasis | None = None,
+    x_val: jax.Array | None = None,
+    y_val: jax.Array | None = None,
     sigma_optimizer: optax.GradientTransformation | None = None,
     kernel_optimizer: optax.GradientTransformation | None = None,
     jitter: float = 1e-6,
@@ -326,6 +370,8 @@ def parameter_adaptation(  # noqa: PLR0913
         kernel_optimizer=kernel_optimizer,
         objective_fn=objective_fn,
         inducing_basis=inducing_basis,
+        x_val=x_val,
+        y_val=y_val,
     )
 
     def one_step(carry, xs):

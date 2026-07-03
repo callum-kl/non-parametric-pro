@@ -18,7 +18,7 @@ class ProParameters(NamedTuple):
     step_size: float
     sigma: jax.Array | float | paramax.AbstractUnwrappable
     alpha: float
-    tolerance: float = 1e-300
+    tolerance: float = 1e-30
     jitter: float = 1e-6
     residual_std: jax.Array | None = None  # (N,1) inducing residual; None for full GP
 
@@ -37,6 +37,18 @@ def normal_logpdf(y, mean, sigma):
         -0.5 * ((y - mean) / sigma) ** 2
         - jnp.log(sigma)
         - 0.5 * jnp.log(2.0 * jnp.pi)
+    )
+
+def student_t_logpdf(y, mean, sigma, df=4.0):
+    """Evaluate the Student-t observation log-density for each particle."""
+    z = (y - mean) / sigma
+    nu = df
+    return (
+        jax.scipy.special.gammaln((nu + 1.0) / 2.0)
+        - jax.scipy.special.gammaln(nu / 2.0)
+        - 0.5 * jnp.log(nu * jnp.pi)
+        - jnp.log(sigma)
+        - 0.5 * (nu + 1.0) * jnp.log1p((z**2) / nu)
     )
 
 
@@ -58,6 +70,7 @@ def pro_score_fn(
     log_density = normal_logpdf(parameters.y, a, sigma)
     num_particles = log_density.shape[1]
     log_marginal = logsumexp(log_density, axis=1) - jnp.log(num_particles)
+    log_marginal = jnp.maximum(log_marginal, jnp.log(parameters.tolerance))
     score = num_particles * parameters.alpha * jnp.sum(log_marginal)
     return score  
 

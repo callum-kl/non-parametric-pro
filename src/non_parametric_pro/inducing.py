@@ -6,6 +6,8 @@ from typing import Protocol, runtime_checkable
 import gpjax as gpx
 import jax
 import jax.numpy as jnp
+import jax.random as jr
+from blackjax.types import PRNGKey
 from jax.scipy.linalg import solve_triangular
 
 
@@ -58,6 +60,59 @@ class PointInducingBasis:
         self, kernel: gpx.kernels.AbstractKernel, x: jax.Array
     ) -> jax.Array:
         return kernel.cross_covariance(self._z2d(), x)
+
+
+def kmeans_inducing_points(
+    rng_key: PRNGKey,
+    x_train: jax.Array,
+    num_inducing: int,
+    *,
+    num_iters: int = 100,
+) -> "PointInducingBasis":
+    """
+    Select inducing locations via k-means clustering of the training inputs.
+
+    Runs Lloyd's algorithm for ``num_iters`` steps (no early stopping) with a
+    random-subset initialisation.  The returned :class:`PointInducingBasis`
+    uses the cluster centroids as inducing points, which tend to give better
+    coverage than random subsets, especially for unevenly distributed inputs.
+
+    This function is JIT-compatible; wrap in ``jax.jit`` for repeated calls.
+
+    Parameters
+    ----------
+    rng_key
+        JAX random key used to initialise centroids from a random subset of
+        training points.
+    x_train
+        Training inputs, shape ``(N,)`` or ``(N, D)``.
+    num_inducing
+        Number of inducing points (clusters) ``M``.
+    num_iters
+        Number of Lloyd's algorithm iterations.  100 is usually sufficient.
+
+    Returns
+    -------
+    A :class:`PointInducingBasis` whose ``z`` are the ``(M, D)`` centroids.
+    """
+    x = x_train.reshape(-1, 1) if x_train.ndim == 1 else x_train  # (N, D)
+
+    init_idx = jr.choice(rng_key, x.shape[0], (num_inducing,), replace=False)
+    centroids = x[init_idx]  # (M, D)
+
+    def step(centroids: jax.Array, _: None) -> tuple[jax.Array, None]:
+        dists = jnp.sum(
+            (x[:, None, :] - centroids[None, :, :]) ** 2, axis=-1
+        )                                               # (N, M)
+        assignments = jnp.argmin(dists, axis=1)        # (N,)
+        one_hot = jax.nn.one_hot(assignments, num_inducing)  # (N, M)
+        counts = one_hot.sum(axis=0)                   # (M,)
+        new_centroids = one_hot.T @ x / jnp.maximum(counts[:, None], 1)
+        # Keep old centroid for any empty cluster
+        return jnp.where(counts[:, None] > 0, new_centroids, centroids), None
+
+    centroids, _ = jax.lax.scan(step, centroids, None, length=num_iters)
+    return PointInducingBasis(centroids)
 
 
 def compute_inducing_basis(
