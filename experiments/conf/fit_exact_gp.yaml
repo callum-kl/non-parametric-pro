@@ -1,0 +1,17 @@
+defaults:
+  - _self_
+  - ds@_global_: yacht  # override with: "ds@_global_=<name>"
+
+split: 1
+seed: 0
+
+gp_num_iters: 100
+kernel_lr: 0.1
+
+results_root: results
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: .hydra_logs/${now:%Y-%m-%d}/${now:%H-%M-%S}

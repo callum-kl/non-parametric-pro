@@ -1,0 +1,6 @@
+# N=1599, D=11
+dataset: wine
+num_inducing: 150
+num_adapt_steps: 12000
+num_sample_steps: 15000
+step_size: 1.0e-4

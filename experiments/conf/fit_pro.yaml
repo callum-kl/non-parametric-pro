@@ -1,0 +1,34 @@
+defaults:
+  - _self_
+  - ds@_global_: yacht  # override with: "ds@_global_=<name>"
+
+split: 1
+seed: 0
+inducing: false  # true → reads VGP state; false → reads exact GP state
+
+results_root: results
+
+num_particles: 40
+alpha: 1.0
+sigma_min: 0.1
+
+# per-dataset defaults; ds yaml values take priority via @_global_ merge
+num_adapt_steps: 5000
+num_sample_steps: 8000
+step_size: 1.0e-4
+
+warmup_steps: 2000
+sigma_adapt_every: 10
+kernel_adapt_every: -1
+sigma_lr: 0.1
+kernel_lr: 0.01
+val_fraction: 0.2
+
+burn_fraction: 0.8
+thin: 50
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: .hydra_logs/${now:%Y-%m-%d}/${now:%H-%M-%S}

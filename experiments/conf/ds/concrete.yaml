@@ -1,0 +1,6 @@
+# N=1030, D=8
+dataset: concrete
+num_inducing: 300
+num_adapt_steps: 10000
+num_sample_steps: 12000
+step_size: 1.0e-4

@@ -1,0 +1,7 @@
+dataset: stock
+num_inducing: 20
+num_adapt_steps: 3000
+num_sample_steps: 10000
+step_size: 1.0e-4
+sigma_adapt_every: 10
+kernel_adapt_every: -1

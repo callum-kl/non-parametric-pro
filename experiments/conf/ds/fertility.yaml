@@ -1,0 +1,6 @@
+# N=100, D=9
+dataset: fertility
+num_inducing: 20
+num_adapt_steps: 5000
+num_sample_steps: 12000
+step_size: 1.0e-4

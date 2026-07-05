@@ -121,31 +121,6 @@ def _col(x: jax.Array) -> jax.Array:
     return x.reshape(-1, 1)
 
 
-def train_val_split(
-    key: PRNGKey,
-    x: jax.Array,
-    y: jax.Array,
-    *,
-    val_fraction: float = 0.2,
-) -> TrainValSplit:
-    """Split ``(x, y)`` into a random train/validation partition."""
-    n = y.shape[0]
-    idx = jr.permutation(key, n)
-
-    n_val = round(val_fraction * n)
-    val_idx = idx[:n_val]
-    train_idx = idx[n_val:]
-
-    return TrainValSplit(
-        x_train=x[train_idx],
-        y_train=y[train_idx],
-        x_val=x[val_idx],
-        y_val=y[val_idx],
-        train_idx=train_idx,
-        val_idx=val_idx,
-    )
-
-
 def make_clean_regression_case(
     key: PRNGKey,
     *,

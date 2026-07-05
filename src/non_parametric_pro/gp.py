@@ -1,22 +1,10 @@
-"""
-One-shot GP fit used to seed ULA's parameters with a good starting point.
-
-This is not an online adaptation scheme (no ``init``/``update``/``final``
-triple): it just fits a GP once with gpjax and returns a :class:`ProParameters`
-populated from the optimised kernel hyperparameters (and inducing inputs, if
-``num_inducing`` is given). Its return type matches what a later online
-adaptation scheme's ``final`` step will also produce, so both can feed
-``pro_ula``/``parametric_ula`` the same way.
-"""
-
 import gpjax as gpx
 import jax.numpy as jnp
-import jax.random as jr
-import optax as ox
+from gpjax.dataset import Dataset
 from gpjax.objectives import _val
-from gpjax.parameters import NonNegativeReal
+from jax import vmap
+from jax.scipy.linalg import solve_triangular
 
-from non_parametric_pro.density import ProParameters
 from non_parametric_pro.inducing import PointInducingBasis, compute_inducing_basis
 
 
@@ -41,80 +29,102 @@ def _sparse_gp_basis(
     z = _val(variational_family.inducing_inputs)
     return compute_inducing_basis(PointInducingBasis(z), kernel, x_train, jitter)
 
-
-def base_gp_adaptation(  # noqa: PLR0913
-    rng_key: jr.PRNGKey,
-    x_train: jnp.ndarray,
-    y_train: jnp.ndarray,
-    kernel: gpx.kernels.AbstractKernel,
+def predictive_log_likelihood(
+    variational_family,
+    data: Dataset,
     *,
-    step_size: float,
-    alpha: float,
-    tolerance: float,
-    jitter: float = 1e-6,
-    num_inducing: int | None = None,
-    optim: ox.GradientTransformation | None = None,
-    num_iters: int = 500,
-) -> ProParameters:
+    beta: float = 1.0,
+) -> jnp.ndarray:
+    r"""Predictive log likelihood objective for sparse variational GPs.
+
+    Proposed in Jankowiak et al. (2020) "Parametric Gaussian Process Regressors"
+    (https://arxiv.org/abs/1910.07123) as an alternative to the ELBO that
+    produces better-calibrated predictive variances.
+
+    The objective is
+
+    .. math::
+
+        \mathcal{L}_\text{PLL} =
+            \sum_{i=1}^N \log \mathcal{N}(y_i;\, \mu_q(x_i),\, \sigma^2 + v_q(x_i))
+            - \beta\, \text{KL}[q(u) \| p(u)]
+
+    where :math:`\mu_q` and :math:`v_q` are the mean and marginal variance of
+    the variational predictive :math:`q(f)`, and :math:`\sigma^2` is the
+    observation noise.  Unlike the ELBO, the :math:`\log` sits *outside* the
+    expectation over :math:`q(u)`, so Jensen's inequality makes this an upper
+    bound on the ELBO (PLL :math:`\geq` ELBO).
+
+    This function is designed for :class:`gpjax.variational_families.VariationalGaussian`
+    (non-collapsed).  For the collapsed family the inducing distribution is
+    integrated out analytically, making the per-point marginal variances of the
+    collapsed posterior the natural plug-in.
+
+    Parameters
+    ----------
+    variational_family
+        A :class:`gpjax.variational_families.VariationalGaussian` instance.
+    data
+        Training dataset (may be a mini-batch; scaled automatically).
+    beta
+        Weight on the KL term.  ``beta=1`` (default) recovers the objective
+        from the paper.  Values < 1 reduce regularisation similarly to
+        :math:`\beta`-VAEs.
+
+    Returns
+    -------
+    jnp.ndarray
+        Scalar PLL value (higher is better; negate for minimisation).
     """
-    Fit a GP to ``(x_train, y_train)`` and seed ``ProParameters`` from it.
+    x, y, n = data.X, data.y, data.n
 
-    With ``num_inducing=None`` a full GP is fit by maximising the conjugate
-    marginal log-likelihood, and ``basis`` is the Cholesky factor of the
-    training Gram matrix. With ``num_inducing`` set, a sparse GP (Titsias,
-    2009) is fit by maximising the collapsed ELBO over the kernel
-    hyperparameters and inducing input locations, and ``basis`` maps the
-    (lower-dimensional) inducing-point coefficients to training-input function
-    values.
-    """
-    if optim is None:
-        optim = ox.adam(0.01)
+    # ---- unpack variational family -----------------------------------------
+    variational_mean = _val(variational_family.variational_mean)        # (M, 1)
+    variational_sqrt = _val(variational_family.variational_root_covariance)  # (M, M)
+    inducing_inputs  = _val(variational_family.inducing_inputs)         # (M, D)
 
-    data = gpx.Dataset(X=x_train, y=y_train)
-    prior = gpx.gps.Prior(mean_function=gpx.mean_functions.Zero(), kernel=kernel)
-    likelihood = gpx.likelihoods.Gaussian(num_datapoints=data.n)
-    posterior = prior * likelihood
+    mean_fn = variational_family.posterior.prior.mean_function
+    kernel  = variational_family.posterior.prior.kernel
+    noise   = _val(variational_family.posterior.likelihood.obs_stddev) ** 2
+    jitter  = variational_family.jitter
 
-    if num_inducing is None:
-        opt_posterior, _ = gpx.fit(
-            model=posterior,
-            objective=lambda p, d: -gpx.objectives.conjugate_mll(p, d),
-            train_data=data,
-            optim=optim,
-            num_iters=num_iters,
-            verbose=False,
-        )
-        basis = _full_gp_basis(opt_posterior, x_train, jitter)
-        sigma = NonNegativeReal(_val(opt_posterior.likelihood.obs_stddev).squeeze())
-    else:
-        inducing_idx = jr.choice(
-            rng_key, x_train.shape[0], (num_inducing,), replace=False
-        )
-        variational_family = gpx.variational_families.CollapsedVariationalGaussian(
-            posterior=posterior,
-            inducing_inputs=x_train[inducing_idx],
-            jitter=jitter,
-        )
-        opt_variational_family, _ = gpx.fit(
-            model=variational_family,
-            objective=lambda p, d: -gpx.objectives.collapsed_elbo(p, d),
-            train_data=data,
-            optim=optim,
-            num_iters=num_iters,
-            verbose=False,
-        )
-        basis, residual_std = _sparse_gp_basis(opt_variational_family, x_train, jitter)
-        sigma = NonNegativeReal(
-            _val(opt_variational_family.posterior.likelihood.obs_stddev).squeeze()
-        )
+    # ---- kernel matrices ----------------------------------------------------
+    Kzz = kernel.gram(inducing_inputs).as_matrix()
+    Kzz = Kzz + jitter * jnp.eye(Kzz.shape[0])
+    Lz  = jnp.linalg.cholesky(Kzz)                   # (M, M)
 
-    return ProParameters(
-        y=y_train,
-        basis=basis,
-        step_size=step_size,
-        sigma=sigma,
-        alpha=alpha,
-        tolerance=tolerance,
-        jitter=jitter,
-        residual_std=residual_std if num_inducing is not None else None,
-    )
+    Kzx      = kernel.cross_covariance(inducing_inputs, x)  # (M, N)
+    Kxx_diag = vmap(kernel, in_axes=(0, 0))(x, x)          # (N,)
+
+    muz  = mean_fn(inducing_inputs)   # (M, 1)
+    mux  = mean_fn(x)                 # (N, 1)
+
+    # ---- predictive mean: μ(x) = μx + Kxz Kzz⁻¹ (mz − μz) ----------------
+    Lz_inv_Kzx  = solve_triangular(Lz, Kzx, lower=True)               # (M, N)
+    Kzz_inv_Kzx = solve_triangular(Lz.T, Lz_inv_Kzx, lower=False)     # (M, N)
+
+    pred_mean = (mux + Kzz_inv_Kzx.T @ (variational_mean - muz)).squeeze()  # (N,)
+
+    # ---- predictive variance (diagonal only) --------------------------------
+    # var(f_i) = K_ii
+    #          − ||Lz⁻¹ Kz_i||²          (prior uncertainty removed by inducing)
+    #          + ||sqrt^T Kzz⁻¹ Kz_i||²  (variance added back from q(u))
+    A        = variational_sqrt.T @ Kzz_inv_Kzx              # (M, N)
+    pred_var = (
+        Kxx_diag
+        - jnp.sum(Lz_inv_Kzx ** 2, axis=0)
+        + jnp.sum(A ** 2, axis=0)
+    )                                                         # (N,)
+
+    # ---- per-point log N(y_i; μ_i, σ² + v_i) -------------------------------
+    total_var = noise + pred_var                              # (N,)
+    log_lik = (
+        -0.5 * jnp.log(2.0 * jnp.pi * total_var)
+        - 0.5 * (y.squeeze() - pred_mean) ** 2 / total_var
+    )                                                         # (N,)
+
+    # Scale for mini-batching: multiply by N / batch_size
+    N_total = variational_family.posterior.likelihood.num_datapoints
+    kl = variational_family.prior_kl()
+
+    return jnp.sum(log_lik) * N_total / n - beta * kl

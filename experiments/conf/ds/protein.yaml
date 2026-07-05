@@ -1,0 +1,6 @@
+# N=45730, D=9
+dataset: protein
+num_inducing: 500
+num_adapt_steps: 30000
+num_sample_steps: 25000
+step_size: 1.0e-5

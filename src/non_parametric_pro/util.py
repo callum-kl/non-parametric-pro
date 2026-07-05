@@ -1,4 +1,5 @@
 """Utilities for posterior predictive summaries."""
+from typing import NamedTuple
 
 import gpjax as gpx
 import jax
@@ -13,6 +14,40 @@ from non_parametric_pro.inducing import InducingBasis
 
 PARTICLE_MATRIX_NDIM = 2
 SCANNED_PARTICLES_NDIM = 3
+
+class TrainValSplit(NamedTuple):
+    """A random train/validation split of ``(x, y)``."""
+
+    x_train: jax.Array
+    y_train: jax.Array
+    x_val: jax.Array
+    y_val: jax.Array
+    train_idx: jax.Array
+    val_idx: jax.Array
+
+def train_val_split(
+    key: PRNGKey,
+    x: jax.Array,
+    y: jax.Array,
+    *,
+    val_fraction: float = 0.2,
+) -> TrainValSplit:
+    """Split ``(x, y)`` into a random train/validation partition."""
+    n = y.shape[0]
+    idx = jr.permutation(key, n)
+
+    n_val = round(val_fraction * n)
+    val_idx = idx[:n_val]
+    train_idx = idx[n_val:]
+
+    return TrainValSplit(
+        x_train=x[train_idx],
+        y_train=y[train_idx],
+        x_val=x[val_idx],
+        y_val=y[val_idx],
+        train_idx=train_idx,
+        val_idx=val_idx,
+    )
 
 
 def _as_particle_matrix(particles: jax.Array) -> jax.Array:
@@ -269,7 +304,7 @@ def crps_pro(
     test_covariance: jax.Array,
     particles: jax.Array,
     *,
-    sigma: jax.Array | float,
+    parameters: "ProParameters",
 ) -> jax.Array:
     """
     Mean CRPS for the PRO GP mixture predictive (lower is better).
@@ -301,15 +336,15 @@ def crps_pro(
     particles
         Retained latent particles, shape ``(M, J)`` or
         ``(num_steps, M, J)``.
-    sigma
-        Observation noise standard deviation (plain array or
-        ``paramax``-wrapped; unwrapped automatically).
+    parameters
+        Current :class:`ProParameters`; ``sigma`` and ``residual_std`` are
+        used to compute ``sigma_eff``.
 
     Returns
     -------
     Scalar CRPS averaged over test points.
     """
-    sigma_val = paramax.unwrap(sigma)
+    sigma_val = paramax.unwrap(parameters.sigma)
     particle_matrix = _as_particle_matrix(particles)        # (M, J)
     projected = test_basis @ particle_matrix                # (N_test, J)
     q_diag = jnp.sum(test_basis**2, axis=1)                # (N_test,)

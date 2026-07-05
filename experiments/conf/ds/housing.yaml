@@ -1,0 +1,6 @@
+# N=506, D=13
+dataset: housing
+num_inducing: 50
+num_adapt_steps: 6000
+num_sample_steps: 8000
+step_size: 1.0e-4
