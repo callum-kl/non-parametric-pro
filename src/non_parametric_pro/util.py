@@ -570,6 +570,15 @@ def posterior_function_draws(  # noqa: PLR0913
     ``test_basis`` should be the same projection matrix used for
     ``predictive_moments``. In the full-GP case this is ``V.T``, where
     ``V = solve(train_cholesky, K_test_train.T)``.
+
+    For a genuine Nystrom/inducing-point basis, ``test_covariance -
+    test_basis @ test_basis.T`` is guaranteed PSD (it's a Schur complement).
+    That's not true for approximations like Random Fourier Features, where
+    ``test_basis @ test_basis.T`` is an independent Monte-Carlo estimate of
+    the kernel rather than a projection onto a subspace of it — the
+    difference can have negative eigenvalues no jitter reasonably fixes. To
+    stay correct for any basis, negative eigenvalues are clipped to zero
+    (the nearest PSD matrix in this eigenbasis) before the Cholesky.
     """
     particle_matrix = _as_particle_matrix(particles)
     num_test = test_covariance.shape[0]
@@ -578,11 +587,10 @@ def posterior_function_draws(  # noqa: PLR0913
     particle_indices = jr.randint(index_key, (num_draws,), 0, particle_matrix.shape[1])
     conditional_means = test_basis @ particle_matrix[:, particle_indices]
 
-    conditional_covariance = (
-        test_covariance
-        - test_basis @ test_basis.T
-        + jitter * jnp.eye(num_test, dtype=test_covariance.dtype)
-    )
-    residual_cholesky = jnp.linalg.cholesky(conditional_covariance)
+    conditional_covariance = test_covariance - test_basis @ test_basis.T
+    conditional_covariance = 0.5 * (conditional_covariance + conditional_covariance.T)
+    eigvals, eigvecs = jnp.linalg.eigh(conditional_covariance)
+    eigvals = jnp.maximum(eigvals, 0.0) + jitter
+    residual_cholesky = eigvecs * jnp.sqrt(eigvals)[None, :]
     residual_noise = jr.normal(noise_key, (num_test, num_draws))
     return conditional_means + residual_cholesky @ residual_noise

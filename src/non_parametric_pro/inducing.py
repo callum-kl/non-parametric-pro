@@ -7,6 +7,7 @@ import gpjax as gpx
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+import paramax
 from blackjax.types import PRNGKey
 from jax.scipy.linalg import solve_triangular
 
@@ -113,6 +114,103 @@ def kmeans_inducing_points(
 
     centroids, _ = jax.lax.scan(step, centroids, None, length=num_iters)
     return PointInducingBasis(centroids)
+
+
+def sample_rff_frequencies(
+    rng_key: PRNGKey,
+    kernel: gpx.kernels.AbstractKernel,
+    num_basis_fns: int,
+    *,
+    num_dims: int | None = None,
+) -> jax.Array:
+    """
+    Sample raw (pre-lengthscale-scaling) Random Fourier Feature frequencies.
+
+    Delegates to ``gpjax``'s own ``kernel.spectral_density.sample``, so the
+    sampling matches whatever gpjax considers correct for the given
+    stationary kernel type — this module doesn't re-derive any spectral
+    density itself. The returned frequencies are independent of the
+    kernel's *current* lengthscale value; :class:`RFFInducingBasis` rescales
+    them by the adapted lengthscale on every call, so the same sample can be
+    reused across an optimisation.
+
+    Parameters
+    ----------
+    num_dims
+        Number of input dimensions ``D``. Inferred from ``kernel.n_dims``
+        (set automatically by gpjax when the kernel is constructed with an
+        array-valued, i.e. ARD, ``lengthscale``) when not given explicitly.
+        Must be supplied if the kernel has a scalar (isotropic) lengthscale,
+        since gpjax then has no way to infer ``D`` on its own.
+    """
+    if num_dims is None:
+        num_dims = kernel.n_dims
+        if num_dims is None:
+            msg = (
+                "Could not infer the number of input dimensions from the "
+                "kernel (its lengthscale is a scalar, so gpjax's n_dims is "
+                "None). Pass num_dims explicitly."
+            )
+            raise ValueError(msg)
+    return kernel.spectral_density.sample(
+        key=rng_key, sample_shape=(num_basis_fns, num_dims)
+    )
+
+
+@dataclass
+class RFFInducingBasis:
+    """
+    Random Fourier Features (Rahimi & Recht, 2008) inducing basis.
+
+    Thin adapter around ``gpjax``'s own tested
+    ``gpx.kernels.approximations.rff`` feature computation, reshaped to
+    satisfy the ``InducingBasis`` protocol (``inducing_cov`` / ``cross_cov``)
+    used by :func:`compute_inducing_basis` elsewhere in this module. Unlike
+    :class:`PointInducingBasis`, ``kernel`` here is the *plain* base kernel
+    (e.g. ``gpx.kernels.RBF``/``Matern32``) whose ``lengthscale``/``variance``
+    are being fit — this class does its own feature computation rather than
+    wrapping the kernel in ``gpx.kernels.approximations.RFF``, so it works
+    with the same kernel object used everywhere else (adaptation, plain
+    ``kernel.gram(...)`` calls for the residual/diagonal term, etc).
+
+    Given fixed raw frequencies ``ω`` (see :func:`sample_rff_frequencies`),
+    the feature map is ``φ(x) = [cos(x·ω/ℓ), sin(x·ω/ℓ)]`` (shape ``2M``),
+    with ``k(x, y) ≈ (variance / M) * φ(x)·φ(y)``. Setting
+    ``inducing_cov = (M / variance) * I`` and ``cross_cov(x) = φ(x)ᵀ`` makes
+    :func:`compute_inducing_basis`'s generic ``L_zz``-solve reduce to a
+    trivial diagonal rescale, and reproduces gpjax's own
+    ``RFF(...).gram(x)`` to floating-point precision (verified numerically
+    against it) — this is exactly the Rahimi & Recht Monte-Carlo kernel
+    approximation, not an independent derivation.
+
+    Parameters
+    ----------
+    frequencies
+        Raw ``(M, D)`` frequencies from :func:`sample_rff_frequencies`,
+        fixed for the lifetime of this basis (only the kernel's lengthscale
+        rescales them on each call).
+    """
+
+    frequencies: jax.Array  # (M, D)
+
+    def _features(
+        self, kernel: gpx.kernels.AbstractKernel, x: jax.Array
+    ) -> jax.Array:
+        x = x.reshape(-1, 1) if x.ndim == 1 else x
+        lengthscale = paramax.unwrap(kernel.lengthscale)
+        z = x @ (self.frequencies / lengthscale).T  # (N, M)
+        return jnp.concatenate([jnp.cos(z), jnp.sin(z)], axis=-1)  # (N, 2M)
+
+    def inducing_cov(self, kernel: gpx.kernels.AbstractKernel) -> jax.Array:
+        variance = paramax.unwrap(kernel.variance)
+        num_features = 2 * self.frequencies.shape[0]
+        scaling = variance / self.frequencies.shape[0]
+        return jnp.eye(num_features) / scaling
+
+    def cross_cov(
+        self, kernel: gpx.kernels.AbstractKernel, x: jax.Array
+    ) -> jax.Array:
+        return self._features(kernel, x).T  # (2M, N)
 
 
 def compute_inducing_basis(
