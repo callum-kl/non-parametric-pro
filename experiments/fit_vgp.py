@@ -51,7 +51,7 @@ def main(cfg: DictConfig) -> None:
 
     # --- Sparse GP fit -------------------------------------------------------
     data = gpx.Dataset(X=x_train, y=y_train)
-    kernel = gpx.kernels.RBF(lengthscale=jnp.sqrt(D) * jnp.ones((D,)))
+    kernel = gpx.kernels.Matern32(lengthscale=jnp.sqrt(D) * jnp.ones((D,)))
     prior = gpx.gps.Prior(mean_function=gpx.mean_functions.Zero(), kernel=kernel)
     likelihood = gpx.likelihoods.Gaussian(num_datapoints=data.n, obs_stddev=jnp.sqrt(0.01))
     posterior = prior * likelihood
@@ -85,6 +85,7 @@ def main(cfg: DictConfig) -> None:
     metrics = {
         "vgp_nlpd": float(nlpd_gp(y_test, mean, std)),
         "vgp_crps": float(crps_gp(y_test, mean, std)),
+        "gp_sigma": float(np.array(px.unwrap(opt_sigma)).reshape(())),
     }
     log.info("VGP  NLPD=%.4f  CRPS=%.4f", metrics["vgp_nlpd"], metrics["vgp_crps"])
 

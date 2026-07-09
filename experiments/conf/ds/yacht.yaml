@@ -1,6 +1,2 @@
 # N=308, D=6
 dataset: yacht
-num_inducing: 30
-num_adapt_steps: 5000
-num_sample_steps: 8000
-step_size: 1.0e-3

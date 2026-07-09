@@ -11,15 +11,15 @@ import jax.numpy as jnp
 import jax.random as jr
 import numpy as np
 import optax as ox
+import paramax as px
 from blackjax.util import run_inference_algorithm
 from omegaconf import DictConfig, OmegaConf
 from sklearn.preprocessing import StandardScaler
 
 from non_parametric_pro import ula
 from non_parametric_pro.adaptation.parameter_adaptation import parameter_adaptation
-from non_parametric_pro.util import train_val_split
 from non_parametric_pro.data.uci import load_uci_regression_dataset
-from non_parametric_pro.density import ProParameters, pro_logdensity_fn, pro_score_fn
+from non_parametric_pro.density import ProParameters, pro_logdensity_fn, regularised_score
 from non_parametric_pro.inducing import PointInducingBasis, compute_inducing_basis
 from non_parametric_pro.ula import parametric_ula
 from non_parametric_pro.util import crps_pro, nlpd_pro, prediction_basis
@@ -52,7 +52,7 @@ def load_gp_state(cfg: DictConfig):
         raise FileNotFoundError(f"No state at {path} — run {script} first.")
 
     state = np.load(path)
-    kernel = gpx.kernels.RBF(
+    kernel = gpx.kernels.Matern32(
         lengthscale=jnp.array(state["lengthscale"]),
         variance=jnp.array(state["variance"]),
     )
@@ -88,18 +88,12 @@ def main(cfg: DictConfig) -> None:
 
     # --- Data ----------------------------------------------------------------
     example = load_uci_regression_dataset(cfg.dataset, split=cfg.split)
-    x_full = scaler_x.transform(example.x_train)
-    y_full = scaler_y.transform(example.y_train)
+    x_train = scaler_x.transform(example.x_train)
+    y_train = scaler_y.transform(example.y_train)
     x_test = scaler_x.transform(example.x_test)
     y_test = scaler_y.transform(example.y_test)
 
-    key, split_key = jr.split(key)
-    tv = train_val_split(split_key, x_full, y_full, val_fraction=cfg.val_fraction)
-    x_train, y_train = tv.x_train, tv.y_train
-    x_val, y_val = tv.x_val, tv.y_val
-
-    log.info("N_train=%d  N_val=%d  N_test=%d",
-             x_train.shape[0], x_val.shape[0], x_test.shape[0])
+    log.info("N_train=%d  N_test=%d", x_train.shape[0], x_test.shape[0])
 
     # --- PRO setup -----------------------------------------------------------
     if cfg.inducing:
@@ -117,6 +111,8 @@ def main(cfg: DictConfig) -> None:
         sigma=sigma,
         alpha=cfg.alpha,
         residual_std=residual_std,
+        sigma_prior_value=sigma_val,
+        sigma_prior_scale=cfg.sigma_prior_scale,
     )
 
     key, pos_key = jr.split(key)
@@ -133,10 +129,8 @@ def main(cfg: DictConfig) -> None:
         warmup_steps=cfg.warmup_steps,
         sigma_adapt_every=cfg.sigma_adapt_every,
         kernel_adapt_every=cfg.kernel_adapt_every,
-        objective_fn=pro_score_fn,
+        objective_fn=regularised_score,
         inducing_basis=inducing_basis,
-        x_val=x_val,
-        y_val=y_val,
         sigma_optimizer=ox.adam(cfg.sigma_lr),
         kernel_optimizer=ox.adam(cfg.kernel_lr),
         progress_bar=True,
@@ -154,21 +148,22 @@ def main(cfg: DictConfig) -> None:
     # For inducing, basis_dim = M is unchanged so particles carry over directly.
     # For the full GP, basis_dim changes from N_train to N_full, so we reinitialise
     # particles — the adapted kernel and sigma are still used as the starting point.
-    if cfg.inducing:
-        basis_full, residual_std_full = compute_inducing_basis(
-            inducing_basis, adapted_kernel, x_full
-        )
-    else:
-        basis_full = _cholesky_basis(adapted_kernel, x_full)
-        residual_std_full = None
-        key, pos_key = jr.split(key)
-        pro_position = jr.normal(pos_key, (x_full.shape[0], cfg.num_particles))
+    if cfg.kernel_adapt_every > 0:
+        log.info("Recomputing basis with adapted kernel...")
+        if cfg.inducing:
+            basis_full, residual_std_full = compute_inducing_basis(
+                inducing_basis, adapted_kernel, x_train
+            )
+        else:
+            basis_full = _cholesky_basis(adapted_kernel, x_train)
+            residual_std_full = None
+            key, pos_key = jr.split(key)
+            pro_position = jr.normal(pos_key, (x_train.shape[0], cfg.num_particles))
 
-    pro_params = pro_params._replace(
-        y=y_full,
-        basis=basis_full,
-        residual_std=residual_std_full,
-    )
+        pro_params = pro_params._replace(
+            basis=basis_full,
+            residual_std=residual_std_full,
+        )
 
     # --- Sampling ------------------------------------------------------------
     log.info("Running sampling (steps=%d)...", cfg.num_sample_steps)
@@ -188,12 +183,15 @@ def main(cfg: DictConfig) -> None:
 
     # --- Evaluation ----------------------------------------------------------
     test_basis, test_cov = prediction_basis(
-        adapted_kernel, x_full, x_test, pro_params, inducing_basis=inducing_basis
+        adapted_kernel, x_train, x_test, pro_params, inducing_basis=inducing_basis
     )
+    pro_sigma = float(np.array(px.unwrap(pro_params.sigma)).reshape(()))
     metrics = {
         "dataset": cfg.dataset,
         "split": cfg.split,
         "inducing": cfg.inducing,
+        "gp_sigma": float(sigma_val),
+        "pro_sigma": pro_sigma,
         "pro_nlpd": float(nlpd_pro(
             y_test, test_basis, test_cov, particles, parameters=pro_params
         )),

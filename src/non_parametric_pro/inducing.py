@@ -212,6 +212,24 @@ class RFFInducingBasis:
     ) -> jax.Array:
         return self._features(kernel, x).T  # (2M, N)
 
+    def basis_matrix(
+        self,
+        kernel: gpx.kernels.AbstractKernel,
+        x: jax.Array,
+        jitter: float = 1e-6,
+    ) -> jax.Array:
+        """
+        Compute ``K_xz L_zz^{-T}`` without materialising or factorising ``K_zz``.
+
+        For RFFs, ``K_zz = I / scaling`` with
+        ``scaling = variance / num_frequencies``. The generic Cholesky solve
+        therefore reduces to a scalar rescaling of the feature matrix.
+        """
+        variance = paramax.unwrap(kernel.variance)
+        scaling = variance / self.frequencies.shape[0]
+        cholesky_diag = jnp.sqrt(1.0 / scaling + jitter)
+        return self._features(kernel, x) / cholesky_diag
+
 
 def compute_inducing_basis(
     inducing_basis: InducingBasis,
@@ -238,6 +256,14 @@ def compute_inducing_basis(
     jitter
         Diagonal jitter for the Cholesky of ``K_zz``.
     """
+    if isinstance(inducing_basis, RFFInducingBasis):
+        x_2d = x.reshape(-1, 1) if x.ndim == 1 else x
+        basis = inducing_basis.basis_matrix(kernel, x, jitter)
+        q_diag = jnp.sum(basis**2, axis=1)
+        k_diag = jax.vmap(kernel, in_axes=(0, 0))(x_2d, x_2d)
+        residual_std = jnp.sqrt(jnp.maximum(k_diag - q_diag, 0.0)).reshape(-1, 1)
+        return basis, residual_std
+
     k_zz = inducing_basis.inducing_cov(kernel)
     k_zx = inducing_basis.cross_cov(kernel, x)
     l_z = jnp.linalg.cholesky(k_zz + jitter * jnp.eye(k_zz.shape[0]))

@@ -1,6 +1,2 @@
 # N=768, D=8
 dataset: energy
-num_inducing: 100
-num_adapt_steps: 8000
-num_sample_steps: 10000
-step_size: 1.0e-4

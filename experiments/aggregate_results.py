@@ -10,11 +10,35 @@ RESULTS_ROOT = Path(__file__).parent / "results"
 
 # (filename, {json_key -> normalised_key})
 METHOD_METRICS = {
-    "exact_gp":        ("gp_metrics.json",  {"gp_nlpd":  "nlpd", "gp_crps":  "crps"}),
-    "vgp":             ("gp_metrics.json",  {"vgp_nlpd": "nlpd", "vgp_crps": "crps"}),
-    "pro_gp":          ("pro_metrics.json", {"pro_nlpd": "nlpd", "pro_crps": "crps"}),
-    "inducing_pro_gp": ("pro_metrics.json", {"pro_nlpd": "nlpd", "pro_crps": "crps"}),
+    "exact_gp": (
+        "gp_metrics.json",
+        {"gp_nlpd": "nlpd", "gp_crps": "crps", "gp_sigma": "gp_sigma"},
+    ),
+    "vgp": (
+        "gp_metrics.json",
+        {"vgp_nlpd": "nlpd", "vgp_crps": "crps", "gp_sigma": "gp_sigma"},
+    ),
+    "pro_gp": (
+        "pro_metrics.json",
+        {
+            "pro_nlpd": "nlpd",
+            "pro_crps": "crps",
+            "gp_sigma": "gp_sigma",
+            "pro_sigma": "pro_sigma",
+        },
+    ),
+    "inducing_pro_gp": (
+        "pro_metrics.json",
+        {
+            "pro_nlpd": "nlpd",
+            "pro_crps": "crps",
+            "gp_sigma": "gp_sigma",
+            "pro_sigma": "pro_sigma",
+        },
+    ),
 }
+
+SUMMARY_METRICS = ("nlpd", "crps", "gp_sigma", "pro_sigma")
 
 
 def collect():
@@ -59,7 +83,7 @@ def print_table(summary):
     datasets = sorted(summary)
     methods = sorted({m for ds in summary.values() for m in ds})
 
-    for metric in ("nlpd", "crps"):
+    for metric in SUMMARY_METRICS:
         print(f"\n{'─'*72}")
         print(f"  {metric.upper()}")
         print(f"{'─'*72}")
@@ -87,7 +111,7 @@ def save_csv(summary, path: Path):
     fieldnames = ["dataset"] + [
         f"{method}_{metric}_{stat}"
         for method in methods
-        for metric in ("nlpd", "crps")
+        for metric in SUMMARY_METRICS
         for stat in ("mean", "std")
     ]
 
@@ -97,7 +121,7 @@ def save_csv(summary, path: Path):
         for ds in datasets:
             row = {"dataset": ds}
             for method in methods:
-                for metric in ("nlpd", "crps"):
+                for metric in SUMMARY_METRICS:
                     entry = summary[ds].get(method, {}).get(metric)
                     mean_key = f"{method}_{metric}_mean"
                     std_key = f"{method}_{metric}_std"

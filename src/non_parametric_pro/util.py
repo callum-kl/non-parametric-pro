@@ -10,7 +10,7 @@ from blackjax.types import PRNGKey
 from jax.scipy.linalg import solve_triangular
 
 from non_parametric_pro.density import ProParameters
-from non_parametric_pro.inducing import InducingBasis
+from non_parametric_pro.inducing import InducingBasis, RFFInducingBasis
 
 PARTICLE_MATRIX_NDIM = 2
 SCANNED_PARTICLES_NDIM = 3
@@ -164,6 +164,8 @@ def prediction_basis(
         L = parameters.basis  # (N, N) — the training Cholesky
         K_test_train = k.cross_covariance(x_te, x_tr)  # (N_test, N)
         test_basis = solve_triangular(L, K_test_train.T, lower=True).T
+    elif isinstance(inducing_basis, RFFInducingBasis):
+        test_basis = inducing_basis.basis_matrix(k, x_te, parameters.jitter)
     else:
         K_zz = inducing_basis.inducing_cov(k)  # (M, M)
         L_zz = jnp.linalg.cholesky(
@@ -461,6 +463,8 @@ def nlpd_gp(
     y_test: jax.Array,
     predictive_mean: jax.Array,
     predictive_std: jax.Array,
+    *,
+    return_per_point: bool = False,
 ) -> jax.Array:
     """
     Mean negative log predictive density for a Gaussian GP predictive.
@@ -487,6 +491,9 @@ def nlpd_gp(
         - jnp.log(std)
         - 0.5 * ((y - mu) / std) ** 2
     )
+    if return_per_point:
+        return -log_p
+
     return -jnp.mean(log_p)
 
 
@@ -497,6 +504,7 @@ def nlpd_pro(
     particles: jax.Array,
     *,
     parameters: ProParameters,
+    return_per_point: bool = False,
 ) -> jax.Array:
     """
     Mean negative log predictive density for the PRO GP mixture predictive.
@@ -552,6 +560,10 @@ def nlpd_pro(
         - 0.5 * ((y - projected) / sigma_eff) ** 2
     )                                                      # (N_test, J_total)
     log_p = jax.nn.logsumexp(log_normals, axis=1) - jnp.log(j_total)
+
+    if return_per_point:
+        return -log_p
+
     return -jnp.mean(log_p)
 
 

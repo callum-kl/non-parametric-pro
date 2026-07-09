@@ -1,6 +1,2 @@
 # N=3338, D=19
 dataset: skillcraft
-num_inducing: 300
-num_adapt_steps: 20000
-num_sample_steps: 20000
-step_size: 5.0e-5
