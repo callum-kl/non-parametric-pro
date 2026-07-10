@@ -41,10 +41,10 @@ def main(cfg: DictConfig) -> None:
 
     scaler_x = StandardScaler()
     scaler_y = StandardScaler()
-    x_train = scaler_x.fit_transform(example.x_train)
-    y_train = scaler_y.fit_transform(example.y_train)
-    x_test = scaler_x.transform(example.x_test)
-    y_test = scaler_y.transform(example.y_test)
+    x_train = jnp.array(scaler_x.fit_transform(example.x_train))
+    y_train = jnp.array(scaler_y.fit_transform(example.y_train))
+    x_test = jnp.array(scaler_x.transform(example.x_test))
+    y_test = jnp.array(scaler_y.transform(example.y_test))
 
     D = x_train.shape[1]
     log.info("N_train=%d  N_test=%d  D=%d", x_train.shape[0], x_test.shape[0], D)
@@ -58,17 +58,18 @@ def main(cfg: DictConfig) -> None:
 
     key, km_key = jr.split(key)
     z_init = kmeans_inducing_points(km_key, x_train, cfg.num_inducing).z
-    variational_family = gpx.variational_families.CollapsedVariationalGaussian(
+    variational_family = gpx.variational_families.VariationalGaussian(
         posterior=posterior,
         inducing_inputs=z_init,
     )
     opt_vf, _ = gpx.fit(
         model=variational_family,
-        objective=lambda p, d: -gpx.objectives.collapsed_elbo(p, d),
+        objective=lambda p, d: -gpx.objectives.elbo(p, d),
         train_data=data,
         optim=ox.adam(cfg.kernel_lr),
         num_iters=cfg.gp_num_iters,
         verbose=False,
+        batch_size=cfg.vgp_batch_size,
     )
 
     opt_kernel = opt_vf.posterior.prior.kernel

@@ -1,0 +1,28 @@
+defaults:
+  - _self_
+
+# "forecasting" or "nowcasting" -- see non_parametric_pro.data.kampala_airquality.
+mode: forecasting
+
+# Index into kampala_site_ids(records); sweep all sites with:
+#   python fit_svgp.py -m site_index="range(0,66)"
+site_index: 0
+
+fold: 0
+max_train: 100000  # above the actual per-split size => no subsampling, matching sparse_gp.py
+remove_outliers: false
+outlier_iqr_multiplier: 1.5
+
+num_inducing: 1000
+num_iters: 500
+kernel_lr: 0.01
+batch_size: 256
+seed: 0
+
+results_root: results
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: .hydra_logs/${now:%Y-%m-%d}/${now:%H-%M-%S}

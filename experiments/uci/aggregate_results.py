@@ -9,36 +9,30 @@ import numpy as np
 RESULTS_ROOT = Path(__file__).parent / "results"
 
 # (filename, {json_key -> normalised_key})
+# Each method's own fitted noise level is normalised to a single "sigma" key -- for
+# pro_gp/inducing_pro_gp that's `pro_sigma` (PRO's own, possibly-adapted sigma), not the
+# `gp_sigma` also logged in pro_metrics.json for reference (that's the seeding exact_gp/vgp
+# run's sigma, already reported under its own method row).
 METHOD_METRICS = {
     "exact_gp": (
         "gp_metrics.json",
-        {"gp_nlpd": "nlpd", "gp_crps": "crps", "gp_sigma": "gp_sigma"},
+        {"gp_nlpd": "nlpd", "gp_crps": "crps", "gp_sigma": "sigma"},
     ),
     "vgp": (
         "gp_metrics.json",
-        {"vgp_nlpd": "nlpd", "vgp_crps": "crps", "gp_sigma": "gp_sigma"},
+        {"vgp_nlpd": "nlpd", "vgp_crps": "crps", "gp_sigma": "sigma"},
     ),
     "pro_gp": (
         "pro_metrics.json",
-        {
-            "pro_nlpd": "nlpd",
-            "pro_crps": "crps",
-            "gp_sigma": "gp_sigma",
-            "pro_sigma": "pro_sigma",
-        },
+        {"pro_nlpd": "nlpd", "pro_crps": "crps", "pro_sigma": "sigma"},
     ),
     "inducing_pro_gp": (
         "pro_metrics.json",
-        {
-            "pro_nlpd": "nlpd",
-            "pro_crps": "crps",
-            "gp_sigma": "gp_sigma",
-            "pro_sigma": "pro_sigma",
-        },
+        {"pro_nlpd": "nlpd", "pro_crps": "crps", "pro_sigma": "sigma"},
     ),
 }
 
-SUMMARY_METRICS = ("nlpd", "crps", "gp_sigma", "pro_sigma")
+SUMMARY_METRICS = ("nlpd", "crps", "sigma")
 
 
 def collect():

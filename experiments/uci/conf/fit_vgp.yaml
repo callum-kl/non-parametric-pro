@@ -5,8 +5,9 @@ defaults:
 split: 1
 seed: 0
 
-gp_num_iters: 1000
+gp_num_iters: 500
 kernel_lr: 0.01
+vgp_batch_size: 256
 
 results_root: results
 

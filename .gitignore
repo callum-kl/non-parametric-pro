@@ -164,5 +164,5 @@ _version.py
 
 # data
 data/
-experiments/multirun/
-experiments/results/
+experiments/uci/multirun/
+experiments/uci/results/
