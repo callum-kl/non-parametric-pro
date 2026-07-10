@@ -6,7 +6,7 @@ split: 1
 seed: 0
 inducing: false  # true → reads VGP state; false → reads exact GP state
 
-results_root: results
+results_root: ${script_dir:}/results
 
 num_particles: 50
 alpha: 1.0
@@ -32,4 +32,6 @@ hydra:
   job:
     chdir: false
   run:
-    dir: .hydra_logs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    dir: ${script_dir:}/.hydra_logs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: ${script_dir:}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}

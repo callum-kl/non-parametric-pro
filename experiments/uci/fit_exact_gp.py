@@ -22,6 +22,12 @@ jax.config.update("jax_enable_x64", True)
 
 log = logging.getLogger(__name__)
 
+# Anchors results_root/hydra.run.dir/hydra.sweep.dir to this script's own directory
+# (experiments/uci/), regardless of the caller's current working directory.
+OmegaConf.register_new_resolver(
+    "script_dir", lambda: str(Path(__file__).resolve().parent), replace=True
+)
+
 
 def state_dir(cfg: DictConfig) -> Path:
     return Path(cfg.results_root) / cfg.dataset / f"split_{cfg.split}" / "exact_gp"

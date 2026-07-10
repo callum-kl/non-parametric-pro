@@ -22,6 +22,10 @@ METHOD_METRICS = {
         "gp_metrics.json",
         {"vgp_nlpd": "nlpd", "vgp_crps": "crps", "gp_sigma": "sigma"},
     ),
+    "vgp_noncollapsed": (
+        "gp_metrics.json",
+        {"vgp_nlpd": "nlpd", "vgp_crps": "crps", "gp_sigma": "sigma"},
+    ),
     "pro_gp": (
         "pro_metrics.json",
         {"pro_nlpd": "nlpd", "pro_crps": "crps", "pro_sigma": "sigma"},
@@ -81,7 +85,8 @@ def print_table(summary):
         print(f"\n{'─'*72}")
         print(f"  {metric.upper()}")
         print(f"{'─'*72}")
-        header = f"{'dataset':<20}" + "".join(f"{m:>16}" for m in methods)
+        col_width = max(16, max((len(m) for m in methods), default=0) + 1)
+        header = f"{'dataset':<20}" + "".join(f"{m:>{col_width}}" for m in methods)
         print(header)
         print("─" * len(header))
         for ds in datasets:
@@ -89,10 +94,10 @@ def print_table(summary):
             for method in methods:
                 entry = summary[ds].get(method, {}).get(metric)
                 if entry is None:
-                    row += f"{'—':>16}"
+                    row += f"{'—':>{col_width}}"
                 else:
                     mean, std = entry
-                    row += f"{mean:>8.4f}±{std:<6.4f}"
+                    row += f"{f'{mean:.4f}±{std:.4f}':>{col_width}}"
             print(row)
 
 

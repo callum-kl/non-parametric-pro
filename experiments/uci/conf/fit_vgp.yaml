@@ -5,14 +5,18 @@ defaults:
 split: 1
 seed: 0
 
-gp_num_iters: 500
+gp_num_iters: 1000
 kernel_lr: 0.01
 vgp_batch_size: 256
+num_inducing: 200
+collapsed: true  # true -> CollapsedVariationalGaussian + collapsed_elbo; false -> VariationalGaussian + elbo
 
-results_root: results
+results_root: ${script_dir:}/results
 
 hydra:
   job:
     chdir: false
   run:
-    dir: .hydra_logs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    dir: ${script_dir:}/.hydra_logs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: ${script_dir:}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}

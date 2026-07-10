@@ -23,9 +23,16 @@ jax.config.update("jax_enable_x64", True)
 
 log = logging.getLogger(__name__)
 
+# Anchors results_root/hydra.run.dir/hydra.sweep.dir to this script's own directory
+# (experiments/uci/), regardless of the caller's current working directory.
+OmegaConf.register_new_resolver(
+    "script_dir", lambda: str(Path(__file__).resolve().parent), replace=True
+)
+
 
 def state_dir(cfg: DictConfig) -> Path:
-    return Path(cfg.results_root) / cfg.dataset / f"split_{cfg.split}" / "vgp"
+    variant = "vgp" if cfg.collapsed else "vgp_noncollapsed"
+    return Path(cfg.results_root) / cfg.dataset / f"split_{cfg.split}" / variant
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="fit_vgp")
@@ -58,13 +65,27 @@ def main(cfg: DictConfig) -> None:
 
     key, km_key = jr.split(key)
     z_init = kmeans_inducing_points(km_key, x_train, cfg.num_inducing).z
-    variational_family = gpx.variational_families.VariationalGaussian(
-        posterior=posterior,
-        inducing_inputs=z_init,
-    )
+
+    # Collapsed analytically marginalises q(u) (Titsias/SGPR-style bound) -- tighter and
+    # generally easier to optimise for a Gaussian likelihood. Non-collapsed learns q(u)'s
+    # full (M, M) covariance factor via gradient descent -- more general (extends to
+    # non-Gaussian likelihoods), but a harder optimisation problem.
+    if cfg.collapsed:
+        variational_family = gpx.variational_families.CollapsedVariationalGaussian(
+            posterior=posterior,
+            inducing_inputs=z_init,
+        )
+        objective = lambda p, d: -gpx.objectives.collapsed_elbo(p, d)  # noqa: E731
+    else:
+        variational_family = gpx.variational_families.VariationalGaussian(
+            posterior=posterior,
+            inducing_inputs=z_init,
+        )
+        objective = lambda p, d: -gpx.objectives.elbo(p, d)  # noqa: E731
+
     opt_vf, _ = gpx.fit(
         model=variational_family,
-        objective=lambda p, d: -gpx.objectives.elbo(p, d),
+        objective=objective,
         train_data=data,
         optim=ox.adam(cfg.kernel_lr),
         num_iters=cfg.gp_num_iters,
@@ -77,8 +98,12 @@ def main(cfg: DictConfig) -> None:
     z_opt = np.array(px.unwrap(opt_vf.inducing_inputs))
 
     # --- Evaluate ------------------------------------------------------------
+    # Collapsed and non-collapsed variational families have genuinely different predict()
+    # signatures: collapsed needs train_data to compute its predictive (cheaply -- O(M^2 N)
+    # via the (M, N) Kzx, not the O(N^3) exact-posterior cost); non-collapsed only depends
+    # on q(u), never on N.
     posterior_ = opt_vf.posterior
-    latent = posterior_.predict(x_test, train_data=data)
+    latent = opt_vf.predict(x_test, train_data=data) if cfg.collapsed else opt_vf.predict(x_test)
     predictive = posterior_.likelihood(latent)
     mean = predictive.mean
     std = jnp.sqrt(predictive.variance)
@@ -87,6 +112,7 @@ def main(cfg: DictConfig) -> None:
         "vgp_nlpd": float(nlpd_gp(y_test, mean, std)),
         "vgp_crps": float(crps_gp(y_test, mean, std)),
         "gp_sigma": float(np.array(px.unwrap(opt_sigma)).reshape(())),
+        "collapsed": bool(cfg.collapsed),
     }
     log.info("VGP  NLPD=%.4f  CRPS=%.4f", metrics["vgp_nlpd"], metrics["vgp_crps"])
 

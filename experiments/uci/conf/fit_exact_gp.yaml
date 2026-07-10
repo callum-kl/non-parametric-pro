@@ -8,10 +8,12 @@ seed: 0
 gp_num_iters: 100
 kernel_lr: 0.1
 
-results_root: results
+results_root: ${script_dir:}/results
 
 hydra:
   job:
     chdir: false
   run:
-    dir: .hydra_logs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    dir: ${script_dir:}/.hydra_logs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: ${script_dir:}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
