@@ -13,6 +13,7 @@ import equinox as eqx
 import gpjax as gpx
 import jax
 import jax.numpy as jnp
+import jax.random as jr
 import optax
 import paramax
 from blackjax.adaptation.base import AdaptationResults
@@ -24,6 +25,7 @@ from jax.scipy.linalg import solve_triangular
 
 from non_parametric_pro.density import ProParameters
 from non_parametric_pro.inducing import InducingBasis, compute_inducing_basis
+from non_parametric_pro.util import TrainValSplit, train_val_split
 
 # Schedule stage labels, dispatched via jax.lax.switch.
 _WARMUP, _ADAPT_NU, _ADAPT_BASIS, _ADAPT_BOTH = 0, 1, 2, 3
@@ -160,6 +162,7 @@ def base(
         unwrapped = paramax.unwrap(kernel)
         x = x_train.reshape(-1, 1) if x_train.ndim == 1 else x_train
         if inducing_basis is None:
+            
             k_train = unwrapped.gram(x).as_matrix()
             basis = jnp.linalg.cholesky(k_train + jitter * jnp.eye(k_train.shape[0]))
             return basis, None
@@ -167,16 +170,25 @@ def base(
 
     def val_basis_fn(
         kernel: gpx.kernels.AbstractKernel,
+        train_basis: jax.Array,
     ) -> tuple[jax.Array | None, jax.Array | None]:
-        """Prediction basis at validation points; (None, None) if no x_val."""
+        """
+        Prediction basis at validation points; (None, None) if no x_val.
+
+        ``train_basis`` must be this same ``kernel``'s ``basis_fn(kernel)`` result --
+        for the full-GP case that *is* the training Cholesky ``L``, so this reuses it
+        directly instead of re-factorising the training Gram matrix from scratch (an
+        entire redundant ``O(N^3)`` Cholesky, since every caller here already has
+        ``train_basis`` on hand from its own ``basis_fn`` call). Unused in the inducing
+        case, which factorises the much cheaper ``(M, M)`` ``K_zz`` instead.
+        """
         if x_val is None:
             return None, None
         unwrapped = paramax.unwrap(kernel)
         x_v = x_val.reshape(-1, 1) if x_val.ndim == 1 else x_val
         if inducing_basis is None:
             x_tr = x_train.reshape(-1, 1) if x_train.ndim == 1 else x_train
-            k_train = unwrapped.gram(x_tr).as_matrix()
-            L = jnp.linalg.cholesky(k_train + jitter * jnp.eye(k_train.shape[0]))
+            L = train_basis
             K_val_train = unwrapped.cross_covariance(x_v, x_tr)
             return solve_triangular(L, K_val_train.T, lower=True).T, None
         return compute_inducing_basis(inducing_basis, unwrapped, x_v, jitter)
@@ -207,7 +219,7 @@ def base(
         base_parameters: ProParameters,
     ) -> jax.Array:
         new_basis, new_residual_std = basis_fn(kernel)
-        vb, vr = val_basis_fn(kernel)
+        vb, vr = val_basis_fn(kernel, new_basis)
         obj_params = _objective_parameters(
             base_parameters._replace(basis=new_basis, residual_std=new_residual_std),
             vb, vr,
@@ -219,7 +231,7 @@ def base(
         initial_kernel: gpx.kernels.AbstractKernel,
     ) -> ParameterAdaptationState:
         initial_basis, initial_residual_std = basis_fn(initial_kernel)
-        initial_val_basis, initial_val_residual_std = val_basis_fn(initial_kernel)
+        initial_val_basis, initial_val_residual_std = val_basis_fn(initial_kernel, initial_basis)
         return ParameterAdaptationState(
             sigma=initial_sigma,
             sigma_opt_state=sigma_optimizer.init(
@@ -274,7 +286,7 @@ def base(
         )
         new_kernel = eqx.apply_updates(state.kernel, updates)
         new_basis, new_residual_std = basis_fn(new_kernel)
-        new_val_basis, new_val_residual_std = val_basis_fn(new_kernel)
+        new_val_basis, new_val_residual_std = val_basis_fn(new_kernel, new_basis)
         return state._replace(
             kernel=new_kernel,
             kernel_opt_state=new_opt_state,
@@ -289,11 +301,13 @@ def base(
         position: ArrayLikeTree,
         base_parameters: ProParameters,
     ) -> ParameterAdaptationState:
-        # Each loss receives the current merged parameters (including the other's
-        # current value), so sigma_update sees the current adapted basis and
-        # basis_update sees the current adapted sigma.
+        # sigma_update runs first; basis_update must then see its result (merged into
+        # base_parameters) so kernel_loss's objective evaluation -- and hence the kernel
+        # gradient -- reflects the sigma just adapted this step, not the stale pre-step
+        # value base_parameters would otherwise still carry.
         state = sigma_update(state, position, base_parameters)
-        return basis_update(state, position, base_parameters)
+        updated_parameters = merge_parameters(base_parameters, state)
+        return basis_update(state, position, updated_parameters)
 
     def update(
         state: ParameterAdaptationState,
@@ -432,3 +446,203 @@ def parameter_adaptation(  # noqa: PLR0913
         return AdaptationResults(last_state, final_parameters), info
 
     return AdaptationAlgorithm(run)
+
+
+class CrossValidationResult(NamedTuple):
+    """Cross-validated sigma/kernel hyperparameters from :func:`cross_validated_parameter_adaptation`.
+
+    ``sigma`` is the minimum across folds; ``kernel`` is the fold mean (see that
+    function's docstring for why the two use different aggregations).
+    """
+
+    sigma: jax.Array  # min over folds
+    kernel: gpx.kernels.AbstractKernel  # unwrapped (plain-valued); leaves are the fold mean
+    fold_sigma: jax.Array  # (num_folds,)
+    fold_kernel: gpx.kernels.AbstractKernel  # unwrapped; leaves have a leading (num_folds,) axis
+
+
+def _kfold_splits(
+    key: PRNGKey,
+    x_full: jax.Array,
+    y_full: jax.Array,
+    *,
+    num_folds: int,
+    val_fraction: float,
+):
+    """
+    Disjoint train/validation partitions for classic k-fold cross-validation.
+
+    ``num_folds >= 2``: permutes ``range(n)`` and splits it into ``num_folds``
+    (as-equal-as-possible) disjoint chunks; fold ``i``'s validation set is chunk ``i``
+    and its training set is every other chunk. Every point is validated on exactly once.
+
+    ``num_folds == 1``: classic k-fold is undefined at k=1 (there's no "other chunk" to
+    train on), so this falls back to a single random ``val_fraction``-sized hold-out via
+    :func:`non_parametric_pro.util.train_val_split` instead.
+    """
+    if num_folds == 1:
+        return [train_val_split(key, x_full, y_full, val_fraction=val_fraction)]
+
+    n = y_full.shape[0]
+    idx = jr.permutation(key, n)
+    chunks = jnp.array_split(idx, num_folds)
+
+    splits = []
+    for i in range(num_folds):
+        val_idx = chunks[i]
+        train_idx = jnp.concatenate([chunks[j] for j in range(num_folds) if j != i])
+        splits.append(
+            TrainValSplit(
+                x_train=x_full[train_idx],
+                y_train=y_full[train_idx],
+                x_val=x_full[val_idx],
+                y_val=y_full[val_idx],
+                train_idx=train_idx,
+                val_idx=val_idx,
+            )
+        )
+    return splits
+
+
+def cross_validated_parameter_adaptation(  # noqa: PLR0913
+    algorithm,
+    logdensity_fn: Callable,
+    base_parameters: ProParameters,
+    *,
+    x_full: jax.Array,
+    y_full: jax.Array,
+    initial_kernel: gpx.kernels.AbstractKernel,
+    num_folds: int,
+    val_fraction: float = 0.2,
+    num_particles: int,
+    num_steps: int,
+    warmup_steps: int,
+    sigma_adapt_every: int,
+    kernel_adapt_every: int,
+    objective_fn: Callable,
+    rng_key: PRNGKey,
+    inducing_basis: InducingBasis | None = None,
+    sigma_optimizer: optax.GradientTransformation | None = None,
+    kernel_optimizer: optax.GradientTransformation | None = None,
+    jitter: float = 1e-6,
+    progress_bar: bool = False,
+) -> CrossValidationResult:
+    """
+    Cross-validated wrapper around :func:`parameter_adaptation`.
+
+    Classic k-fold: ``(x_full, y_full)`` is partitioned into ``num_folds`` disjoint
+    chunks (see :func:`_kfold_splits`); fold ``i`` trains on every other chunk and
+    validates on chunk ``i`` (``x_val``/``y_val`` feed the adaptation objective exactly
+    as in a single :func:`parameter_adaptation` call). Every point is validated on
+    exactly once across all folds. ``num_folds=1`` is a special case (a true 1-fold
+    partition is undefined, since there'd be nothing left to train on) that instead does
+    a single random ``val_fraction``-sized hold-out split.
+
+    Every fold starts from the same ``initial_kernel``/``base_parameters.sigma`` and runs
+    its own ``warmup_steps`` + adaptation schedule independently -- folds do not warm-start
+    from one another.
+
+    The returned ``kernel`` is the fold mean, and ``sigma`` is the fold minimum -- both
+    computed in each hyperparameter's natural (unwrapped/constrained) space -- e.g. the
+    lengthscale/variance/sigma values themselves -- not their internal unconstrained
+    optimiser coordinates. Aggregating unconstrained coordinates and then unwrapping
+    would generally give a different answer, since the reparameterisations this codebase
+    uses (``SigmoidBounded``/``PositiveReal``/etc.) are nonlinear.
+
+    Parameters
+    ----------
+    x_full, y_full
+        The full dataset to partition into folds.
+    num_folds
+        Number of disjoint folds (``>= 2`` for classic k-fold); ``1`` for a single
+        ``val_fraction``-sized random hold-out instead.
+    val_fraction
+        Only used when ``num_folds == 1``; ignored (fold sizes are ``n / num_folds``)
+        otherwise.
+    num_particles
+        Number of ULA/MALA particles per fold (``initial_position`` is drawn fresh,
+        shape ``(basis_dim, num_particles)``, for each fold).
+    rng_key
+        Split once to produce the fold partition, then once per fold for that fold's
+        initial position and adaptation run.
+    Remaining parameters are forwarded to each fold's :func:`parameter_adaptation` call
+    unchanged; see its docstring.
+
+    Returns
+    -------
+    A :class:`CrossValidationResult` with the fold-minimum ``sigma`` and fold-mean
+    ``kernel``, plus the raw per-fold values (``fold_sigma``, ``fold_kernel``) for
+    inspecting variability across folds.
+    """
+    split_key, run_key = jr.split(rng_key)
+    splits = _kfold_splits(
+        split_key, x_full, y_full, num_folds=num_folds, val_fraction=val_fraction
+    )
+    fold_keys = jr.split(run_key, len(splits))
+
+    # Jitted once per distinct (x_train, x_val) shape seen across folds -- at most 2
+    # compilations total (fold sizes differ by at most 1 when n isn't evenly divisible
+    # by num_folds), instead of retracing/recompiling the whole adaptation once per
+    # fold. algorithm/logdensity_fn/objective_fn/optimizers/initial_kernel/base_parameters
+    # are closed over (fixed across folds, and several aren't valid traced arguments
+    # anyway -- e.g. the optimizers and algorithm are plain Python callables/pytrees of
+    # functions), so only the fold-varying data and keys are passed in as arguments.
+    @jax.jit
+    def run_one_fold(x_train, y_train, x_val, y_val, pos_key, adapt_key):
+        fold_parameters = base_parameters._replace(y=y_train)
+        basis_dim = (
+            inducing_basis.z.shape[0] if inducing_basis is not None else x_train.shape[0]
+        )
+        initial_position = jr.normal(pos_key, (basis_dim, num_particles))
+
+        adaptation = parameter_adaptation(
+            algorithm,
+            logdensity_fn,
+            fold_parameters,
+            x_train=x_train,
+            initial_kernel=initial_kernel,
+            warmup_steps=warmup_steps,
+            sigma_adapt_every=sigma_adapt_every,
+            kernel_adapt_every=kernel_adapt_every,
+            objective_fn=objective_fn,
+            inducing_basis=inducing_basis,
+            x_val=x_val,
+            y_val=y_val,
+            sigma_optimizer=sigma_optimizer,
+            kernel_optimizer=kernel_optimizer,
+            jitter=jitter,
+            progress_bar=progress_bar,
+        )
+        adaptation_results, adaptation_info = adaptation.run(
+            adapt_key, initial_position, num_steps=num_steps
+        )
+
+        final_sigma = paramax.unwrap(adaptation_results.parameters.sigma)
+        final_kernel = paramax.unwrap(
+            jax.tree.map(lambda x: x[-1], adaptation_info.kernel)
+        )
+        return final_sigma, final_kernel
+
+    fold_sigmas = []
+    fold_kernels = []
+
+    for split, fold_key in zip(splits, fold_keys, strict=True):
+        pos_key, adapt_key = jr.split(fold_key)
+        final_sigma, final_kernel = run_one_fold(
+            split.x_train, split.y_train, split.x_val, split.y_val, pos_key, adapt_key
+        )
+        fold_sigmas.append(jnp.asarray(final_sigma))
+        fold_kernels.append(final_kernel)
+
+    fold_sigma = jnp.stack(fold_sigmas)
+    fold_kernel = jax.tree.map(lambda *leaves: jnp.stack(leaves), *fold_kernels)
+
+    min_sigma = jnp.mean(fold_sigma, axis=0)
+    mean_kernel = jax.tree.map(lambda leaf: jnp.mean(leaf, axis=0), fold_kernel)
+
+    return CrossValidationResult(
+        sigma=min_sigma,
+        kernel=mean_kernel,
+        fold_sigma=fold_sigma,
+        fold_kernel=fold_kernel,
+    )

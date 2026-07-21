@@ -32,6 +32,8 @@ OmegaConf.register_new_resolver(
 
 def state_dir(cfg: DictConfig) -> Path:
     variant = "vgp" if cfg.collapsed else "vgp_noncollapsed"
+    if cfg.name:
+        variant = f"{variant}_{cfg.name}"
     return Path(cfg.results_root) / cfg.dataset / f"split_{cfg.split}" / variant
 
 
@@ -57,8 +59,14 @@ def main(cfg: DictConfig) -> None:
     log.info("N_train=%d  N_test=%d  D=%d", x_train.shape[0], x_test.shape[0], D)
 
     # --- Sparse GP fit -------------------------------------------------------
+    # Lengthscale is bounded, not just positive -- see fit_exact_gp.py for why
+    # (duplicated/near-constant feature columns can otherwise drive an ARD
+    # dimension's lengthscale to a numerically pathological extreme).
     data = gpx.Dataset(X=x_train, y=y_train)
-    kernel = gpx.kernels.Matern32(lengthscale=jnp.sqrt(D) * jnp.ones((D,)))
+    lengthscale = gpx.parameters.SigmoidBounded(
+        jnp.sqrt(D) * jnp.ones((D,)), low=cfg.lengthscale_min, high=cfg.lengthscale_max
+    )
+    kernel = gpx.kernels.Matern32(lengthscale=lengthscale)
     prior = gpx.gps.Prior(mean_function=gpx.mean_functions.Zero(), kernel=kernel)
     likelihood = gpx.likelihoods.Gaussian(num_datapoints=data.n, obs_stddev=jnp.sqrt(0.01))
     posterior = prior * likelihood
@@ -119,6 +127,7 @@ def main(cfg: DictConfig) -> None:
     # --- Save ----------------------------------------------------------------
     np.savez(
         out_dir / "gp_state.npz",
+        kernel_type=type(kernel).__name__,
         lengthscale=np.array(px.unwrap(opt_kernel.lengthscale)),
         variance=np.array(px.unwrap(opt_kernel.variance)),
         sigma=np.array(px.unwrap(opt_sigma)).reshape(()),

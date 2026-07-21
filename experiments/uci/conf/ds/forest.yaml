@@ -1,2 +1,3 @@
 # N=512, D=12
 dataset: forest
+alpha: 0.5

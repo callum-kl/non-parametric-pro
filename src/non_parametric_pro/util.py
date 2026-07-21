@@ -7,6 +7,8 @@ import jax.numpy as jnp
 import jax.random as jr
 import paramax
 from blackjax.types import PRNGKey
+from blackjax.progress_bar import gen_scan_fn
+from blackjax.util import run_inference_algorithm
 from jax.scipy.linalg import solve_triangular
 
 from non_parametric_pro.density import ProParameters
@@ -606,3 +608,35 @@ def posterior_function_draws(  # noqa: PLR0913
     residual_cholesky = eigvecs * jnp.sqrt(eigvals)[None, :]
     residual_noise = jr.normal(noise_key, (num_test, num_draws))
     return conditional_means + residual_cholesky @ residual_noise
+
+
+
+def run_inference_algorithm_with_burn_in(rng_key, inference_algorithm, num_steps, burn_ratio, initial_position, progress_bar=False):
+    burn_key, sample_key = jr.split(rng_key)
+    num_burn_steps = int(num_steps * burn_ratio)
+    num_sample_steps = num_steps - num_burn_steps
+
+    # Burn-in: same progress-bar-aware scan blackjax uses internally (gen_scan_fn),
+    # but the per-step output is None, so nothing is stacked/stored for these steps.
+    state = inference_algorithm.init(initial_position)
+    burn_keys = jr.split(burn_key, num_burn_steps)
+    burn_scan_fn = gen_scan_fn(num_burn_steps, progress_bar=progress_bar)
+
+    def burn_step(state, xs):
+        _, key = xs
+        state, _info = inference_algorithm.step(key, state)
+        return state, None
+
+    print(f"Burning in for {num_burn_steps} steps...")
+    state, _ = burn_scan_fn(burn_step, state, (jnp.arange(num_burn_steps), burn_keys))
+
+    print(f"Sampling for {num_sample_steps} steps...")
+    # Retained sampling: run_inference_algorithm's own progress bar, same style.
+    final_state, (states, infos) = run_inference_algorithm(
+        rng_key=sample_key,
+        inference_algorithm=inference_algorithm,
+        num_steps=num_sample_steps,
+        initial_state=state,
+        progress_bar=progress_bar,
+    )
+    return final_state, (states, infos)

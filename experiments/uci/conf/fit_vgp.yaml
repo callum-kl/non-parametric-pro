@@ -4,9 +4,12 @@ defaults:
 
 split: 1
 seed: 0
+name: null  # optional suffix for the results dir, e.g. name=untuned -> vgp_untuned
 
 gp_num_iters: 1000
 kernel_lr: 0.01
+lengthscale_min: 1.0e-2
+lengthscale_max: 1.0e2
 vgp_batch_size: 256
 num_inducing: 200
 collapsed: true  # true -> CollapsedVariationalGaussian + collapsed_elbo; false -> VariationalGaussian + elbo

@@ -5,28 +5,31 @@ defaults:
 split: 1
 seed: 0
 inducing: false  # true → reads VGP state; false → reads exact GP state
-name: null  # optional suffix for the results dir, e.g. name=untuned -> pro_gp_untuned
+name: null  # optional suffix for the results dir, e.g. name=untuned -> pro_gp_cv_untuned
 
 results_root: ${script_dir:}/results
 
-num_particles: 32
+num_particles: 50
 alpha: 1.0
 sigma_min: 0.1
-initial_sigma: null  # override the loaded GP state's sigma; null -> use the loaded value
+
+# Cross-validation (see cross_validated_parameter_adaptation): num_folds>=2 is classic
+# disjoint k-fold; num_folds=1 is a single val_fraction-sized random hold-out instead.
+num_folds: 3
+val_fraction: 0.2
 
 # per-dataset defaults; ds yaml values take priority via @_global_ merge
-num_adapt_steps: 50
+num_adapt_steps: 10000
 num_sample_steps: 30000
 step_size: 1.0e-4
 
-warmup_steps: 2000
-sigma_adapt_every: -1
+warmup_steps: 1000
+sigma_adapt_every: 10
 kernel_adapt_every: -1
-sigma_lr: 0.1
+sigma_lr: 0.05
 kernel_lr: 0.01
-val_fraction: 0.2
 
-burn_fraction: 0.8
+burn_fraction: 0.9
 thin: 50
 
 hydra:

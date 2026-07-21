@@ -19,7 +19,7 @@ class ProParameters(NamedTuple):
     step_size: float
     sigma: jax.Array | float | paramax.AbstractUnwrappable
     alpha: float
-    tolerance: float = 1e-30
+    tolerance: float = 1e-300
     jitter: float = 1e-6
     residual_std: jax.Array | None = None  # (N,1) inducing residual; None for full GP
     sigma_prior_value: jax.Array | float | None = None

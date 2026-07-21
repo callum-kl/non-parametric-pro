@@ -326,7 +326,7 @@ def make_mixture_data(
 ) -> MixtureData:
     """Draw a regression instance from a 50/50 mixture of two independent GP draws."""
     if kernel is None:
-        kernel = gpx.kernels.Matern12(lengthscale=2.0)
+        kernel = gpx.kernels.Matern32(lengthscale=0.5, variance=0.5)
 
     f1_key, f2_key, omega_key, noise_key = jr.split(key, 4)
     x_test = jnp.linspace(0.0, 1.0, n)

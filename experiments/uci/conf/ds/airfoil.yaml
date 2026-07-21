@@ -1,4 +1,4 @@
 dataset: airfoil
-num_inducing: 200
+num_inducing: 300
 vgp_batch_size: 128
 inducing: true

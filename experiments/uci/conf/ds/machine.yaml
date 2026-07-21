@@ -1,0 +1,3 @@
+dataset: machine
+num_inducing: 10
+num_particles: 50

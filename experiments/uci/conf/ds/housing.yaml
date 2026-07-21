@@ -1,2 +1,4 @@
 # N=506, D=13
 dataset: housing
+num_adapt_steps: 10000
+num_sample_steps: 40000

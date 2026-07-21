@@ -30,7 +30,8 @@ OmegaConf.register_new_resolver(
 
 
 def state_dir(cfg: DictConfig) -> Path:
-    return Path(cfg.results_root) / cfg.dataset / f"split_{cfg.split}" / "exact_gp"
+    subdir = f"exact_gp_{cfg.name}" if cfg.name else "exact_gp"
+    return Path(cfg.results_root) / cfg.dataset / f"split_{cfg.split}" / subdir
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="fit_exact_gp")
@@ -54,19 +55,27 @@ def main(cfg: DictConfig) -> None:
     log.info("N_train=%d  N_test=%d  D=%d", x_train.shape[0], x_test.shape[0], D)
 
     # --- Exact GP fit --------------------------------------------------------
+    # Lengthscale is bounded, not just positive: on datasets with duplicated or
+    # near-constant feature columns (e.g. solar), some ARD dimensions carry no
+    # likelihood signal and an unconstrained lengthscale gets driven to extreme
+    # values by BFGS, eventually making the Gram matrix's Cholesky fail and
+    # producing NaN -- bounding it keeps those dimensions merely "ignored"
+    # (very large or very small lengthscale) rather than numerically pathological.
     data = gpx.Dataset(X=x_train, y=y_train)
-    kernel = gpx.kernels.Matern32(lengthscale=jnp.sqrt(D) * jnp.ones((D,)), variance=px.NonTrainable(jnp.array(1.0)))
+    # lengthscale = jnp.sqrt(D) * jnp.ones((D,))
+    lengthscale = gpx.parameters.SigmoidBounded(
+        jnp.sqrt(D) * jnp.ones((D,)), low=cfg.lengthscale_min, high=cfg.lengthscale_max
+    )
+    kernel = gpx.kernels.RBF(lengthscale=lengthscale, variance=px.NonTrainable(jnp.array(1.0)))
     prior = gpx.gps.Prior(mean_function=gpx.mean_functions.Zero(), kernel=kernel)
     likelihood = gpx.likelihoods.Gaussian(num_datapoints=data.n, obs_stddev=jnp.sqrt(0.01))
     posterior = prior * likelihood
 
-    opt_posterior, _ = gpx.fit(
+    opt_posterior, _ = gpx.fit_scipy(
         model=posterior,
         objective=lambda p, d: -gpx.objectives.conjugate_mll(p, d),
         train_data=data,
-        optim=ox.adam(cfg.kernel_lr),
-        num_iters=cfg.gp_num_iters,
-        verbose=False,
+        verbose=True,
     )
 
     opt_kernel = opt_posterior.prior.kernel
@@ -87,8 +96,11 @@ def main(cfg: DictConfig) -> None:
 
     # --- Save ----------------------------------------------------------------
     # No 'z' key — fit_pro.py uses this to detect the non-inducing case.
+    # kernel_type records the actual class used to fit (e.g. "RBF") so load_gp_state
+    # reconstructs the same kernel shape rather than assuming one.
     np.savez(
         out_dir / "gp_state.npz",
+        kernel_type=type(kernel).__name__,
         lengthscale=np.array(px.unwrap(opt_kernel.lengthscale)),
         variance=np.array(px.unwrap(opt_kernel.variance)),
         sigma=np.array(px.unwrap(opt_sigma)).reshape(()),

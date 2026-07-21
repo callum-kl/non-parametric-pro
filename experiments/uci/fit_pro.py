@@ -12,7 +12,6 @@ import jax.random as jr
 import numpy as np
 import optax as ox
 import paramax as px
-from blackjax.util import run_inference_algorithm
 from omegaconf import DictConfig, OmegaConf
 from sklearn.preprocessing import StandardScaler
 
@@ -22,7 +21,7 @@ from non_parametric_pro.data.uci import load_uci_regression_dataset
 from non_parametric_pro.density import ProParameters, pro_logdensity_fn, regularised_score
 from non_parametric_pro.inducing import PointInducingBasis, compute_inducing_basis
 from non_parametric_pro.ula import parametric_ula
-from non_parametric_pro.util import crps_pro, nlpd_pro, prediction_basis
+from non_parametric_pro.util import crps_pro, nlpd_pro, prediction_basis, run_inference_algorithm_with_burn_in
 
 jax.config.update("jax_enable_x64", True)
 
@@ -42,6 +41,8 @@ def gp_state_dir(cfg: DictConfig) -> Path:
 
 def pro_out_dir(cfg: DictConfig) -> Path:
     subdir = "inducing_pro_gp" if cfg.inducing else "pro_gp"
+    if cfg.name:
+        subdir = f"{subdir}_{cfg.name}"
     return Path(cfg.results_root) / cfg.dataset / f"split_{cfg.split}" / subdir
 
 
@@ -58,7 +59,20 @@ def load_gp_state(cfg: DictConfig):
         raise FileNotFoundError(f"No state at {path} — run {script} first.")
 
     state = np.load(path)
-    kernel = gpx.kernels.Matern32(
+    if "kernel_type" in state:
+        kernel_type = str(state["kernel_type"])
+    else:
+        # Pre-existing states saved before kernel_type was recorded -- these were all
+        # fit with Matern32, so this matches their actual behaviour; re-run
+        # fit_exact_gp.py/fit_vgp.py to pick up kernel_type for new fits.
+        kernel_type = "Matern32"
+        log.warning(
+            "%s has no 'kernel_type' (pre-fix save); assuming Matern32. "
+            "Re-run %s to save kernel_type explicitly.",
+            path, script,
+        )
+    kernel_cls = getattr(gpx.kernels, kernel_type)
+    kernel = kernel_cls(
         lengthscale=jnp.array(state["lengthscale"]),
         variance=jnp.array(state["variance"]),
     )
@@ -92,6 +106,10 @@ def main(cfg: DictConfig) -> None:
     else:
         log.info("Loaded exact GP state: sigma=%.4f", sigma_val)
 
+    if cfg.initial_sigma is not None:
+        log.info("Overriding loaded sigma=%.4f with cfg.initial_sigma=%.4f", sigma_val, cfg.initial_sigma)
+        sigma_val = cfg.initial_sigma
+
     # --- Data ----------------------------------------------------------------
     example = load_uci_regression_dataset(cfg.dataset, split=cfg.split)
     x_train = scaler_x.transform(example.x_train)
@@ -117,8 +135,6 @@ def main(cfg: DictConfig) -> None:
         sigma=sigma,
         alpha=cfg.alpha,
         residual_std=residual_std,
-        sigma_prior_value=sigma_val,
-        sigma_prior_scale=cfg.sigma_prior_scale,
     )
 
     key, pos_key = jr.split(key)
@@ -176,16 +192,16 @@ def main(cfg: DictConfig) -> None:
     algorithm = parametric_ula(pro_logdensity_fn, pro_params)
 
     key, sample_key = jr.split(key)
-    _, (states, _) = run_inference_algorithm(
+    _, (states, _) = run_inference_algorithm_with_burn_in(
         rng_key=sample_key,
         inference_algorithm=algorithm,
         num_steps=cfg.num_sample_steps,
+        burn_ratio=cfg.burn_fraction,
         initial_position=pro_position,
         progress_bar=True,
     )
 
-    burn = int(cfg.num_sample_steps * cfg.burn_fraction)
-    particles = states.position[burn::cfg.thin]
+    particles = states.position[::cfg.thin]
 
     # --- Evaluation ----------------------------------------------------------
     test_basis, test_cov = prediction_basis(

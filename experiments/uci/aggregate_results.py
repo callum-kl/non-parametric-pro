@@ -13,6 +13,11 @@ RESULTS_ROOT = Path(__file__).parent / "results"
 # pro_gp/inducing_pro_gp that's `pro_sigma` (PRO's own, possibly-adapted sigma), not the
 # `gp_sigma` also logged in pro_metrics.json for reference (that's the seeding exact_gp/vgp
 # run's sigma, already reported under its own method row).
+#
+# Keyed by the *base* method name a results dir is expected to match exactly, or to match as
+# a `<base>_<suffix>` prefix -- fit_*.py scripts accept a `name=<suffix>` override (see
+# `pro_out_dir`/`state_dir` in the fit scripts) to keep alternate runs (e.g. untuned
+# baselines) alongside the default ones without overwriting them.
 METHOD_METRICS = {
     "exact_gp": (
         "gp_metrics.json",
@@ -34,9 +39,37 @@ METHOD_METRICS = {
         "pro_metrics.json",
         {"pro_nlpd": "nlpd", "pro_crps": "crps", "pro_sigma": "sigma"},
     ),
+    "pro_gp_cv": (
+        "pro_metrics.json",
+        {"pro_nlpd": "nlpd", "pro_crps": "crps", "pro_sigma": "sigma"},
+    ),
+    "inducing_pro_gp_cv": (
+        "pro_metrics.json",
+        {"pro_nlpd": "nlpd", "pro_crps": "crps", "pro_sigma": "sigma"},
+    ),
 }
 
 SUMMARY_METRICS = ("nlpd", "crps", "sigma")
+
+# Longest base name first, so e.g. "pro_gp_cv_untuned" resolves against the "pro_gp_cv"
+# base rather than the shorter "pro_gp" prefix it also happens to start with.
+_BASES_BY_LENGTH = sorted(METHOD_METRICS, key=len, reverse=True)
+
+
+def _resolve_method(dirname: str) -> tuple[str, str, dict[str, str]] | None:
+    """Match a results subdir name against a known base method, allowing a `_<suffix>`.
+
+    Returns ``(base, fname, key_map)`` for an exact base match or a `<base>_<suffix>`
+    match, or ``None`` if the dir doesn't correspond to a known method.
+    """
+    if dirname in METHOD_METRICS:
+        fname, key_map = METHOD_METRICS[dirname]
+        return dirname, fname, key_map
+    for base in _BASES_BY_LENGTH:
+        if dirname.startswith(base + "_"):
+            fname, key_map = METHOD_METRICS[base]
+            return base, fname, key_map
+    return None
 
 
 def collect():
@@ -52,16 +85,30 @@ def collect():
         for split_dir in sorted(ds_dir.iterdir()):
             if not split_dir.is_dir() or not split_dir.name.startswith("split_"):
                 continue
-            for method, (fname, key_map) in METHOD_METRICS.items():
-                path = split_dir / method / fname
+            for method_dir in sorted(split_dir.iterdir()):
+                if not method_dir.is_dir():
+                    continue
+                resolved = _resolve_method(method_dir.name)
+                if resolved is None:
+                    continue
+                _, fname, key_map = resolved
+                path = method_dir / fname
                 if not path.exists():
                     continue
                 data = json.loads(path.read_text())
+                # Report under the actual dir name (e.g. "pro_gp_untuned"), not the base,
+                # so suffixed runs get their own column instead of merging into the default.
+                method = method_dir.name
                 for json_key, norm_key in key_map.items():
                     if json_key in data:
                         records[dataset][method][norm_key].append(data[json_key])
 
     return records
+
+
+def _sample_std(v: list[float]) -> float:
+    """Sample std (ddof=1); 0.0 for a single value rather than np.std's NaN."""
+    return float(np.std(v, ddof=1)) if len(v) > 1 else 0.0
 
 
 def summarise(records):
@@ -71,7 +118,7 @@ def summarise(records):
         summary[dataset] = {}
         for method, metrics in methods.items():
             summary[dataset][method] = {
-                k: (float(np.mean(v)), float(np.std(v)))
+                k: (float(np.mean(v)), _sample_std(v))
                 for k, v in metrics.items()
             }
     return summary

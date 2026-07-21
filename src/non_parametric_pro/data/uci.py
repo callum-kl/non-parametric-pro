@@ -68,7 +68,8 @@ UCI_REGRESSION_DATASET_ALIASES: dict[str, str] = {
 }
 
 
-NUM_UCI_SPLITS = 10
+NUM_RAW_UCI_SPLITS = 10
+NUM_UCI_SPLITS = 5  # each merges a consecutive pair of the 10 raw masks -> larger test sets
 MIN_DATA_COLUMNS = 2
 
 
@@ -208,15 +209,16 @@ def load_uci_regression_dataset(
     """
     Load one standardized UCI regression train/test split.
 
-    ``split`` is one-based and must be in ``1..10``; it corresponds to the 10
-    mask columns from ``uci_datasets`` (use ``split + 1`` for that package's
-    0-based split numbering).
+    ``split`` is one-based and must be in ``1..5``. Each of these 5 splits
+    merges a consecutive pair of the 10 raw ``uci_datasets`` mask columns —
+    split 1 unions raw masks 1+2, split 2 unions raw masks 3+4, and so on —
+    so the test set is the union of both raw test masks (~20% of the data)
+    and the train set is everything else. This halves the number of splits
+    but doubles the test-set size, reducing the split-to-split metric
+    variance that the raw 10-way 90/10 masks are prone to on small datasets.
     """
     if not 1 <= split <= NUM_UCI_SPLITS:
-        msg = (
-            f"split must be in 1..{NUM_UCI_SPLITS}. "
-            "Use split + 1 for the Python package's 0-based split numbering."
-        )
+        msg = f"split must be in 1..{NUM_UCI_SPLITS} (merged pairs of the 10 raw splits)."
         raise ValueError(msg)
 
     directory = directory if directory is not None else package_data_dir("uci_datasets")
@@ -254,14 +256,15 @@ def load_uci_regression_dataset(
     if masks.shape[0] != data.shape[0]:
         msg = f"Mask row count does not match data row count for {name}"
         raise ValueError(msg)
-    if masks.shape[1] < split:
+    raw_col_a, raw_col_b = 2 * (split - 1), 2 * (split - 1) + 1
+    if masks.shape[1] < raw_col_b + 1:
         msg = (
-            f"Requested split {split}, but {mask_path} only has "
-            f"{masks.shape[1]} split columns"
+            f"Requested split {split} (raw mask columns {raw_col_a + 1}+{raw_col_b + 1}), "
+            f"but {mask_path} only has {masks.shape[1]} raw split columns"
         )
         raise ValueError(msg)
 
-    test_mask = masks[:, split - 1].astype(bool)
+    test_mask = masks[:, raw_col_a].astype(bool) | masks[:, raw_col_b].astype(bool)
     train_mask = ~test_mask
     x = data[:, :-1]
     y = data[:, -1:]  # keep 2-D, matching gpjax's Dataset shape convention
