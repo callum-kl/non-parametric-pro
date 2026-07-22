@@ -15,15 +15,16 @@ class ProParameters(NamedTuple):
     """
 
     y: jax.Array
-    basis: jax.Array
     step_size: float
     sigma: jax.Array | float | paramax.AbstractUnwrappable
     alpha: float
-    tolerance: float = 1e-300
     jitter: float = 1e-6
+    tolerance: float = 1e-300
+    basis: jax.Array | None = None
     residual_std: jax.Array | None = None  # (N,1) inducing residual; None for full GP
     sigma_prior_value: jax.Array | float | None = None
     sigma_prior_scale: jax.Array | float | None = None
+    batch_idx: jax.Array | None = None  # (b,) minibatch row indices; None = full batch
 
 
 def _effective_sigma(parameters: "ProParameters") -> jax.Array:
@@ -96,18 +97,52 @@ def pro_crps_logdensity_fn(
     return pro_crps_score_fn(z, parameters) - 0.5 * jnp.sum(z**2)
 
 
+def _batch_parameters(parameters: ProParameters) -> tuple[ProParameters, jax.Array]:
+    """
+    Gather `basis`/`y`/`residual_std` down to `parameters.batch_idx`'s rows.
+
+    Returns the gathered parameters and the rescale factor `n / b` that makes
+    a sum over the batch an unbiased estimate of the sum over all `n` rows
+    (standard minibatch/SGLD estimator; the PrO objective's score term is
+    already an explicit average/sum over data points, so this is a direct
+    Monte Carlo subsample of it). A no-op (scale 1.0) if `batch_idx` is None.
+    """
+    if parameters.batch_idx is None:
+        return parameters, jnp.asarray(1.0)
+    n = parameters.basis.shape[0]
+    b = parameters.batch_idx.shape[0]
+    residual_std = (
+        parameters.residual_std[parameters.batch_idx]
+        if parameters.residual_std is not None
+        else None
+    )
+    batched = parameters._replace(
+        basis=parameters.basis[parameters.batch_idx],
+        y=parameters.y[parameters.batch_idx],
+        residual_std=residual_std,
+    )
+    return batched, n / b
+
+
 def pro_score_fn(
     z: jax.Array,
     parameters: ProParameters,
 ) -> jax.Array:
-    """Compute the score function."""
+    """
+    Compute the score function.
+
+    If `parameters.batch_idx` is set, this is a minibatch estimate of the
+    full-data score -- rescaled by `n / b` so it stays unbiased -- rather than
+    the exact value; see `_batch_parameters`.
+    """
+    parameters, scale = _batch_parameters(parameters)
     sigma = _effective_sigma(parameters)
     a = parameters.basis @ z
     log_density = normal_logpdf(parameters.y, a, sigma)
     num_particles = log_density.shape[1]
     log_marginal = logsumexp(log_density, axis=1) - jnp.log(num_particles)
     log_marginal = jnp.maximum(log_marginal, jnp.log(parameters.tolerance))
-    score = num_particles * parameters.alpha * jnp.sum(log_marginal)
+    score = num_particles * parameters.alpha * scale * jnp.sum(log_marginal)
     return score
 
 

@@ -46,9 +46,9 @@ class ParameterAdaptationState(NamedTuple):
     kernel: gpx.kernels.AbstractKernel
     kernel_opt_state: optax.OptState
     basis: jax.Array
-    residual_std: jax.Array | None = None  # None for full GP, (N,1) for inducing
-    val_basis: jax.Array | None = None          # prediction basis at x_val
-    val_residual_std: jax.Array | None = None   # approximation residual at x_val
+    residual_std: jax.Array | None = None
+    val_basis: jax.Array | None = None
+    val_residual_std: jax.Array | None = None
 
 
 class ParameterAdaptationInfo(NamedTuple):
@@ -275,9 +275,6 @@ def base(
         position: ArrayLikeTree,
         base_parameters: ProParameters,
     ) -> ParameterAdaptationState:
-        # Mirrors gpjax's own gpx.fit step: filter to the array (trainable)
-        # leaves, differentiate the paramax-wrapped model, apply updates back
-        # onto the full pytree (static fields like compute_engine untouched).
         _, grad = eqx.filter_value_and_grad(kernel_loss)(
             state.kernel, position, base_parameters
         )
@@ -301,10 +298,6 @@ def base(
         position: ArrayLikeTree,
         base_parameters: ProParameters,
     ) -> ParameterAdaptationState:
-        # sigma_update runs first; basis_update must then see its result (merged into
-        # base_parameters) so kernel_loss's objective evaluation -- and hence the kernel
-        # gradient -- reflects the sigma just adapted this step, not the stale pre-step
-        # value base_parameters would otherwise still carry.
         state = sigma_update(state, position, base_parameters)
         updated_parameters = merge_parameters(base_parameters, state)
         return basis_update(state, position, updated_parameters)
@@ -330,7 +323,7 @@ def base(
 
     return init, update, final
 
-# ToDo: better handling of case where ProParameters does not have basis field precomputed
+
 def parameter_adaptation(  # noqa: PLR0913
     algorithm,
     logdensity_fn: Callable,
@@ -455,10 +448,10 @@ class CrossValidationResult(NamedTuple):
     function's docstring for why the two use different aggregations).
     """
 
-    sigma: jax.Array  # min over folds
-    kernel: gpx.kernels.AbstractKernel  # unwrapped (plain-valued); leaves are the fold mean
-    fold_sigma: jax.Array  # (num_folds,)
-    fold_kernel: gpx.kernels.AbstractKernel  # unwrapped; leaves have a leading (num_folds,) axis
+    sigma: jax.Array 
+    kernel: gpx.kernels.AbstractKernel
+    fold_sigma: jax.Array
+    fold_kernel: gpx.kernels.AbstractKernel
 
 
 def _kfold_splits(
@@ -580,18 +573,12 @@ def cross_validated_parameter_adaptation(  # noqa: PLR0913
     )
     fold_keys = jr.split(run_key, len(splits))
 
-    # Jitted once per distinct (x_train, x_val) shape seen across folds -- at most 2
-    # compilations total (fold sizes differ by at most 1 when n isn't evenly divisible
-    # by num_folds), instead of retracing/recompiling the whole adaptation once per
-    # fold. algorithm/logdensity_fn/objective_fn/optimizers/initial_kernel/base_parameters
-    # are closed over (fixed across folds, and several aren't valid traced arguments
-    # anyway -- e.g. the optimizers and algorithm are plain Python callables/pytrees of
-    # functions), so only the fold-varying data and keys are passed in as arguments.
+
     @jax.jit
     def run_one_fold(x_train, y_train, x_val, y_val, pos_key, adapt_key):
         fold_parameters = base_parameters._replace(y=y_train)
         basis_dim = (
-            inducing_basis.z.shape[0] if inducing_basis is not None else x_train.shape[0]
+            inducing_basis.output_dim() if inducing_basis is not None else x_train.shape[0]
         )
         initial_position = jr.normal(pos_key, (basis_dim, num_particles))
 

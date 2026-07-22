@@ -39,6 +39,10 @@ class InducingBasis(Protocol):
         """K_zx: (M, N) cross-covariance between inducing features and x."""
         ...
 
+    def output_dim(self) -> int:
+        """Number of columns of the ``(N, output_dim)`` basis this produces."""
+        ...
+
 
 @dataclass
 class PointInducingBasis:
@@ -61,6 +65,9 @@ class PointInducingBasis:
         self, kernel: gpx.kernels.AbstractKernel, x: jax.Array
     ) -> jax.Array:
         return kernel.cross_covariance(self._z2d(), x)
+
+    def output_dim(self) -> int:
+        return self.z.shape[0]
 
 
 def kmeans_inducing_points(
@@ -211,6 +218,9 @@ class RFFInducingBasis:
         self, kernel: gpx.kernels.AbstractKernel, x: jax.Array
     ) -> jax.Array:
         return self._features(kernel, x).T  # (2M, N)
+
+    def output_dim(self) -> int:
+        return 2 * self.frequencies.shape[0]
 
     def basis_matrix(
         self,

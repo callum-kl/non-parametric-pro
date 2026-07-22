@@ -66,7 +66,7 @@ def main(cfg: DictConfig) -> None:
     lengthscale = gpx.parameters.SigmoidBounded(
         jnp.sqrt(D) * jnp.ones((D,)), low=cfg.lengthscale_min, high=cfg.lengthscale_max
     )
-    kernel = gpx.kernels.Matern32(lengthscale=lengthscale)
+    kernel = gpx.kernels.RBF(lengthscale=lengthscale)
     prior = gpx.gps.Prior(mean_function=gpx.mean_functions.Zero(), kernel=kernel)
     likelihood = gpx.likelihoods.Gaussian(num_datapoints=data.n, obs_stddev=jnp.sqrt(0.01))
     posterior = prior * likelihood
@@ -84,22 +84,27 @@ def main(cfg: DictConfig) -> None:
             inducing_inputs=z_init,
         )
         objective = lambda p, d: -gpx.objectives.collapsed_elbo(p, d)  # noqa: E731
+        opt_vf, _ = gpx.fit_scipy(
+            model=variational_family,
+            objective=objective,
+            train_data=data,
+            verbose=False,
+        )
     else:
         variational_family = gpx.variational_families.VariationalGaussian(
             posterior=posterior,
             inducing_inputs=z_init,
         )
         objective = lambda p, d: -gpx.objectives.elbo(p, d)  # noqa: E731
-
-    opt_vf, _ = gpx.fit(
-        model=variational_family,
-        objective=objective,
-        train_data=data,
-        optim=ox.adam(cfg.kernel_lr),
-        num_iters=cfg.gp_num_iters,
-        verbose=False,
-        batch_size=cfg.vgp_batch_size,
-    )
+        opt_vf, _ = gpx.fit(
+            model=variational_family,
+            objective=objective,
+            train_data=data,
+            optim=ox.adam(cfg.kernel_lr),
+            num_iters=cfg.gp_num_iters,
+            verbose=False,
+            batch_size=cfg.vgp_batch_size,
+        )
 
     opt_kernel = opt_vf.posterior.prior.kernel
     opt_sigma = opt_vf.posterior.likelihood.obs_stddev
