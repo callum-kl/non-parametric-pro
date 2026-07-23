@@ -111,14 +111,20 @@ def _batch_parameters(parameters: ProParameters) -> tuple[ProParameters, jax.Arr
         return parameters, jnp.asarray(1.0)
     n = parameters.basis.shape[0]
     b = parameters.batch_idx.shape[0]
+    # `basis`/`y`/`residual_std` may still be plain numpy arrays (e.g. straight out of
+    # sklearn's StandardScaler) -- ordinary arithmetic elsewhere auto-promotes those to
+    # jax arrays transparently, but fancy-indexing with a *traced* `batch_idx` does not,
+    # so this must coerce explicitly before indexing.
+    basis = jnp.asarray(parameters.basis)
+    y = jnp.asarray(parameters.y)
     residual_std = (
-        parameters.residual_std[parameters.batch_idx]
+        jnp.asarray(parameters.residual_std)[parameters.batch_idx]
         if parameters.residual_std is not None
         else None
     )
     batched = parameters._replace(
-        basis=parameters.basis[parameters.batch_idx],
-        y=parameters.y[parameters.batch_idx],
+        basis=basis[parameters.batch_idx],
+        y=y[parameters.batch_idx],
         residual_std=residual_std,
     )
     return batched, n / b

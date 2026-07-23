@@ -1,6 +1,6 @@
 dataset: airfoil
-num_inducing: 300
-vgp_batch_size: 128
+num_inducing: 200
+vgp_batch_size: 512
 inducing: true
 num_particles: 20
 seed: 1

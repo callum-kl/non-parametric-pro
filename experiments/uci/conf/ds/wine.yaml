@@ -1,2 +1,7 @@
 # N=1599, D=11
 dataset: wine
+vgp_batch_size: 512
+vgp_variant: collapsed
+inducing: true
+algorithm: sgld
+num_folds: 1

@@ -34,8 +34,41 @@ OmegaConf.register_new_resolver(
 )
 
 
+_VGP_VARIANT_SUBDIRS = {
+    "collapsed": "vgp",
+    "noncollapsed": "vgp_noncollapsed",
+}
+
+
 def gp_state_dir(cfg: DictConfig) -> Path:
-    subdir = "vgp" if cfg.inducing else "exact_gp"
+    """
+    Locate the state saved by ``fit_vgp.py`` (``cfg.inducing=True``) or
+    ``fit_exact_gp.py`` (``cfg.inducing=False``).
+
+    ``cfg.vgp_variant`` picks which of ``fit_vgp.py``'s training methods to load --
+    ``"collapsed"`` (``CollapsedVariationalGaussian`` + ``fit_scipy``, the default) or
+    ``"noncollapsed"`` (``VariationalGaussian``, fit with either plain Adam or natural
+    gradients on ``q(u)`` -- see ``non_parametric_pro.gp.natural_gradient_svgp_fit``;
+    those two share the same ``vgp_noncollapsed`` directory since natural gradients is
+    just a different optimiser for the same non-collapsed model, not a separate one --
+    whichever ``fit_vgp.py`` run happened most recently is what's here). This must match
+    whichever ``fit_vgp.py collapsed=...`` value was actually run -- see that script's
+    ``state_dir`` for the exact same subdirectory names.
+    ``cfg.vgp_name`` mirrors ``fit_vgp.py``'s own ``name`` override, for loading a
+    specifically-named run rather than the bare variant directory.
+    """
+    if not cfg.inducing:
+        return Path(cfg.results_root) / cfg.dataset / f"split_{cfg.split}" / "exact_gp"
+
+    if cfg.vgp_variant not in _VGP_VARIANT_SUBDIRS:
+        msg = (
+            f"Unknown vgp_variant={cfg.vgp_variant!r}; "
+            f"expected one of {sorted(_VGP_VARIANT_SUBDIRS)}."
+        )
+        raise ValueError(msg)
+    subdir = _VGP_VARIANT_SUBDIRS[cfg.vgp_variant]
+    if cfg.vgp_name:
+        subdir = f"{subdir}_{cfg.vgp_name}"
     return Path(cfg.results_root) / cfg.dataset / f"split_{cfg.split}" / subdir
 
 

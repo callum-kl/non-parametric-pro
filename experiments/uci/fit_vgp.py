@@ -16,6 +16,7 @@ from omegaconf import DictConfig, OmegaConf
 from sklearn.preprocessing import StandardScaler
 
 from non_parametric_pro.data.uci import load_uci_regression_dataset
+from non_parametric_pro.gp import natural_gradient_svgp_fit
 from non_parametric_pro.inducing import kmeans_inducing_points
 from non_parametric_pro.util import crps_gp, nlpd_gp
 
@@ -31,6 +32,9 @@ OmegaConf.register_new_resolver(
 
 
 def state_dir(cfg: DictConfig) -> Path:
+    # natural_gradients is just a different optimiser for the same non-collapsed model,
+    # so it shares "vgp_noncollapsed" with the plain-Adam path rather than getting its own
+    # directory -- whichever you last ran is what's saved there.
     variant = "vgp" if cfg.collapsed else "vgp_noncollapsed"
     if cfg.name:
         variant = f"{variant}_{cfg.name}"
@@ -62,11 +66,18 @@ def main(cfg: DictConfig) -> None:
     # Lengthscale is bounded, not just positive -- see fit_exact_gp.py for why
     # (duplicated/near-constant feature columns can otherwise drive an ARD
     # dimension's lengthscale to a numerically pathological extreme).
+    # variance is fixed to 1 (not learned) -- same convention as every exploratory
+    # notebook in this repo (data is already standardised, so sigma/lengthscale alone
+    # are sufficient). Leaving it trainable lets Adam/natural-gradient optimisation
+    # drift into a degenerate variance-vs-lengthscale trade-off (observed on skillcraft:
+    # variance inflated to ~71 with several ARD lengthscales pinned at lengthscale_max)
+    # that badly rescales the kernel and destabilises downstream PRO/SGLD sampling,
+    # which was tuned assuming variance=1.
     data = gpx.Dataset(X=x_train, y=y_train)
     lengthscale = gpx.parameters.SigmoidBounded(
         jnp.sqrt(D) * jnp.ones((D,)), low=cfg.lengthscale_min, high=cfg.lengthscale_max
     )
-    kernel = gpx.kernels.RBF(lengthscale=lengthscale)
+    kernel = gpx.kernels.RBF(lengthscale=lengthscale, variance=px.NonTrainable(jnp.array(1.0)))
     prior = gpx.gps.Prior(mean_function=gpx.mean_functions.Zero(), kernel=kernel)
     likelihood = gpx.likelihoods.Gaussian(num_datapoints=data.n, obs_stddev=jnp.sqrt(0.01))
     posterior = prior * likelihood
@@ -77,7 +88,9 @@ def main(cfg: DictConfig) -> None:
     # Collapsed analytically marginalises q(u) (Titsias/SGPR-style bound) -- tighter and
     # generally easier to optimise for a Gaussian likelihood. Non-collapsed learns q(u)'s
     # full (M, M) covariance factor via gradient descent -- more general (extends to
-    # non-Gaussian likelihoods), but a harder optimisation problem.
+    # non-Gaussian likelihoods), but a harder optimisation problem; plain Adam on it in
+    # particular tends to underperform badly relative to the collapsed bound unless given
+    # far more iterations, hence the natural-gradient option below.
     if cfg.collapsed:
         variational_family = gpx.variational_families.CollapsedVariationalGaussian(
             posterior=posterior,
@@ -88,7 +101,24 @@ def main(cfg: DictConfig) -> None:
             model=variational_family,
             objective=objective,
             train_data=data,
-            verbose=False,
+            verbose=True,
+        )
+    elif cfg.natural_gradients:
+        # Alternates a natural-gradient ascent step on q(u) with an Adam step on the
+        # kernel/likelihood hyperparameters and inducing inputs -- see
+        # `non_parametric_pro.gp.natural_gradient_svgp_fit`'s docstring for why plain
+        # Adam struggles on q(u)'s covariance specifically.
+        key, fit_key = jr.split(key)
+        opt_vf, _ = natural_gradient_svgp_fit(
+            posterior,
+            z_init,
+            data,
+            natural_lr=cfg.natural_lr,
+            hyper_optimizer=ox.adam(cfg.kernel_lr),
+            num_iters=cfg.gp_num_iters,
+            batch_size=cfg.vgp_batch_size,
+            key=fit_key,
+            progress_bar=True,
         )
     else:
         variational_family = gpx.variational_families.VariationalGaussian(
@@ -102,7 +132,7 @@ def main(cfg: DictConfig) -> None:
             train_data=data,
             optim=ox.adam(cfg.kernel_lr),
             num_iters=cfg.gp_num_iters,
-            verbose=False,
+            verbose=True,
             batch_size=cfg.vgp_batch_size,
         )
 
@@ -126,6 +156,7 @@ def main(cfg: DictConfig) -> None:
         "vgp_crps": float(crps_gp(y_test, mean, std)),
         "gp_sigma": float(np.array(px.unwrap(opt_sigma)).reshape(())),
         "collapsed": bool(cfg.collapsed),
+        "natural_gradients": bool(cfg.natural_gradients),
     }
     log.info("VGP  NLPD=%.4f  CRPS=%.4f", metrics["vgp_nlpd"], metrics["vgp_crps"])
 

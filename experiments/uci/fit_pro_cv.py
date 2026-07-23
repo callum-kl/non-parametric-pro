@@ -28,6 +28,7 @@ from non_parametric_pro.adaptation.parameter_adaptation import (
 from non_parametric_pro.data.uci import load_uci_regression_dataset
 from non_parametric_pro.density import ProParameters, pro_logdensity_fn, regularised_score
 from non_parametric_pro.inducing import compute_inducing_basis
+from non_parametric_pro.sgld import parametric_sgld, sgld
 from non_parametric_pro.ula import parametric_ula
 from non_parametric_pro.util import crps_pro, nlpd_pro, prediction_basis, run_inference_algorithm_with_burn_in
 
@@ -47,6 +48,30 @@ def pro_out_dir(cfg: DictConfig) -> Path:
     if cfg.name:
         subdir = f"{subdir}_{cfg.name}"
     return Path(cfg.results_root) / cfg.dataset / f"split_{cfg.split}" / subdir
+
+
+def _adaptation_algorithm(cfg: DictConfig):
+    """`algorithm` argument for `cross_validated_parameter_adaptation` -- `ula` (exact,
+    full-batch) or `sgld(batch_size=...)` (minibatched; see `non_parametric_pro.sgld`).
+    Both satisfy the same `build_kernel`/`init`/`refresh` duck-type, so this is the only
+    place that needs to branch."""
+    if cfg.algorithm == "ula":
+        return ula
+    if cfg.algorithm == "sgld":
+        return sgld(batch_size=cfg.sgld_batch_size)
+    msg = f"Unknown algorithm={cfg.algorithm!r}; expected 'ula' or 'sgld'."
+    raise ValueError(msg)
+
+
+def _sampling_algorithm(cfg: DictConfig, pro_params: ProParameters):
+    """Standalone sampler for the final post-adaptation draw, mirroring
+    `_adaptation_algorithm`'s choice of `ula` vs `sgld`."""
+    if cfg.algorithm == "ula":
+        return parametric_ula(pro_logdensity_fn, pro_params)
+    if cfg.algorithm == "sgld":
+        return parametric_sgld(pro_logdensity_fn, pro_params, batch_size=cfg.sgld_batch_size)
+    msg = f"Unknown algorithm={cfg.algorithm!r}; expected 'ula' or 'sgld'."
+    raise ValueError(msg)
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="fit_pro_cv")
@@ -104,7 +129,7 @@ def main(cfg: DictConfig) -> None:
     )
     key, cv_key = jr.split(key)
     cv_result = cross_validated_parameter_adaptation(
-        ula,
+        _adaptation_algorithm(cfg),
         pro_logdensity_fn,
         pro_params,
         x_full=x_train,
@@ -152,8 +177,8 @@ def main(cfg: DictConfig) -> None:
     )
 
     # --- Sampling ------------------------------------------------------------
-    log.info("Running sampling (steps=%d)...", cfg.num_sample_steps)
-    algorithm = parametric_ula(pro_logdensity_fn, pro_params)
+    log.info("Running sampling (steps=%d, algorithm=%s)...", cfg.num_sample_steps, cfg.algorithm)
+    algorithm = _sampling_algorithm(cfg, pro_params)
 
     key, sample_key = jr.split(key)
     _, (states, _) = run_inference_algorithm_with_burn_in(
