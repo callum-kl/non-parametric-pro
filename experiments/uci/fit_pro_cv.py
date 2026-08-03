@@ -32,7 +32,15 @@ from non_parametric_pro.sgld import parametric_sgld, sgld
 from non_parametric_pro.ula import parametric_ula
 from non_parametric_pro.util import crps_pro, nlpd_pro, prediction_basis, run_inference_algorithm_with_burn_in
 
-jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_enable_x64", False)
+
+# Persistent compilation cache: joblib/hydra multirun spawns one process per
+# split, each re-JIT-compiling the same adaptation/sampling programs from
+# scratch. Caching compiled executables to disk lets concurrent processes
+# reuse each other's compilations instead of paying for it 5x over at once.
+jax.config.update("jax_compilation_cache_dir", str(Path.home() / ".cache/jax"))
+jax.config.update("jax_persistent_cache_min_compile_time_secs", 0)
+jax.config.update("jax_persistent_cache_min_entry_size_bytes", -1)
 
 log = logging.getLogger(__name__)
 

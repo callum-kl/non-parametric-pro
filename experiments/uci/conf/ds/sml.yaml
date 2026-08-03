@@ -1,3 +1,4 @@
 dataset: sml
-num_inducing: 300
-collapsed: true
+inducing: true
+num_folds: 1
+vgp_variant: noncollapsed

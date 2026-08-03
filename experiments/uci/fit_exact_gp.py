@@ -55,14 +55,7 @@ def main(cfg: DictConfig) -> None:
     log.info("N_train=%d  N_test=%d  D=%d", x_train.shape[0], x_test.shape[0], D)
 
     # --- Exact GP fit --------------------------------------------------------
-    # Lengthscale is bounded, not just positive: on datasets with duplicated or
-    # near-constant feature columns (e.g. solar), some ARD dimensions carry no
-    # likelihood signal and an unconstrained lengthscale gets driven to extreme
-    # values by BFGS, eventually making the Gram matrix's Cholesky fail and
-    # producing NaN -- bounding it keeps those dimensions merely "ignored"
-    # (very large or very small lengthscale) rather than numerically pathological.
     data = gpx.Dataset(X=x_train, y=y_train)
-    # lengthscale = jnp.sqrt(D) * jnp.ones((D,))
     lengthscale = gpx.parameters.SigmoidBounded(
         jnp.sqrt(D) * jnp.ones((D,)), low=cfg.lengthscale_min, high=cfg.lengthscale_max
     )
@@ -80,6 +73,8 @@ def main(cfg: DictConfig) -> None:
 
     opt_kernel = opt_posterior.prior.kernel
     opt_sigma = opt_posterior.likelihood.obs_stddev
+
+    print(px.unwrap(opt_kernel.lengthscale))
 
     # --- Evaluate ------------------------------------------------------------
     latent = opt_posterior.predict(x_test, train_data=data)
