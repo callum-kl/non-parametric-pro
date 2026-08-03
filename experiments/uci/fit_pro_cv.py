@@ -9,11 +9,18 @@ single train/validation split.
 
 import json
 import logging
+import os
 from pathlib import Path
+
+# Must be set before `import jax` (and before any transitive jax import, e.g. via
+# gpjax) -- jax.config.update("jax_enable_x64", True) here isn't enough, since under
+# `-m hydra/launcher=joblib` the fit runs in a joblib worker process that doesn't
+# reliably replay this module's own top-level statements before jax's backend
+# initializes, silently leaving that worker on float32.
+os.environ.setdefault("JAX_ENABLE_X64", "1")
 
 import gpjax as gpx
 import hydra
-import jax
 import jax.random as jr
 import numpy as np
 import optax as ox
@@ -31,8 +38,6 @@ from non_parametric_pro.inducing import compute_inducing_basis
 from non_parametric_pro.sgld import parametric_sgld, sgld
 from non_parametric_pro.ula import parametric_ula
 from non_parametric_pro.util import crps_pro, nlpd_pro, prediction_basis, run_inference_algorithm_with_burn_in
-
-jax.config.update("jax_enable_x64", True)
 
 log = logging.getLogger(__name__)
 
@@ -112,7 +117,7 @@ def main(cfg: DictConfig) -> None:
         basis, residual_std = _cholesky_basis(kernel, x_train), None
         basis_dim = x_train.shape[0]
 
-    sigma = gpx.parameters.SigmoidBounded(sigma_val, low=cfg.sigma_min, high=100.0)
+    sigma = gpx.parameters.SigmoidBounded(sigma_val, low=cfg.sigma_min, high=sigma_val + 0.01)
     pro_params = ProParameters(
         y=y_train,
         basis=basis,

@@ -2,11 +2,13 @@
 
 import json
 import logging
+import os
 from pathlib import Path
+
+os.environ.setdefault("JAX_ENABLE_X64", "1")
 
 import gpjax as gpx
 import hydra
-import jax
 import jax.numpy as jnp
 import jax.random as jr
 import numpy as np
@@ -17,8 +19,6 @@ from sklearn.preprocessing import StandardScaler
 
 from non_parametric_pro.data.uci import load_uci_regression_dataset
 from non_parametric_pro.util import crps_gp, nlpd_gp
-
-jax.config.update("jax_enable_x64", True)
 
 log = logging.getLogger(__name__)
 
@@ -62,21 +62,52 @@ def main(cfg: DictConfig) -> None:
     # producing NaN -- bounding it keeps those dimensions merely "ignored"
     # (very large or very small lengthscale) rather than numerically pathological.
     data = gpx.Dataset(X=x_train, y=y_train)
-    # lengthscale = jnp.sqrt(D) * jnp.ones((D,))
-    lengthscale = gpx.parameters.SigmoidBounded(
-        jnp.sqrt(D) * jnp.ones((D,)), low=cfg.lengthscale_min, high=cfg.lengthscale_max
-    )
-    kernel = gpx.kernels.RBF(lengthscale=lengthscale, variance=px.NonTrainable(jnp.array(1.0)))
-    prior = gpx.gps.Prior(mean_function=gpx.mean_functions.Zero(), kernel=kernel)
-    likelihood = gpx.likelihoods.Gaussian(num_datapoints=data.n, obs_stddev=jnp.sqrt(0.01))
-    posterior = prior * likelihood
 
-    opt_posterior, _ = gpx.fit_scipy(
-        model=posterior,
-        objective=lambda p, d: -gpx.objectives.conjugate_mll(p, d),
-        train_data=data,
-        verbose=True,
-    )
+    # Multi-start: L-BFGS from a single fixed init can land in a bad local optimum
+    # (observed on forest). Restart 0 keeps the original deterministic sqrt(D) init
+    # for reproducibility of the old behaviour; restarts 1..N-1 jitter each ARD
+    # dimension's init log-lengthscale from cfg.seed and we keep whichever restart
+    # reaches the best (lowest) negative log marginal likelihood.
+    key = jr.PRNGKey(cfg.seed)
+    restart_keys = jr.split(key, cfg.num_restarts)
+
+    best_posterior = None
+    best_loss = jnp.inf
+    for i, restart_key in enumerate(restart_keys):
+        if i == 0:
+            init_lengthscale = jnp.sqrt(D) * jnp.ones((D,))
+        else:
+            jitter = cfg.restart_jitter_std * jr.normal(restart_key, (D,))
+            init_lengthscale = jnp.clip(
+                jnp.sqrt(D) * jnp.exp(jitter),
+                cfg.lengthscale_min * 1.01,
+                cfg.lengthscale_max * 0.99,
+            )
+
+        lengthscale = gpx.parameters.SigmoidBounded(
+            init_lengthscale, low=cfg.lengthscale_min, high=cfg.lengthscale_max
+        )
+        kernel = gpx.kernels.RBF(lengthscale=lengthscale, variance=px.NonTrainable(jnp.array(1.0)))
+        prior = gpx.gps.Prior(mean_function=gpx.mean_functions.Zero(), kernel=kernel)
+        likelihood = gpx.likelihoods.Gaussian(num_datapoints=data.n, obs_stddev=jnp.sqrt(0.01))
+        posterior = prior * likelihood
+
+        candidate, history = gpx.fit_scipy(
+            model=posterior,
+            objective=lambda p, d: -gpx.objectives.conjugate_mll(p, d),
+            train_data=data,
+            verbose=(cfg.num_restarts == 1),
+        )
+        final_loss = float(history[-1])
+        log.info(
+            "Restart %d/%d: final negative MLL=%.4f", i + 1, cfg.num_restarts, final_loss
+        )
+        if final_loss < best_loss:
+            best_loss = final_loss
+            best_posterior = candidate
+
+    opt_posterior = best_posterior
+    log.info("Best restart: negative MLL=%.4f", best_loss)
 
     opt_kernel = opt_posterior.prior.kernel
     opt_sigma = opt_posterior.likelihood.obs_stddev

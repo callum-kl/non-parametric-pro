@@ -2,7 +2,15 @@
 
 import json
 import logging
+import os
 from pathlib import Path
+
+# Must be set before `import jax` (and before any transitive jax import, e.g. via
+# gpjax) -- jax.config.update("jax_enable_x64", True) here isn't enough, since under
+# `-m hydra/launcher=joblib` the fit runs in a joblib worker process that doesn't
+# reliably replay this module's own top-level statements before jax's backend
+# initializes, silently leaving that worker on float32.
+os.environ.setdefault("JAX_ENABLE_X64", "1")
 
 import gpjax as gpx
 import hydra
@@ -22,8 +30,6 @@ from non_parametric_pro.density import ProParameters, pro_logdensity_fn, regular
 from non_parametric_pro.inducing import PointInducingBasis, compute_inducing_basis
 from non_parametric_pro.ula import parametric_ula
 from non_parametric_pro.util import crps_pro, nlpd_pro, prediction_basis, run_inference_algorithm_with_burn_in
-
-jax.config.update("jax_enable_x64", True)
 
 log = logging.getLogger(__name__)
 

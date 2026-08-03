@@ -18,7 +18,10 @@ Example:
 
 import argparse
 import json
+import os
 from dataclasses import dataclass
+
+os.environ.setdefault("JAX_ENABLE_X64", "1")
 
 import gpjax as gpx
 import jax
@@ -46,8 +49,6 @@ from non_parametric_pro.util import (
     prediction_basis,
     train_val_split,
 )
-
-jax.config.update("jax_enable_x64", True)
 
 FUNCTIONS = {
     "hartmann6": (hartmann6, 6),

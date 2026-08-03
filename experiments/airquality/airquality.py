@@ -1,4 +1,11 @@
-import jax
+import os
+
+# Must be set before `import jax` (and before any transitive jax import, e.g. via
+# gpjax) -- jax.config.update("jax_enable_x64", True) here isn't enough, since under
+# a joblib/multiprocessing worker process it doesn't reliably take effect before
+# jax's backend initializes, silently leaving that worker on float32.
+os.environ.setdefault("JAX_ENABLE_X64", "1")
+
 import jax.numpy as jnp
 import jax.random as jr
 import matplotlib.pyplot as plt
@@ -23,8 +30,6 @@ from scipy import stats
 from blackjax.util import run_inference_algorithm
 
 from non_parametric_pro.util import nlpd_gp, nlpd_pro
-
-jax.config.update("jax_enable_x64", True)
 
 from non_parametric_pro.data.kampala_airquality import load_kampala_airquality_records, kampala_forecasting_split, kampala_site_ids
 
