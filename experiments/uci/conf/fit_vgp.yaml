@@ -11,7 +11,7 @@ kernel_lr: 0.1
 lengthscale_min: 1.0e-3
 lengthscale_max: 1.0e3
 vgp_batch_size: 512
-num_inducing: 200
+num_inducing: 300
 collapsed: true  # true -> CollapsedVariationalGaussian + collapsed_elbo; false -> VariationalGaussian + elbo
 natural_gradients: true  # only when collapsed=false: natural-gradient q(u) steps + Adam on the rest
 natural_lr: 0.5  # natural-gradient ascent step size on q(u); only used when natural_gradients=true
