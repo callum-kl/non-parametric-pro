@@ -11,7 +11,7 @@ name: null  # optional suffix for the results dir, e.g. name=untuned -> pro_gp_c
 
 results_root: ${script_dir:}/results
 
-num_particles: 32
+num_particles: 50
 alpha: 1.0
 sigma_min: 0.1
 
@@ -21,13 +21,13 @@ sgld_batch_size: 512  # only used when algorithm=sgld; must be < N_train for the
 
 # Cross-validation (see cross_validated_parameter_adaptation): num_folds>=2 is classic
 # disjoint k-fold; num_folds=1 is a single val_fraction-sized random hold-out instead.
-num_folds: 3
+num_folds: 1
 val_fraction: 0.2
 
 # per-dataset defaults; ds yaml values take priority via @_global_ merge
 num_adapt_steps: 10000
 num_sample_steps: 30000
-step_size: 1.0e-4
+step_size: 0.0005
 
 warmup_steps: 1000
 sigma_adapt_every: 10

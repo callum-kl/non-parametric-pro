@@ -55,19 +55,7 @@ def main(cfg: DictConfig) -> None:
     log.info("N_train=%d  N_test=%d  D=%d", x_train.shape[0], x_test.shape[0], D)
 
     # --- Exact GP fit --------------------------------------------------------
-    # Lengthscale is bounded, not just positive: on datasets with duplicated or
-    # near-constant feature columns (e.g. solar), some ARD dimensions carry no
-    # likelihood signal and an unconstrained lengthscale gets driven to extreme
-    # values by BFGS, eventually making the Gram matrix's Cholesky fail and
-    # producing NaN -- bounding it keeps those dimensions merely "ignored"
-    # (very large or very small lengthscale) rather than numerically pathological.
     data = gpx.Dataset(X=x_train, y=y_train)
-
-    # Multi-start: L-BFGS from a single fixed init can land in a bad local optimum
-    # (observed on forest). Restart 0 keeps the original deterministic sqrt(D) init
-    # for reproducibility of the old behaviour; restarts 1..N-1 jitter each ARD
-    # dimension's init log-lengthscale from cfg.seed and we keep whichever restart
-    # reaches the best (lowest) negative log marginal likelihood.
     key = jr.PRNGKey(cfg.seed)
     restart_keys = jr.split(key, cfg.num_restarts)
 
@@ -111,6 +99,8 @@ def main(cfg: DictConfig) -> None:
 
     opt_kernel = opt_posterior.prior.kernel
     opt_sigma = opt_posterior.likelihood.obs_stddev
+
+    print(px.unwrap(opt_kernel.lengthscale))
 
     # --- Evaluate ------------------------------------------------------------
     latent = opt_posterior.predict(x_test, train_data=data)

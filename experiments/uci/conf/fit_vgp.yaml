@@ -1,10 +1,10 @@
 defaults:
   - _self_
-  - ds@_global_: yacht  # override with: "ds@_global_=<name>"
+  - ds@_global_: yacht
 
 split: 1
 seed: 0
-name: null  # optional suffix for the results dir, e.g. name=untuned -> vgp_untuned
+name: null
 
 gp_num_iters: 15000
 kernel_lr: 0.1
