@@ -163,7 +163,7 @@ cython_debug/
 _version.py
 
 # data
-data/
+/data/
 experiments/uci/multirun/
 experiments/uci/results/
 experiments/uci/.hydra_logs/*
