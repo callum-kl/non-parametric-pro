@@ -29,7 +29,7 @@ from omegaconf import DictConfig, OmegaConf
 
 from fit_pro import _cholesky_basis, load_gp_state  # noqa: F401 (gp_state_dir used by load_gp_state)
 from non_parametric_pro import ula
-from non_parametric_pro.adaptation.parameter_adaptation import (
+from non_parametric_pro.parameter_adaptation import (
     cross_validated_parameter_adaptation,
 )
 from non_parametric_pro.data.uci import load_uci_regression_dataset

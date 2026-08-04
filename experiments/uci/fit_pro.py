@@ -24,7 +24,7 @@ from omegaconf import DictConfig, OmegaConf
 from sklearn.preprocessing import StandardScaler
 
 from non_parametric_pro import ula
-from non_parametric_pro.adaptation.parameter_adaptation import parameter_adaptation
+from non_parametric_pro.parameter_adaptation import parameter_adaptation
 from non_parametric_pro.data.uci import load_uci_regression_dataset
 from non_parametric_pro.density import ProParameters, pro_logdensity_fn, regularised_score
 from non_parametric_pro.inducing import PointInducingBasis, compute_inducing_basis

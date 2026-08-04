@@ -1,5 +1,3 @@
-"""Synthetic regression datasets for benchmarking (ported from Julia)."""
-
 from typing import NamedTuple
 
 import gpjax as gpx
@@ -10,17 +8,6 @@ from blackjax.types import PRNGKey
 
 _OUTLIER_INDICES = (6, 16, 27, 30, 3, 11, 22, 33)
 _OUTLIER_SHIFTS = (2.8, -2.4, 2.5, -2.8, 2.1, -2.2, 2.4, -2.3)
-
-
-class TrainValSplit(NamedTuple):
-    """A random train/validation split of ``(x, y)``."""
-
-    x_train: jax.Array
-    y_train: jax.Array
-    x_val: jax.Array
-    y_val: jax.Array
-    train_idx: jax.Array
-    val_idx: jax.Array
 
 
 class CleanRegressionCase(NamedTuple):
@@ -47,21 +34,6 @@ class ContaminatedCase(NamedTuple):
     sigma: float
     outlier_idx: jax.Array
     outlier_shifts: jax.Array
-
-
-class HeteroskedasticCase(NamedTuple):
-    """A synthetic regression instance with input-dependent observation noise."""
-
-    x_train: jax.Array
-    y_train: jax.Array
-    x_test: jax.Array
-    y_truth: jax.Array
-    y_obs_test: jax.Array
-    sigma_test: jax.Array
-    sigma_model: jax.Array
-    ell: float
-    alpha: float
-    tail_regions: list[tuple[float, float]]
 
 
 class BlockOutlierCase(NamedTuple):
@@ -194,44 +166,6 @@ def make_contaminated_data(key: PRNGKey, *, n_outliers: int = 4) -> Contaminated
         outlier_shifts=outlier_shifts,
     )
 
-
-def heteroskedastic_sigma_profile(x: jax.Array) -> jax.Array:
-    """Evaluate the input-dependent noise standard deviation profile."""
-    left_tail = jnp.exp(-0.5 * ((x - 0.10) / 0.09) ** 2)
-    right_tail = jnp.exp(-0.5 * ((x - 0.90) / 0.09) ** 2)
-    center_quiet = 1 - jnp.exp(-0.5 * ((x - 0.50) / 0.22) ** 2)
-    return 0.025 + 0.55 * jnp.maximum(left_tail, right_tail) + 0.04 * center_quiet
-
-
-def make_heteroskedastic_instance(key: PRNGKey) -> HeteroskedasticCase:
-    """Draw a regression instance with input-dependent observation noise."""
-    train_key, test_key = jr.split(key)
-    n, ell, alpha = 72, 0.17, 1.0
-
-    x_train = jnp.linspace(0.0, 1.0, n)
-    sigma_train = heteroskedastic_sigma_profile(x_train)
-    y_train = regression_truth(x_train) + sigma_train * jr.normal(train_key, (n,))
-
-    x_test = jnp.linspace(0.0, 1.0, 420)
-    y_truth = regression_truth(x_test)
-    sigma_test = heteroskedastic_sigma_profile(x_test)
-
-    y_obs_test = y_truth + sigma_test * jr.normal(test_key, (x_test.shape[0],))
-
-    sigma_model = jnp.sqrt(jnp.mean(sigma_train**2))
-
-    return HeteroskedasticCase(
-        x_train=_col(x_train),
-        y_train=_col(y_train),
-        x_test=_col(x_test),
-        y_truth=_col(y_truth),
-        y_obs_test=_col(y_obs_test),
-        sigma_test=sigma_test,
-        sigma_model=sigma_model,
-        ell=ell,
-        alpha=alpha,
-        tail_regions=[(0.0, 0.3), (0.7, 1.0)],
-    )
 
 
 def make_block_outlier_case(
