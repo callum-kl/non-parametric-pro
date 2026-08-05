@@ -21,17 +21,17 @@ sgld_batch_size: 512  # only used when algorithm=sgld; must be < N_train for the
 
 # Cross-validation (see cross_validated_parameter_adaptation): num_folds>=2 is classic
 # disjoint k-fold; num_folds=1 is a single val_fraction-sized random hold-out instead.
-num_folds: 1
+num_folds: 3
 val_fraction: 0.2
 
 # per-dataset defaults; ds yaml values take priority via @_global_ merge
 num_adapt_steps: 10000
 num_sample_steps: 30000
-step_size: 0.0005
+step_size: 0.0001
 
 warmup_steps: 1000
-sigma_adapt_every: 10
-kernel_adapt_every: -1
+sigma_adapt_steps: 900
+kernel_adapt_steps: 0
 sigma_lr: 0.1
 kernel_lr: 0.01
 

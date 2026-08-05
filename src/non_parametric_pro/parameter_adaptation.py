@@ -83,36 +83,42 @@ def merge_parameters(
     return base._replace(**updates)
 
 
+def _evenly_spaced_steps(warmup_steps: int, num_steps: int, count: int) -> jax.Array:
+    """`count` step indices evenly spaced across `[warmup_steps, num_steps - 1]`.
+
+    `count <= 0` (or a post-warmup range that's empty, i.e. `warmup_steps >=
+    num_steps`) yields no steps at all -- the caller's parameter is never adapted.
+    """
+    if count <= 0 or warmup_steps >= num_steps:
+        return jnp.array([], dtype=jnp.int32)
+    positions = jnp.linspace(warmup_steps, num_steps - 1, count)
+    return jnp.round(positions).astype(jnp.int32)
+
+
 def build_schedule(
     num_steps: int,
     *,
     warmup_steps: int,
-    sigma_adapt_every: int,
-    kernel_adapt_every: int,
+    sigma_adapt_steps: int,
+    kernel_adapt_steps: int,
 ) -> jax.Array:
     """
     Stage 0 (no-op) during warmup; afterwards adapt sigma/kernel independently.
 
-    After `warmup_steps`, `sigma` is adapted every `sigma_adapt_every` steps and
-    the kernel every `kernel_adapt_every` steps -- independently, not
-    alternating, so they can have entirely different cadences. Pass -1 for
-    either to disable that parameter's adaptation entirely. If both would
-    fire on the same step, both run that step (see `_ADAPT_BOTH`/`both_update`).
+    `sigma` is adapted at `sigma_adapt_steps` steps evenly spaced across
+    `[warmup_steps, num_steps - 1]`, and the kernel likewise at
+    `kernel_adapt_steps` evenly spaced steps -- independently, not
+    alternating, so the two schedules generally land on different steps. Pass
+    0 for either to disable that parameter's adaptation entirely. If both
+    schedules land on the same step, both run that step (see
+    `_ADAPT_BOTH`/`both_update`).
     """
     idx = jnp.arange(num_steps)
-    steps_since_warmup = idx - warmup_steps
-    post_warmup = idx >= warmup_steps
+    sigma_steps = _evenly_spaced_steps(warmup_steps, num_steps, sigma_adapt_steps)
+    kernel_steps = _evenly_spaced_steps(warmup_steps, num_steps, kernel_adapt_steps)
 
-    is_nu_step = (
-        post_warmup
-        & (sigma_adapt_every != -1)
-        & (steps_since_warmup % sigma_adapt_every == 0)
-    )
-    is_kernel_step = (
-        post_warmup
-        & (kernel_adapt_every != -1)
-        & (steps_since_warmup % kernel_adapt_every == 0)
-    )
+    is_nu_step = jnp.isin(idx, sigma_steps)
+    is_kernel_step = jnp.isin(idx, kernel_steps)
 
     return jnp.where(
         is_nu_step & is_kernel_step,
@@ -152,6 +158,13 @@ def base(
         ``residual_std`` is ``None``. If given, the basis is
         ``K_xz L_zz^{-T}`` and ``residual_std`` is
         ``sqrt(diag(K_xx) - diag(basis @ basis^T))``.
+    x_val, y_val
+        If given, ``sigma``'s objective is evaluated on this held-out set
+        instead of the training set (see ``_objective_parameters``). Kernel
+        hyperparameter adaptation (``basis``) always uses the training set
+        regardless -- ``val_basis``/``val_residual_std`` are still tracked in
+        the adaptation state so a freshly-updated kernel's validation basis
+        is available to the *next* sigma step.
 
     """
 
@@ -198,7 +211,11 @@ def base(
         vb: jax.Array | None,
         vr: jax.Array | None,
     ) -> ProParameters:
-        """Swap to validation y/basis if available, else use training parameters."""
+        """Swap to validation y/basis if available, else use training parameters.
+
+        Only used by ``sigma_loss`` -- ``kernel_loss`` always fits on the
+        training set (see its docstring/call site).
+        """
         if x_val is None:
             return base_parameters
         return base_parameters._replace(y=y_val, basis=vb, residual_std=vr)
@@ -219,11 +236,7 @@ def base(
         base_parameters: ProParameters,
     ) -> jax.Array:
         new_basis, new_residual_std = basis_fn(kernel)
-        vb, vr = val_basis_fn(kernel, new_basis)
-        obj_params = _objective_parameters(
-            base_parameters._replace(basis=new_basis, residual_std=new_residual_std),
-            vb, vr,
-        )
+        obj_params = base_parameters._replace(basis=new_basis, residual_std=new_residual_std)
         return -objective_fn(position, obj_params)
 
     def init(
@@ -332,8 +345,8 @@ def parameter_adaptation(  # noqa: PLR0913
     x_train: jax.Array,
     initial_kernel: gpx.kernels.AbstractKernel,
     warmup_steps: int,
-    sigma_adapt_every: int,
-    kernel_adapt_every: int,
+    sigma_adapt_steps: int,
+    kernel_adapt_steps: int,
     objective_fn: Callable,
     inducing_basis: InducingBasis | None = None,
     x_val: jax.Array | None = None,
@@ -350,9 +363,11 @@ def parameter_adaptation(  # noqa: PLR0913
     `init(position, parameters, logdensity_fn)` (e.g. `non_parametric_pro.ula`),
     matching how `blackjax.adaptation.window_adaptation` consumes `blackjax.mala`.
 
-    `sigma_adapt_every`/`kernel_adapt_every` control each parameter's adaptation
-    cadence independently (see `build_schedule`); pass -1 to disable a given
-    parameter's adaptation entirely.
+    `sigma_adapt_steps`/`kernel_adapt_steps` are the *number* of adaptation
+    steps to run for each parameter, evenly spaced across
+    `[warmup_steps, num_steps - 1]` independently of one another (see
+    `build_schedule`); pass 0 to disable a given parameter's adaptation
+    entirely.
 
     The returned `AdaptationAlgorithm.run` yields
     `(AdaptationResults(state, parameters), info)` -- `parameters` is a
@@ -423,8 +438,8 @@ def parameter_adaptation(  # noqa: PLR0913
         schedule = build_schedule(
             num_steps,
             warmup_steps=warmup_steps,
-            sigma_adapt_every=sigma_adapt_every,
-            kernel_adapt_every=kernel_adapt_every,
+            sigma_adapt_steps=sigma_adapt_steps,
+            kernel_adapt_steps=kernel_adapt_steps,
         )
         keys = jax.random.split(rng_key, num_steps)
 
@@ -510,8 +525,8 @@ def cross_validated_parameter_adaptation(  # noqa: PLR0913
     num_particles: int,
     num_steps: int,
     warmup_steps: int,
-    sigma_adapt_every: int,
-    kernel_adapt_every: int,
+    sigma_adapt_steps: int,
+    kernel_adapt_steps: int,
     objective_fn: Callable,
     rng_key: PRNGKey,
     inducing_basis: InducingBasis | None = None,
@@ -525,11 +540,12 @@ def cross_validated_parameter_adaptation(  # noqa: PLR0913
 
     Classic k-fold: ``(x_full, y_full)`` is partitioned into ``num_folds`` disjoint
     chunks (see :func:`_kfold_splits`); fold ``i`` trains on every other chunk and
-    validates on chunk ``i`` (``x_val``/``y_val`` feed the adaptation objective exactly
-    as in a single :func:`parameter_adaptation` call). Every point is validated on
-    exactly once across all folds. ``num_folds=1`` is a special case (a true 1-fold
-    partition is undefined, since there'd be nothing left to train on) that instead does
-    a single random ``val_fraction``-sized hold-out split.
+    validates on chunk ``i`` (``x_val``/``y_val`` feed the ``sigma`` objective exactly
+    as in a single :func:`parameter_adaptation` call; kernel hyperparameters are always
+    fit on the fold's training chunk -- see :func:`parameter_adaptation`). Every point
+    is validated on exactly once across all folds. ``num_folds=1`` is a special case (a
+    true 1-fold partition is undefined, since there'd be nothing left to train on) that
+    instead does a single random ``val_fraction``-sized hold-out split.
 
     Every fold starts from the same ``initial_kernel``/``base_parameters.sigma`` and runs
     its own ``warmup_steps`` + adaptation schedule independently -- folds do not warm-start
@@ -589,8 +605,8 @@ def cross_validated_parameter_adaptation(  # noqa: PLR0913
             x_train=x_train,
             initial_kernel=initial_kernel,
             warmup_steps=warmup_steps,
-            sigma_adapt_every=sigma_adapt_every,
-            kernel_adapt_every=kernel_adapt_every,
+            sigma_adapt_steps=sigma_adapt_steps,
+            kernel_adapt_steps=kernel_adapt_steps,
             objective_fn=objective_fn,
             inducing_basis=inducing_basis,
             x_val=x_val,

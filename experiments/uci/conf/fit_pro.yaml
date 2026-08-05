@@ -1,32 +1,37 @@
 defaults:
   - _self_
-  - ds@_global_: yacht  # override with: "ds@_global_=<name>"
+  - ds@_global_: yacht
 
 split: 1
 seed: 0
-inducing: false  # true → reads VGP state; false → reads exact GP state
-vgp_variant: collapsed  # "collapsed" | "noncollapsed" (plain Adam or natural gradients -- they share a dir); only used when inducing=true
-vgp_name: null  # optional suffix matching fit_vgp.py's own `name` override, if that run used one
-name: null  # optional suffix for the results dir, e.g. name=untuned -> pro_gp_untuned
+inducing: false
+vgp_variant: collapsed
+vgp_name: null
+name: null
 
 results_root: ${script_dir:}/results
 
-num_particles: 32
+num_particles: 50
 alpha: 1.0
 sigma_min: 0.1
-initial_sigma: null  # override the loaded GP state's sigma; null -> use the loaded value
+lengthscale_min: 1.0e-3
+lengthscale_max: 1.0e3
 
-# per-dataset defaults; ds yaml values take priority via @_global_ merge
-num_adapt_steps: 50
+algorithm: ula
+sgld_batch_size: 512
+
+num_folds: 1
+val_fraction: 0.2
+
+num_adapt_steps: 10000
 num_sample_steps: 30000
-step_size: 1.0e-4
+step_size: 0.0001
 
-warmup_steps: 2000
-sigma_adapt_every: -1
-kernel_adapt_every: -1
+warmup_steps: 1000
+sigma_adapt_steps: 600
+kernel_adapt_steps: 300
 sigma_lr: 0.1
 kernel_lr: 0.01
-val_fraction: 0.2
 
 burn_fraction: 0.9
 thin: 50

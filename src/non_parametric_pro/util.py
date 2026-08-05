@@ -118,6 +118,9 @@ def draw_predictive_samples(  # noqa: PLR0913
     noise = sample_std * jr.normal(noise_key, selected.shape)
     return selected + noise
 
+def cholesky_basis(kernel: gpx.kernels.AbstractKernel, x: jax.Array, jitter: float = 1e-6) -> jax.Array:
+    k = kernel.gram(x).as_matrix()
+    return jnp.linalg.cholesky(k + jitter * jnp.eye(k.shape[0]))
 
 def prediction_basis(
     kernel: gpx.kernels.AbstractKernel,

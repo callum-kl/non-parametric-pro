@@ -13,7 +13,7 @@ lengthscale_max: 1.0e3
 # L-BFGS multi-start: restart 0 uses the deterministic sqrt(D) init; restarts 1..N-1
 # jitter each ARD dimension's init log-lengthscale (std=restart_jitter_std) from
 # cfg.seed, keeping whichever restart reaches the best negative MLL.
-num_restarts: 4
+num_restarts: 1
 restart_jitter_std: 0.75
 
 results_root: ${script_dir:}/results

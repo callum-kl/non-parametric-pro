@@ -12,11 +12,6 @@ import logging
 import os
 from pathlib import Path
 
-# Must be set before `import jax` (and before any transitive jax import, e.g. via
-# gpjax) -- jax.config.update("jax_enable_x64", True) here isn't enough, since under
-# `-m hydra/launcher=joblib` the fit runs in a joblib worker process that doesn't
-# reliably replay this module's own top-level statements before jax's backend
-# initializes, silently leaving that worker on float32.
 os.environ.setdefault("JAX_ENABLE_X64", "1")
 
 import gpjax as gpx
@@ -27,7 +22,6 @@ import optax as ox
 import paramax as px
 from omegaconf import DictConfig, OmegaConf
 
-from fit_pro import _cholesky_basis, load_gp_state  # noqa: F401 (gp_state_dir used by load_gp_state)
 from non_parametric_pro import ula
 from non_parametric_pro.parameter_adaptation import (
     cross_validated_parameter_adaptation,
@@ -37,16 +31,15 @@ from non_parametric_pro.density import ProParameters, pro_logdensity_fn, regular
 from non_parametric_pro.inducing import compute_inducing_basis
 from non_parametric_pro.sgld import parametric_sgld, sgld
 from non_parametric_pro.ula import parametric_ula
-from non_parametric_pro.util import crps_pro, nlpd_pro, prediction_basis, run_inference_algorithm_with_burn_in
+from non_parametric_pro.util import crps_pro, nlpd_pro, prediction_basis, run_inference_algorithm_with_burn_in, cholesky_basis
+
+from util import load_gp_state
 
 log = logging.getLogger(__name__)
 
-# Anchors results_root/hydra.run.dir/hydra.sweep.dir to this script's own directory
-# (experiments/uci/), regardless of the caller's current working directory.
 OmegaConf.register_new_resolver(
     "script_dir", lambda: str(Path(__file__).resolve().parent), replace=True
 )
-
 
 def pro_out_dir(cfg: DictConfig) -> Path:
     subdir = "inducing_pro_gp_cv" if cfg.inducing else "pro_gp_cv"
@@ -107,24 +100,14 @@ def main(cfg: DictConfig) -> None:
     log.info("N_train=%d  N_test=%d", x_train.shape[0], x_test.shape[0])
 
     # --- PRO setup ---------------------------------------------------------------
-    # basis/basis_dim here are only a placeholder for ProParameters -- each fold inside
-    # cross_validated_parameter_adaptation recomputes its own basis from its own
-    # training split, overwriting this.
-    if cfg.inducing:
-        basis, residual_std = compute_inducing_basis(inducing_basis, kernel, x_train)
-        basis_dim = inducing_basis.z.shape[0]
-    else:
-        basis, residual_std = _cholesky_basis(kernel, x_train), None
-        basis_dim = x_train.shape[0]
-
     sigma = gpx.parameters.SigmoidBounded(sigma_val, low=cfg.sigma_min, high=sigma_val + 0.01)
     pro_params = ProParameters(
         y=y_train,
-        basis=basis,
+        basis=None,
         step_size=cfg.step_size,
         sigma=sigma,
         alpha=cfg.alpha,
-        residual_std=residual_std,
+        residual_std=None,
     )
 
     # --- Cross-validated adaptation ---------------------------------------------
@@ -145,8 +128,8 @@ def main(cfg: DictConfig) -> None:
         num_particles=cfg.num_particles,
         num_steps=cfg.num_adapt_steps,
         warmup_steps=cfg.warmup_steps,
-        sigma_adapt_every=cfg.sigma_adapt_every,
-        kernel_adapt_every=cfg.kernel_adapt_every,
+        sigma_adapt_steps=cfg.sigma_adapt_steps,
+        kernel_adapt_steps=cfg.kernel_adapt_steps,
         objective_fn=regularised_score,
         rng_key=cv_key,
         inducing_basis=inducing_basis,
@@ -166,8 +149,9 @@ def main(cfg: DictConfig) -> None:
         basis_full, residual_std_full = compute_inducing_basis(
             inducing_basis, adapted_kernel, x_train
         )
+        basis_dim = inducing_basis.output_dim()
     else:
-        basis_full = _cholesky_basis(adapted_kernel, x_train)
+        basis_full = cholesky_basis(adapted_kernel, x_train)
         residual_std_full = None
         basis_dim = x_train.shape[0]
 
