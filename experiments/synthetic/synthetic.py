@@ -36,7 +36,7 @@ from non_parametric_pro.parameter_adaptation import parameter_adaptation, cross_
 from non_parametric_pro.gp import _full_gp_basis
 from non_parametric_pro.util import train_val_split, run_inference_algorithm_with_burn_in
 
-from non_parametric_pro.data.synthetic.heteroscedastic import (
+from non_parametric_pro.data.synthetic.heteroskedastic import (
     heteroskedastic_noise_std,
     make_heteroskedastic_instance,
 )
