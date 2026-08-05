@@ -33,7 +33,7 @@ from blackjax.util import run_inference_algorithm
 
 from non_parametric_pro import ula
 from non_parametric_pro.parameter_adaptation import parameter_adaptation
-from non_parametric_pro.data.corruption_benchmarks import (
+from archive.corruption_benchmarks import (
     CorruptionType,
     friedman1,
     hartmann6,

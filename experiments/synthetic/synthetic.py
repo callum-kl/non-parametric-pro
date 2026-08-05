@@ -36,7 +36,7 @@ from non_parametric_pro.parameter_adaptation import parameter_adaptation, cross_
 from non_parametric_pro.gp import _full_gp_basis
 from non_parametric_pro.util import train_val_split, run_inference_algorithm_with_burn_in
 
-from non_parametric_pro.data.synthetic.heteroskedastic import (
+from non_parametric_pro.data.heteroskedastic import (
     heteroskedastic_noise_std,
     make_heteroskedastic_instance,
 )
@@ -83,7 +83,7 @@ def make_heteroscedastic_panel(key):
         _plot_case(ax, data)
 
     fig.tight_layout()
-    fig.savefig(FIGURES_DIR / "heteroscedastic_panel.png", dpi=150)
+    fig.savefig(FIGURES_DIR / "heteroskedastic_panel.png", dpi=150)
 
 
 def run_heteroscedastic(key):
@@ -97,7 +97,7 @@ def run_heteroscedastic(key):
 
     _plot_case(ax, all_data[12])
     fig.tight_layout()
-    fig.savefig(FIGURES_DIR / "heteroscedastic_instance.png", dpi=150)
+    fig.savefig(FIGURES_DIR / "heteroskedastic_instance.png", dpi=150)
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser()

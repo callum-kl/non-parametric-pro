@@ -23,7 +23,7 @@ from non_parametric_pro.util import posterior_function_draws
 from non_parametric_pro.data.synthetic import make_contaminated_data, make_mixture_data
 from non_parametric_pro.gp import _full_gp_basis
 from non_parametric_pro.parameter_adaptation import parameter_adaptation
-from non_parametric_pro.data.kampala_airquality import load_kampala_airquality_records, kampala_forecasting_split, kampala_site_ids
+from archive.kampala_airquality import load_kampala_airquality_records, kampala_forecasting_split, kampala_site_ids
 from non_parametric_pro.inducing import PointInducingBasis, compute_inducing_basis, kmeans_inducing_points
 
 from scipy import stats
@@ -31,7 +31,7 @@ from blackjax.util import run_inference_algorithm
 
 from non_parametric_pro.util import nlpd_gp, nlpd_pro
 
-from non_parametric_pro.data.kampala_airquality import load_kampala_airquality_records, kampala_forecasting_split, kampala_site_ids
+from archive.kampala_airquality import load_kampala_airquality_records, kampala_forecasting_split, kampala_site_ids
 
 
 if __name__ == "__main__":

@@ -31,7 +31,7 @@ import optax as ox
 import paramax as px
 from omegaconf import DictConfig, OmegaConf
 
-from non_parametric_pro.data.kampala_airquality import (
+from archive.kampala_airquality import (
     KampalaAirQualityRecords,
     KampalaSplit,
     kampala_forecasting_split,
