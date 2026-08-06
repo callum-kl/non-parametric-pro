@@ -1,4 +1,5 @@
-import argparse
+import json
+import logging
 import os
 from pathlib import Path
 
@@ -14,40 +15,52 @@ import matplotlib
 # aborts the whole process if there's no X server -- as under plain WSL).
 matplotlib.use("Agg")
 
+import gpjax as gpx
+import hydra
 import jax.numpy as jnp
 import jax.random as jr
 import matplotlib.pyplot as plt
 import numpy as np
-
-import gpjax as gpx
 import optax as ox
 import paramax as px
+from fastprogress.fastprogress import progress_bar
+from omegaconf import DictConfig, OmegaConf
 
 from non_parametric_pro import ula
-from non_parametric_pro.density import ProParameters, pro_logdensity_fn, regularised_score
-from non_parametric_pro.ula import parametric_ula
-from non_parametric_pro.util import prediction_basis, nlpd_gp, nlpd_pro
-from non_parametric_pro.parameter_adaptation import cross_validated_parameter_adaptation
-from non_parametric_pro.util import run_inference_algorithm_with_burn_in, cholesky_basis
-
 from non_parametric_pro.data.heteroskedastic import (
     heteroskedastic_noise_std,
     make_heteroskedastic_instance,
 )
+from non_parametric_pro.density import (
+    ProParameters,
+    pro_logdensity_fn,
+    regularised_score,
+)
+from non_parametric_pro.parameter_adaptation import cross_validated_parameter_adaptation
+from non_parametric_pro.ula import parametric_ula
+from non_parametric_pro.util import (
+    cholesky_basis,
+    nlpd_gp,
+    nlpd_pro,
+    prediction_basis,
+    run_inference_algorithm_with_burn_in,
+)
 
-from fastprogress.fastprogress import progress_bar
+log = logging.getLogger(__name__)
 
-DEFAULT_SEED = 2421
-NUM_INSTANCES = 20
-NUM_PARTICLES = 32
-GRID_SHAPE = (5, 4)  # rows, cols -- rows * cols must equal NUM_INSTANCES
+OmegaConf.register_new_resolver(
+    "script_dir", lambda: str(Path(__file__).resolve().parent), replace=True
+)
+
 FIGURES_DIR = Path(__file__).resolve().parent / "figures"
 
 
 def _plot_case(ax, data):
-    """Plot one HeteroskedasticCase: true curve, +-1sigma/+-2sigma noise bands (both
+    """
+    Plot one HeteroskedasticCase: true curve, +-1sigma/+-2sigma noise bands (both
     evaluated on the full, sorted train+test pool for a smooth curve), and the
-    noisy observed training points."""
+    noisy observed training points.
+    """
     x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
     y_truth_full = jnp.concatenate([data.y_truth_train[:, 0], data.y_truth_test[:, 0]])
     order = jnp.argsort(x_full)
@@ -70,39 +83,41 @@ def _plot_case(ax, data):
     )
 
 
-def make_heteroscedastic_panel(key):
-    keys = jr.split(key, NUM_INSTANCES)
-    nrows, ncols = GRID_SHAPE
+def make_heteroskedastic_panel(
+    key, *, get_instance=make_heteroskedastic_instance, num_instances=20, grid_shape=(5, 4)
+):
+    keys = jr.split(key, num_instances)
+    nrows, ncols = grid_shape
     fig, axes = plt.subplots(nrows, ncols, figsize=(4 * ncols, 3 * nrows), sharex=True, sharey=True)
 
     for ax, instance_key in zip(axes.flat, keys, strict=True):
-        data = make_heteroskedastic_instance(instance_key)
+        data = get_instance(instance_key)
         _plot_case(ax, data)
 
     fig.tight_layout()
     fig.savefig(FIGURES_DIR / "heteroskedastic_panel.png", dpi=150)
 
 
-def run_heteroscedastic(key):
-    keys = jr.split(key, NUM_INSTANCES)
+def run_heteroskedastic(key, *, get_instance=make_heteroskedastic_instance, num_instances=20):
+    keys = jr.split(key, num_instances)
 
     fig, ax = plt.subplots()
 
     all_data = []
     for instance_key in keys:
-        all_data.append(make_heteroskedastic_instance(instance_key))
+        all_data.append(get_instance(instance_key))
 
     _plot_case(ax, all_data[12])
     fig.tight_layout()
     fig.savefig(FIGURES_DIR / "heteroskedastic_instance.png", dpi=150)
 
-def fit_gp(data, key=None):
+def fit_gp(data, key=None, *, kernel_lengthscale=0.3):
 
     x_train, y_train = data.x_train, data.y_train
     x_test, y_test = data.x_test, data.y_test
     gp_data = gpx.Dataset(X=x_train, y=y_train)
 
-    kernel = gpx.kernels.RBF(lengthscale=0.3)
+    kernel = gpx.kernels.RBF(lengthscale=kernel_lengthscale)
     prior = gpx.gps.Prior(mean_function=gpx.mean_functions.Zero(), kernel=kernel)
     likelihood = gpx.likelihoods.Gaussian(num_datapoints=x_train.shape[0])
     posterior = likelihood * prior
@@ -124,21 +139,44 @@ def fit_gp(data, key=None):
 
     return nlpd_gp(y_test, mean, std)
 
-def fit_pro(data, key):
-
+def fit_pro(  # noqa: PLR0913
+    data,
+    key,
+    *,
+    kernel_lengthscale=0.3,
+    step_size=0.0001,
+    alpha=1.0,
+    sigma_init=0.4,
+    sigma_min=0.1,
+    sigma_max=1.0,
+    num_particles=32,
+    num_folds=1,
+    val_fraction=0.25,
+    num_adapt_steps=10000,
+    warmup_steps=1000,
+    sigma_adapt_steps=200,
+    kernel_adapt_steps=100,
+    sigma_lr=0.1,
+    kernel_lr=0.01,
+    num_sample_steps=20000,
+    burn_fraction=0.9,
+    thin=10,
+):
     x_train, y_train = data.x_train, data.y_train
     x_test, y_test = data.x_test, data.y_test
 
-    sigma = gpx.parameters.SigmoidBounded(0.4, low=0.1, high=1.0)
+    sigma = gpx.parameters.SigmoidBounded(sigma_init, low=sigma_min, high=sigma_max)
     pro_params = ProParameters(
         y=y_train,
         basis=None,
-        step_size=0.0001,
+        step_size=step_size,
         sigma=sigma,
-        alpha=1.0,
+        alpha=alpha,
         residual_std=None,
     )
-    kernel = gpx.kernels.RBF(lengthscale=0.3, variance=px.NonTrainable(jnp.array(1.0)))
+    kernel = gpx.kernels.RBF(
+        lengthscale=kernel_lengthscale, variance=px.NonTrainable(jnp.array(1.0))
+    )
     key, cv_key = jr.split(key)
     cv_result = cross_validated_parameter_adaptation(
         ula,
@@ -147,17 +185,17 @@ def fit_pro(data, key):
         x_full=x_train,
         y_full=y_train,
         initial_kernel=kernel,
-        num_folds=1,
-        val_fraction=0.25,
-        num_particles=NUM_PARTICLES,
-        num_steps=10000,
-        warmup_steps=1000,
-        sigma_adapt_steps=200,
-        kernel_adapt_steps=100,
+        num_folds=num_folds,
+        val_fraction=val_fraction,
+        num_particles=num_particles,
+        num_steps=num_adapt_steps,
+        warmup_steps=warmup_steps,
+        sigma_adapt_steps=sigma_adapt_steps,
+        kernel_adapt_steps=kernel_adapt_steps,
         objective_fn=regularised_score,
         rng_key=cv_key,
-        sigma_optimizer=ox.adam(0.1),
-        kernel_optimizer=ox.adam(0.01),
+        sigma_optimizer=ox.adam(sigma_lr),
+        kernel_optimizer=ox.adam(kernel_lr),
         progress_bar=False,
     )
     adapted_kernel = cv_result.kernel
@@ -167,7 +205,7 @@ def fit_pro(data, key):
     key, pos_key = jr.split(key)
     basis = cholesky_basis(adapted_kernel, x_train)
     basis_dim = x_train.shape[0]
-    pro_position = jr.normal(pos_key, (basis_dim, NUM_PARTICLES))
+    pro_position = jr.normal(pos_key, (basis_dim, num_particles))
     pro_params = pro_params._replace(
         basis=basis,
         sigma=adapted_sigma_val,
@@ -179,14 +217,14 @@ def fit_pro(data, key):
     _, (states, _) = run_inference_algorithm_with_burn_in(
         rng_key=sample_key,
         inference_algorithm=algorithm,
-        num_steps=10000,
-        burn_ratio=0.9,
+        num_steps=num_sample_steps,
+        burn_ratio=burn_fraction,
         initial_position=pro_position,
         progress_bar=False,
     )
 
     # evaluate on test data
-    particles = states.position[::10]
+    particles = states.position[::thin]
     test_basis, test_cov = prediction_basis(
         adapted_kernel, x_train, x_test, pro_params
     )
@@ -195,7 +233,6 @@ def fit_pro(data, key):
     return nlpd
 
 def evaluate(get_instance, fit_function, key, num_instances):
-
     keys = jr.split(key, num_instances)
 
     nlpds = []
@@ -206,33 +243,141 @@ def evaluate(get_instance, fit_function, key, num_instances):
         nlpd = fit_function(data, fit_key)
         nlpds.append(nlpd)
 
-    mean = np.mean(nlpds)
-    std = np.std(nlpds)
+    mean = float(np.mean(nlpds))
+    std = float(np.std(nlpds))
 
-    print('\n')
-    print("--------------------------------------")
-    print(f"NLPD: {mean:.4f}±{std:.4f}")
+    log.info("NLPD: %.4f±%.4f", mean, std)
+    return mean, std, [float(v) for v in nlpds]
 
 
-if __name__=="__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
-    parser.add_argument("--source", type=str, default="heteroskedastic")
-    parser.add_argument("--n", type=int, default=20)
-    parser.add_argument("--algorithm", type=str, default="standard_gp")
-    args = parser.parse_args()
+# `source` -> kwarg names each dataset's yaml (conf/ds/*.yaml) is allowed to set on
+# top of `source` itself; only these are forwarded to the underlying instance
+# generator, so a ds config can override any subset without a code change here.
+_HETEROSKEDASTIC_KWARGS = (
+    "n", "test_fraction", "x_min", "x_max", "noise_floor_frac_range",
+    "amplitude_frac", "min_width", "max_width",
+    "ell_range", "alpha_range", "num_regions",
+)
 
-    if args.source == "heteroskedastic":
-        get_instance = make_heteroskedastic_instance
 
-    if args.algorithm == "standard_gp":
-        fit_algorithm = fit_gp
-    elif args.algorithm == "pro_gp":
-        fit_algorithm = fit_pro
-    else:
-        raise ValueError(f"Algorithm {args.algorithm} not suppored")
+def _heteroskedastic_instance_fn(cfg: DictConfig):
+    kwargs = {k: cfg[k] for k in _HETEROSKEDASTIC_KWARGS if k in cfg}
+    return lambda key: make_heteroskedastic_instance(key, **kwargs)
 
-    key = jr.PRNGKey(args.seed)
-    print(f"Evaluating {args.algorithm}")
-    evaluate(make_heteroskedastic_instance, fit_algorithm, key, args.n)
 
+_DATASET_SOURCES = {
+    "heteroskedastic": _heteroskedastic_instance_fn,
+}
+
+def _fit_gp_fn(cfg: DictConfig):
+    return lambda data, key=None: fit_gp(data, key=key, kernel_lengthscale=cfg.kernel.lengthscale)
+
+
+def _fit_pro_fn(cfg: DictConfig):
+    return lambda data, key: fit_pro(
+        data,
+        key,
+        kernel_lengthscale=cfg.kernel.lengthscale,
+        step_size=cfg.pro.step_size,
+        alpha=cfg.pro.alpha,
+        sigma_init=cfg.pro.sigma_init,
+        sigma_min=cfg.pro.sigma_min,
+        sigma_max=cfg.pro.sigma_max,
+        num_particles=cfg.pro.num_particles,
+        num_folds=cfg.pro.num_folds,
+        val_fraction=cfg.pro.val_fraction,
+        num_adapt_steps=cfg.pro.num_adapt_steps,
+        warmup_steps=cfg.pro.warmup_steps,
+        sigma_adapt_steps=cfg.pro.sigma_adapt_steps,
+        kernel_adapt_steps=cfg.pro.kernel_adapt_steps,
+        sigma_lr=cfg.pro.sigma_lr,
+        kernel_lr=cfg.pro.kernel_lr,
+        num_sample_steps=cfg.pro.num_sample_steps,
+        burn_fraction=cfg.pro.burn_fraction,
+        thin=cfg.pro.thin,
+    )
+
+
+_FIT_ALGORITHMS = {
+    "standard_gp": _fit_gp_fn,
+    "pro_gp": _fit_pro_fn,
+}
+
+
+def _get_instance_fn(cfg: DictConfig):
+    try:
+        build = _DATASET_SOURCES[cfg.source]
+    except KeyError:
+        msg = f"Dataset {cfg.source} not supported"
+        raise ValueError(msg) from None
+    return build(cfg)
+
+
+def _get_fit_algorithm(cfg: DictConfig):
+    try:
+        build = _FIT_ALGORITHMS[cfg.algorithm]
+    except KeyError:
+        msg = f"Algorithm {cfg.algorithm} not supported"
+        raise ValueError(msg) from None
+    return build(cfg)
+
+
+def out_dir(cfg: DictConfig, param_value) -> Path:
+    """Results land under results_root/<source>/<param_name>_<param_value>/<algorithm>,
+    keyed by each dataset's own declared `param_name` (e.g. `num_regions` for
+    heteroskedastic) rather than a name hardcoded here, since it differs per dataset."""
+    return (
+        Path(cfg.results_root)
+        / cfg.source
+        / f"{cfg.param_name}_{param_value}"
+        / cfg.algorithm
+    )
+
+
+@hydra.main(version_base=None, config_path="conf", config_name="synthetic")
+def main(cfg: DictConfig) -> None:
+    get_instance = _get_instance_fn(cfg)
+    key = jr.PRNGKey(cfg.seed)
+
+    if cfg.mode == "panel":
+        make_heteroskedastic_panel(
+            key,
+            get_instance=get_instance,
+            num_instances=cfg.panel.num_instances,
+            grid_shape=tuple(cfg.panel.grid_shape),
+        )
+        log.info("Saved panel to %s", FIGURES_DIR / "heteroskedastic_panel.png")
+        return
+
+    fit_algorithm = _get_fit_algorithm(cfg)
+    param_value = cfg[cfg.param_name]
+
+    log.info(
+        "Evaluating %s on %s (%s=%s)", cfg.algorithm, cfg.source, cfg.param_name, param_value
+    )
+    mean, std, nlpds = evaluate(get_instance, fit_algorithm, key, cfg.num_instances)
+
+    metrics = {
+        "source": cfg.source,
+        "algorithm": cfg.algorithm,
+        "param_name": cfg.param_name,
+        "param_value": param_value,
+        "num_instances": cfg.num_instances,
+        "seed": cfg.seed,
+        "nlpd_mean": mean,
+        "nlpd_std": std,
+        "nlpds": nlpds,
+    }
+
+    results_dir = out_dir(cfg, param_value)
+    results_dir.mkdir(parents=True, exist_ok=True)
+    with open(results_dir / "metrics.json", "w") as f:
+        json.dump(metrics, f, indent=2)
+    with open(results_dir / "config.json", "w") as f:
+        json.dump(OmegaConf.to_container(cfg), f, indent=2)
+
+    log.info("Saved results to %s", results_dir)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,242 @@
+import json
+from collections import defaultdict
+from pathlib import Path
+
+import numpy as np
+
+RESULTS_ROOT = Path(__file__).parent / "results"
+
+BASELINE_ALGORITHM = "standard_gp"
+Z_95 = 1.96  # normal-approximation critical value for a ~95% CI
+
+
+def collect():
+    """Return (records, param_names):
+    - records: {source: {param_value: {algorithm: {metric_dict}}}}, where metric_dict
+      has nlpd_mean/nlpd_std always, and nlpds/seed/num_instances when the underlying
+      metrics.json has them (older runs predating per-instance saving won't).
+    - param_names: {source: param_name} -- the distinguishing-parameter field name each
+      source's `conf/ds/*.yaml` declares (e.g. `num_regions` for heteroskedastic).
+    """
+    records: dict[str, dict[object, dict[str, dict]]] = defaultdict(lambda: defaultdict(dict))
+    param_names: dict[str, str] = {}
+
+    if not RESULTS_ROOT.exists():
+        return records, param_names
+
+    for source_dir in sorted(RESULTS_ROOT.iterdir()):
+        if not source_dir.is_dir():
+            continue
+        for param_dir in sorted(source_dir.iterdir()):
+            if not param_dir.is_dir():
+                continue
+            for algo_dir in sorted(param_dir.iterdir()):
+                metrics_path = algo_dir / "metrics.json"
+                if not metrics_path.exists():
+                    continue
+                metrics = json.loads(metrics_path.read_text())
+                source = metrics["source"]
+                param_names[source] = metrics["param_name"]
+                records[source][metrics["param_value"]][metrics["algorithm"]] = {
+                    "nlpd_mean": metrics["nlpd_mean"],
+                    "nlpd_std": metrics["nlpd_std"],
+                    "nlpds": metrics.get("nlpds"),
+                    "seed": metrics.get("seed"),
+                    "num_instances": metrics.get("num_instances"),
+                }
+
+    return records, param_names
+
+
+def print_tables(records, param_names):
+    for source in sorted(records):
+        param_name = param_names[source]
+        by_param = records[source]
+        algorithms = sorted({a for algos in by_param.values() for a in algos})
+
+        col_width = max(16, max((len(a) for a in algorithms), default=0) + 1)
+        header = f"{param_name:<16}" + "".join(f"{a:>{col_width}}" for a in algorithms)
+
+        print(f"\n{'─' * len(header)}")
+        print(f"  {source}  (mean±95% CI)")
+        print(f"{'─' * len(header)}")
+        print(header)
+        print("─" * len(header))
+        for param_value in sorted(by_param):
+            row = f"{param_value!s:<16}"
+            for algorithm in algorithms:
+                entry = by_param[param_value].get(algorithm)
+                if entry is None:
+                    row += f"{'—':>{col_width}}"
+                else:
+                    mean = entry["nlpd_mean"]
+                    ci95 = _nlpd_ci95(entry)
+                    cell = f"{mean:.4f}±{ci95:.4f}" if ci95 is not None else f"{mean:.4f}±?"
+                    row += f"{cell:>{col_width}}"
+            print(row)
+
+
+def save_csv(records, param_names, path: Path):
+    import csv
+
+    fieldnames = [
+        "source", "param_name", "param_value", "algorithm",
+        "nlpd_mean", "nlpd_std", "nlpd_ci95",
+    ]
+
+    with path.open("w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for source in sorted(records):
+            param_name = param_names[source]
+            for param_value in sorted(records[source]):
+                for algorithm, entry in sorted(records[source][param_value].items()):
+                    writer.writerow(
+                        {
+                            "source": source,
+                            "param_name": param_name,
+                            "param_value": param_value,
+                            "algorithm": algorithm,
+                            "nlpd_mean": entry["nlpd_mean"],
+                            "nlpd_std": entry["nlpd_std"],
+                            "nlpd_ci95": _nlpd_ci95(entry),
+                        }
+                    )
+
+    print(f"Saved to {path}")
+
+
+def _sample_std(values: list[float]) -> float:
+    """Sample std (ddof=1); 0.0 for a single value rather than np.std's NaN."""
+    return float(np.std(values, ddof=1)) if len(values) > 1 else 0.0
+
+
+def _nlpd_ci95(entry: dict) -> float | None:
+    """95% CI half-width (1.96*SEM) for `entry["nlpd_mean"]`, or None if it can't be
+    computed (missing num_instances -- shouldn't happen for runs from this script, but
+    metrics.json is hand-edited-recoverable so stay defensive).
+
+    Uses the sample std of the raw per-instance `nlpds` when available (consistent with
+    `compute_paired_diffs`); falls back to the population std already stored in
+    `nlpd_std` for older metrics.json files predating per-instance saving.
+    """
+    num_instances = entry.get("num_instances")
+    if not num_instances:
+        return None
+    std = _sample_std(entry["nlpds"]) if entry.get("nlpds") else entry["nlpd_std"]
+    return Z_95 * std / np.sqrt(num_instances)
+
+
+def compute_paired_diffs(records, baseline=BASELINE_ALGORITHM):
+    """{source: {param_value: {algorithm: {"diff_mean", "diff_std", "n"}}}}.
+
+    diff = algorithm's nlpd - baseline's nlpd, paired per instance (positive means worse
+    than baseline). Only computed when both runs recorded `nlpds` and share the same
+    seed/num_instances -- otherwise `nlpds[i]` in one run isn't guaranteed to be the same
+    drawn instance as `nlpds[i]` in the other, and the pairing would be meaningless.
+    """
+    diffs: dict[str, dict[object, dict[str, dict[str, float]]]] = defaultdict(
+        lambda: defaultdict(dict)
+    )
+
+    for source, by_param in records.items():
+        for param_value, by_algo in by_param.items():
+            base = by_algo.get(baseline)
+            if base is None or base.get("nlpds") is None:
+                continue
+            for algorithm, entry in by_algo.items():
+                if algorithm == baseline or entry.get("nlpds") is None:
+                    continue
+                if (
+                    entry["seed"] != base["seed"]
+                    or entry["num_instances"] != base["num_instances"]
+                    or len(entry["nlpds"]) != len(base["nlpds"])
+                ):
+                    continue
+                per_instance_diff = [
+                    a - b for a, b in zip(entry["nlpds"], base["nlpds"], strict=True)
+                ]
+                n = len(per_instance_diff)
+                sem = _sample_std(per_instance_diff) / np.sqrt(n)
+                diffs[source][param_value][algorithm] = {
+                    "diff_mean": float(np.mean(per_instance_diff)),
+                    "diff_sem": sem,
+                    "diff_ci95": Z_95 * sem,
+                    "n": n,
+                }
+
+    return diffs
+
+
+def print_diff_tables(diffs, param_names, baseline=BASELINE_ALGORITHM):
+    for source in sorted(diffs):
+        param_name = param_names[source]
+        by_param = diffs[source]
+        algorithms = sorted({a for algos in by_param.values() for a in algos})
+        if not algorithms:
+            continue
+
+        col_width = max(24, max((len(a) for a in algorithms), default=0) + 1)
+        header = f"{param_name:<16}" + "".join(f"{a:>{col_width}}" for a in algorithms)
+
+        print(f"\n{'─' * len(header)}")
+        print(f"  {source}  (Δ NLPD vs {baseline}, paired per instance, mean±95% CI)")
+        print(f"{'─' * len(header)}")
+        print(header)
+        print("─" * len(header))
+        for param_value in sorted(by_param):
+            row = f"{param_value!s:<16}"
+            for algorithm in algorithms:
+                entry = by_param[param_value].get(algorithm)
+                if entry is None:
+                    row += f"{'—':>{col_width}}"
+                else:
+                    mean, ci95, n = entry["diff_mean"], entry["diff_ci95"], entry["n"]
+                    row += f"{f'{mean:+.4f}±{ci95:.4f} (n={n})':>{col_width}}"
+            print(row)
+
+
+def save_diff_csv(diffs, param_names, path: Path, baseline=BASELINE_ALGORITHM):
+    import csv
+
+    fieldnames = [
+        "source", "param_name", "param_value", "baseline", "algorithm",
+        "diff_mean", "diff_sem", "diff_ci95", "n",
+    ]
+
+    with path.open("w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for source in sorted(diffs):
+            param_name = param_names[source]
+            for param_value in sorted(diffs[source]):
+                for algorithm, entry in sorted(diffs[source][param_value].items()):
+                    writer.writerow(
+                        {
+                            "source": source,
+                            "param_name": param_name,
+                            "param_value": param_value,
+                            "baseline": baseline,
+                            "algorithm": algorithm,
+                            "diff_mean": entry["diff_mean"],
+                            "diff_sem": entry["diff_sem"],
+                            "diff_ci95": entry["diff_ci95"],
+                            "n": entry["n"],
+                        }
+                    )
+
+    print(f"Saved to {path}")
+
+
+if __name__ == "__main__":
+    records, param_names = collect()
+    if not records:
+        print(f"No results found under {RESULTS_ROOT}")
+    else:
+        print_tables(records, param_names)
+        save_csv(records, param_names, RESULTS_ROOT / "summary.csv")
+
+        diffs = compute_paired_diffs(records)
+        if diffs:
+            print_diff_tables(diffs, param_names)
+            save_diff_csv(diffs, param_names, RESULTS_ROOT / "paired_diff.csv")

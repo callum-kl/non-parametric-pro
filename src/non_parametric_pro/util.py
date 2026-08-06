@@ -630,11 +630,7 @@ def run_inference_algorithm_with_burn_in(rng_key, inference_algorithm, num_steps
         state, _info = inference_algorithm.step(key, state)
         return state, None
 
-    print(f"Burning in for {num_burn_steps} steps...")
     state, _ = burn_scan_fn(burn_step, state, (jnp.arange(num_burn_steps), burn_keys))
-
-    print(f"Sampling for {num_sample_steps} steps...")
-    # Retained sampling: run_inference_algorithm's own progress bar, same style.
     final_state, (states, infos) = run_inference_algorithm(
         rng_key=sample_key,
         inference_algorithm=inference_algorithm,
