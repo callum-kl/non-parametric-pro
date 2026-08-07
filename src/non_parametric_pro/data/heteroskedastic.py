@@ -113,6 +113,26 @@ def heteroskedastic_noise_std(x: jax.Array, regions: NoiseRegions, *, noise_floo
     return jnp.sqrt(total_variance)
 
 
+def heteroskedastic_region_mask(x: jax.Array, regions: NoiseRegions) -> jax.Array:
+    """Boolean mask, True where `x` falls within any noise region's span
+    (``|x - center| <= width``).
+
+    This is the same span each region's bump tapers to exactly zero at for the
+    boxcar/ramp shapes, and roughly one std for the Gaussian bump -- a single
+    consistent membership rule across shapes, with no extra threshold to tune.
+    Used to split held-out points into "heteroskedastic-region" vs
+    "background" subsets for region-conditional evaluation (e.g. checking
+    whether a method pays a tax in well-specified regions in exchange for
+    doing better in misspecified ones).
+    """
+
+    def in_one_region(center, width):
+        return jnp.abs(x - center) <= width
+
+    in_any_region = jax.vmap(in_one_region)(regions.centers, regions.widths)
+    return jnp.any(in_any_region, axis=0)
+
+
 def make_heteroskedastic_instance(  # noqa: PLR0913
     key: PRNGKey,
     *,

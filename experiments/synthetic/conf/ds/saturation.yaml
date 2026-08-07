@@ -1,0 +1,7 @@
+# Note: for this dataset, *smaller* param_name values are more severe (a tighter clip
+# range censors more of the distribution) -- the opposite direction from most other
+# ds/*.yaml here (matching heavy_tailed.yaml's noise_df convention).
+source: saturation
+param_name: threshold_frac
+threshold_frac: 1.0
+noise_std_frac: 0.2

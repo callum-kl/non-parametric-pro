@@ -1,0 +1,5 @@
+source: interpolation_gap
+param_name: gap_frac
+gap_frac: 0.2
+noise_std_frac: 0.2
+ell_range: [0.1, 0.3]

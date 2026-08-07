@@ -3,7 +3,7 @@ defaults:
   - ds@_global_: heteroskedastic
 
 seed: 2421
-mode: evaluate  # evaluate | panel -- panel renders make_heteroskedastic_panel and exits
+mode: evaluate
 algorithm: standard_gp
 num_instances: 10
 

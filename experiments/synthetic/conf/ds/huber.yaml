@@ -1,0 +1,4 @@
+source: huber
+param_name: contamination_prob
+contamination_prob: 0.1
+outlier_scale: 10.0
