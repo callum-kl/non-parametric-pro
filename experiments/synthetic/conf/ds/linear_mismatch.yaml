@@ -1,0 +1,4 @@
+source: linear_mismatch
+param_name: linear_mix
+linear_mix: 0.9
+noise_std_frac: 0.2

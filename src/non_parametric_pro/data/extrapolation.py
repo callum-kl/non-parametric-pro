@@ -12,7 +12,7 @@ extrapolation performance and `region_nlpds["background"]` = ordinary generaliza
 performance, directly comparable via the same `aggregate_results.py` machinery.
 
 Whether to expect PRO to win here: probably not, for the same reason as
-`regime_switch.py`/`matern_mismatch.py`. A stationary kernel's covariance decays to
+`regime_switch.py`/`linear_mismatch.py`. A stationary kernel's covariance decays to
 ~0 with distance, so far from any training point *both* an exact GP and PRO's
 particle-based approximation revert toward the same prior-implied predictive (mean 0,
 variance `alpha`) -- the true predictive stays Gaussian everywhere, so there's no
@@ -86,7 +86,7 @@ def make_extrapolation_instance(  # noqa: PLR0913
     the domain (and thus a greater maximum distance from any training point) is held
     out -- consistent with the "larger swept value = worse" convention used by
     `amplitude_frac`/`mix_prob`/`roughness_factor`/`gap_frac`/`contamination_prob`/
-    `noise_skewness`/`matern_mix` elsewhere in this package.
+    `noise_skewness`/`linear_mix` elsewhere in this package.
 
     `test_fraction` applies only to the points *outside* the held-out edge (the
     "ordinary holdout" portion) -- points inside the edge are always held out,

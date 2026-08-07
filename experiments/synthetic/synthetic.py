@@ -42,7 +42,7 @@ from non_parametric_pro.data.interpolation_gap import (
     interpolation_gap_mask,
     make_interpolation_instance,
 )
-from non_parametric_pro.data.matern_mismatch import make_matern_mismatch_instance
+from non_parametric_pro.data.linear_mismatch import make_linear_mismatch_instance
 from non_parametric_pro.data.multimodal import (
     make_multimodal_instance,
     multimodal_region_mask,
@@ -264,13 +264,14 @@ def _plot_saturation_case(ax, data):
     )
 
 
-def _plot_matern_mismatch_case(ax, data):
+def _plot_linear_mismatch_case(ax, data):
     """
-    Plot one MaternMismatchCase: the single latent truth curve (drawn from the
-    RBF/Matern-3/2 blend -- visibly more jagged as `matern_mix` grows) and the noisy
-    observed points. No special coloring -- there's no hidden branch, censoring, or
-    outlier label here, just a single well-defined function whose *smoothness class*
-    is what's being tested, visible directly in how kinked the curve looks.
+    Plot one LinearMismatchCase: the single latent truth curve (drawn from the
+    RBF/Linear blend -- visibly wider swings toward the domain edges as `linear_mix`
+    grows, since the Linear component's marginal variance grows away from `x=0`) and
+    the noisy observed points. No special coloring -- there's no hidden branch,
+    censoring, or outlier label here, just a single well-defined function whose
+    *non-stationarity* is what's being tested.
     """
     x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
     y_full = jnp.concatenate([data.y_truth_train[:, 0], data.y_truth_test[:, 0]])
@@ -280,7 +281,7 @@ def _plot_matern_mismatch_case(ax, data):
     ax.plot(x_sorted, y_sorted, color="C0", linewidth=1.5)
     ax.scatter(data.x_train, data.y_train, color="black", s=8, zorder=3)
     ax.set_title(
-        f"$\\ell$={data.ell:.2f}  $\\alpha$={data.alpha:.2f}  matern={data.matern_mix:.2f}",
+        f"$\\ell$={data.ell:.2f}  $\\alpha$={data.alpha:.2f}  linear={data.linear_mix:.2f}",
         fontsize=9,
     )
 
@@ -349,7 +350,7 @@ _PLOT_CASE_FNS = {
     "huber": _plot_huber_case,
     "skewed": _plot_skewed_case,
     "saturation": _plot_saturation_case,
-    "matern_mismatch": _plot_matern_mismatch_case,
+    "linear_mismatch": _plot_linear_mismatch_case,
     "extrapolation": _plot_extrapolation_case,
 }
 
@@ -659,15 +660,15 @@ def _saturation_instance_fn(cfg: DictConfig):
     return lambda key: make_saturation_instance(key, **kwargs)
 
 
-_MATERN_MISMATCH_KWARGS = (
+_LINEAR_MISMATCH_KWARGS = (
     "n", "test_fraction", "x_min", "x_max", "noise_std_frac",
-    "matern_mix", "ell_range", "alpha_range",
+    "linear_mix", "ell_range", "alpha_range",
 )
 
 
-def _matern_mismatch_instance_fn(cfg: DictConfig):
-    kwargs = {k: cfg[k] for k in _MATERN_MISMATCH_KWARGS if k in cfg}
-    return lambda key: make_matern_mismatch_instance(key, **kwargs)
+def _linear_mismatch_instance_fn(cfg: DictConfig):
+    kwargs = {k: cfg[k] for k in _LINEAR_MISMATCH_KWARGS if k in cfg}
+    return lambda key: make_linear_mismatch_instance(key, **kwargs)
 
 
 _EXTRAPOLATION_KWARGS = (
@@ -690,7 +691,7 @@ _DATASET_SOURCES = {
     "huber": _huber_instance_fn,
     "skewed": _skewed_instance_fn,
     "saturation": _saturation_instance_fn,
-    "matern_mismatch": _matern_mismatch_instance_fn,
+    "linear_mismatch": _linear_mismatch_instance_fn,
     "extrapolation": _extrapolation_instance_fn,
 }
 
@@ -719,7 +720,7 @@ def _extrapolation_region_mask_fn(data):
 # (see `evaluate`'s `region_mask_fn`). Sources with no natural "region" notion (or not
 # yet wired up) are simply absent, and `_get_region_mask_fn` returns None for them --
 # `main` treats that as "skip the region split" rather than an error. `heavy_tailed`,
-# `huber`, `skewed`, `saturation`, and `matern_mismatch` are deliberately absent: their
+# `huber`, `skewed`, `saturation`, and `linear_mismatch` are deliberately absent: their
 # misspecification is global, not regional (see their module docstrings), so there's no
 # "region" to split on.
 _REGION_MASK_FNS = {

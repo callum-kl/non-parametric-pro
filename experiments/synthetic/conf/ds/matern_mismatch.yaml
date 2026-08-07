@@ -1,5 +1,0 @@
-source: matern_mismatch
-param_name: matern_mix
-matern_mix: 0.8
-noise_std_frac: 0.2
-
