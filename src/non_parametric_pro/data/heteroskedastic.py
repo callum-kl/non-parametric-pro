@@ -218,25 +218,32 @@ def make_heteroskedastic_instance(  # noqa: PLR0913
     )
 
 
-def plot_heteroskedastic_case(ax, data: HeteroskedasticCase) -> None:
+def plot_heteroskedastic_case(
+    ax, data: HeteroskedasticCase, *, show_curve: bool = True, show_noise_bands: bool = True
+) -> None:
     """Plot one HeteroskedasticCase: true curve, +-1sigma/+-2sigma noise bands (both
     evaluated on the full, sorted train+test pool for a smooth curve), and the noisy
-    observed training points."""
+    observed training points. `show_curve=False`/`show_noise_bands=False` skip the
+    truth-curve line / true-variance bands respectively -- e.g. when overlaying a
+    fitted model's own predictive band on the same axes, where the true curve/bands
+    would otherwise clutter/compete with it."""
     x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
     y_truth_full = jnp.concatenate([data.y_truth_train[:, 0], data.y_truth_test[:, 0]])
     order = jnp.argsort(x_full)
     x_sorted, y_truth_sorted = x_full[order], y_truth_full[order]
-    sigma_sorted = heteroskedastic_noise_std(x_sorted, data.regions, noise_floor=data.noise_floor)
 
-    ax.plot(x_sorted, y_truth_sorted, color="C0", linewidth=1.5)
-    ax.fill_between(
-        x_sorted, y_truth_sorted - 2 * sigma_sorted, y_truth_sorted + 2 * sigma_sorted,
-        color="C0", alpha=0.15, linewidth=0,
-    )
-    ax.fill_between(
-        x_sorted, y_truth_sorted - sigma_sorted, y_truth_sorted + sigma_sorted,
-        color="C0", alpha=0.3, linewidth=0,
-    )
+    if show_curve:
+        ax.plot(x_sorted, y_truth_sorted, color="C0", linewidth=1.5)
+    if show_noise_bands:
+        sigma_sorted = heteroskedastic_noise_std(x_sorted, data.regions, noise_floor=data.noise_floor)
+        ax.fill_between(
+            x_sorted, y_truth_sorted - 2 * sigma_sorted, y_truth_sorted + 2 * sigma_sorted,
+            color="C0", alpha=0.15, linewidth=0,
+        )
+        ax.fill_between(
+            x_sorted, y_truth_sorted - sigma_sorted, y_truth_sorted + sigma_sorted,
+            color="C0", alpha=0.3, linewidth=0,
+        )
     ax.scatter(data.x_train, data.y_train, color="black", s=8, zorder=3)
     ax.set_title(
         f"$\\sigma_0$={data.noise_floor:.2f}  $\\ell$={data.ell:.2f}  $\\alpha$={data.alpha:.2f}",

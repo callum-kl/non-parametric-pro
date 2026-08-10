@@ -2,6 +2,7 @@ import json
 import logging
 import os
 from pathlib import Path
+from typing import NamedTuple
 
 # Must be set before `import jax` (and before any transitive jax import, e.g. via
 # gpjax) -- setting it later doesn't reliably take effect before jax's backend
@@ -91,7 +92,9 @@ from non_parametric_pro.util import (
     cholesky_basis,
     nlpd_gp,
     nlpd_pro,
+    posterior_function_draws,
     prediction_basis,
+    predictive_moments,
     run_inference_algorithm_with_burn_in,
 )
 
@@ -173,7 +176,21 @@ def run_dataset_instance(
     fig.tight_layout()
     fig.savefig(FIGURES_DIR / filename, dpi=150)
 
-def fit_gp(data, key=None, *, kernel_lengthscale=0.3, kernel_type="rbf"):
+class FitResult(NamedTuple):
+    """A fitted model's test-set predictive summary: `mean`/`std` for plotting a
+    (moment-matched) predictive band, `nlpd_per_point` for scoring (what `evaluate`
+    actually uses). `function_draws` is `fit_pro`-only (shape `(N_test, num_draws)`,
+    `None` for `fit_gp`) -- smooth, coherent posterior function trajectories, for when
+    `mean`/`std` alone would hide a multimodal predictive (see
+    `non_parametric_pro.util.posterior_function_draws`)."""
+
+    mean: jnp.ndarray
+    std: jnp.ndarray
+    nlpd_per_point: jnp.ndarray
+    function_draws: jnp.ndarray | None = None
+
+
+def fit_gp(data, key=None, *, kernel_lengthscale=0.3, kernel_type="rbf") -> FitResult:
 
     x_train, y_train = data.x_train, data.y_train
     x_test, y_test = data.x_test, data.y_test
@@ -202,7 +219,8 @@ def fit_gp(data, key=None, *, kernel_lengthscale=0.3, kernel_type="rbf"):
     mean = predictive.mean
     std = jnp.sqrt(predictive.variance)
 
-    return nlpd_gp(y_test, mean, std, return_per_point=True)
+    nlpd_per_point = nlpd_gp(y_test, mean, std, return_per_point=True)
+    return FitResult(mean=mean, std=std, nlpd_per_point=nlpd_per_point)
 
 def fit_pro(  # noqa: PLR0913
     data,
@@ -227,6 +245,7 @@ def fit_pro(  # noqa: PLR0913
     num_sample_steps=20000,
     burn_fraction=0.9,
     thin=10,
+    num_function_draws=50,
 ):
     x_train, y_train = data.x_train, data.y_train
     x_test, y_test = data.x_test, data.y_test
@@ -295,9 +314,29 @@ def fit_pro(  # noqa: PLR0913
     test_basis, test_cov = prediction_basis(
         adapted_kernel, x_train, x_test, pro_params
     )
-    return nlpd_pro(
+    nlpd_per_point = nlpd_pro(
         y_test, test_basis, test_cov, particles, parameters=pro_params, return_per_point=True
     )
+
+    # Same mixture-of-Gaussians predictive `nlpd_pro` scores internally (see its
+    # docstring): mean/variance of a uniform mixture over retained particles, each
+    # itself Gaussian with std sigma_eff = sqrt(sigma^2 + residual_std^2), where
+    # residual_std is the sparse-approximation gap `sqrt(k(x*,x*) - ||B*||^2)` (zero
+    # for this full-GP path, since prediction_basis was called without inducing_basis).
+    sigma_val = px.unwrap(pro_params.sigma)
+    residual_std = jnp.sqrt(
+        jnp.maximum(jnp.diag(test_cov) - jnp.sum(test_basis**2, axis=1), 0.0)
+    )
+    mean, std = predictive_moments(
+        test_basis, particles, noise_std=sigma_val, residual_std=residual_std
+    )
+
+    draw_key, _ = jr.split(key)
+    function_draws = posterior_function_draws(
+        draw_key, test_basis, test_cov, particles, num_draws=num_function_draws
+    )
+
+    return FitResult(mean=mean, std=std, nlpd_per_point=nlpd_per_point, function_draws=function_draws)
 
 
 def evaluate(get_instance, fit_function, key, num_instances, *, region_mask_fn=None):
@@ -320,7 +359,7 @@ def evaluate(get_instance, fit_function, key, num_instances, *, region_mask_fn=N
     for instance_key in progress_bar(keys):
         data = get_instance(instance_key)
         fit_key, instance_key = jr.split(instance_key)
-        nlpd_per_point = fit_function(data, fit_key)
+        nlpd_per_point = fit_function(data, fit_key).nlpd_per_point
         nlpds.append(float(jnp.mean(nlpd_per_point)))
 
         if region_mask_fn is not None:
@@ -478,7 +517,7 @@ def debug_instance(cfg: DictConfig) -> None:
 
     data = get_instance(instance_key)
     fit_key, _ = jr.split(instance_key)
-    nlpd_per_point = fit_algorithm(data, fit_key)
+    nlpd_per_point = fit_algorithm(data, fit_key).nlpd_per_point
     nlpd = float(jnp.mean(nlpd_per_point))
     log.info(
         "Instance %d/%d (%s, %s=%s): NLPD=%.4f",

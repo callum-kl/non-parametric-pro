@@ -2,7 +2,8 @@
   "seed": 2421,
   "mode": "evaluate",
   "algorithm": "standard_gp",
-  "num_instances": 10,
+  "num_instances": 2,
+  "instance_index": 0,
   "results_root": "${script_dir:}/results",
   "kernel": {
     "lengthscale": 0.3

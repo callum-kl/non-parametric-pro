@@ -248,7 +248,9 @@ def make_multimodal_instance(  # noqa: PLR0913
     )
 
 
-def plot_multimodal_case(ax, data: MultimodalCase) -> None:
+def plot_multimodal_case(
+    ax, data: MultimodalCase, *, show_curves: bool = True, color_by_branch: bool = True
+) -> None:
     """Plot one MultimodalCase: the shared background curve (blue) and the alternate
     branch (orange) -- `y_alt` is constructed to already coincide with `y_shared`
     outside a region (see `make_multimodal_instance`), so plotting both over their full
@@ -256,23 +258,31 @@ def plot_multimodal_case(ax, data: MultimodalCase) -> None:
     and diverge only toward its center, rather than needing to be cut off/hidden away
     from the region. Training points are colored by which branch actually generated
     them (recovering that split is exactly what a model *can't* do, since `z` is
-    hidden -- this is a diagnostic only)."""
-    x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
-    y_shared_full = jnp.concatenate(
-        [data.y_truth_shared_train[:, 0], data.y_truth_shared_test[:, 0]]
-    )
-    y_alt_full = jnp.concatenate([data.y_truth_alt_train[:, 0], data.y_truth_alt_test[:, 0]])
-    order = jnp.argsort(x_full)
-    x_sorted = x_full[order]
-    y_shared_sorted = y_shared_full[order]
-    y_alt_sorted = y_alt_full[order]
+    hidden -- this is a diagnostic only). `show_curves=False` skips both truth-curve
+    lines; `color_by_branch=False` additionally drops the branch color split and plots
+    all training points black -- e.g. when overlaying a fitted model's own predictive
+    mean on the same axes, where the blue/orange split (with no curve to anchor it to)
+    can read as two different fits rather than one hidden-mode dataset."""
+    if show_curves:
+        x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
+        y_shared_full = jnp.concatenate(
+            [data.y_truth_shared_train[:, 0], data.y_truth_shared_test[:, 0]]
+        )
+        y_alt_full = jnp.concatenate([data.y_truth_alt_train[:, 0], data.y_truth_alt_test[:, 0]])
+        order = jnp.argsort(x_full)
+        x_sorted = x_full[order]
+        y_shared_sorted = y_shared_full[order]
+        y_alt_sorted = y_alt_full[order]
 
-    ax.plot(x_sorted, y_shared_sorted, color="C0", linewidth=1.5)
-    ax.plot(x_sorted, y_alt_sorted, color="C1", linewidth=1.5)
+        ax.plot(x_sorted, y_shared_sorted, color="C0", linewidth=1.5)
+        ax.plot(x_sorted, y_alt_sorted, color="C1", linewidth=1.5)
 
-    z_train = data.z_train
-    ax.scatter(data.x_train[~z_train], data.y_train[~z_train], color="C0", s=8, zorder=3)
-    ax.scatter(data.x_train[z_train], data.y_train[z_train], color="C1", s=8, zorder=3)
+    if color_by_branch:
+        z_train = data.z_train
+        ax.scatter(data.x_train[~z_train], data.y_train[~z_train], color="C0", s=8, zorder=3)
+        ax.scatter(data.x_train[z_train], data.y_train[z_train], color="C1", s=8, zorder=3)
+    else:
+        ax.scatter(data.x_train, data.y_train, color="black", s=8, zorder=3)
     ax.set_title(f"$\\ell$={data.ell:.2f}  $\\alpha$={data.alpha:.2f}", fontsize=9)
 
 
