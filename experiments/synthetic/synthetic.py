@@ -38,6 +38,9 @@ from non_parametric_pro.data.heteroskedastic import (
     make_heteroskedastic_instance,
 )
 from non_parametric_pro.data.huber import make_huber_instance
+from non_parametric_pro.data.hyperparameter_ambiguous import (
+    make_hyperparameter_ambiguous_instance,
+)
 from non_parametric_pro.data.interpolation_gap import (
     interpolation_gap_mask,
     make_interpolation_instance,
@@ -337,6 +340,27 @@ def _plot_extrapolation_case(ax, data):
     ax.set_title(f"$\\ell$={data.ell:.2f}  $\\alpha$={data.alpha:.2f}", fontsize=9)
 
 
+def _plot_hyperparameter_ambiguous_case(ax, data):
+    """
+    Plot one HyperparameterAmbiguousCase: the true (short-lengthscale) curve evaluated
+    densely over the combined train+test pool, the sparse black training points, and
+    the much denser gray test points -- visually, the point is that the black points
+    alone give little hint of how wiggly the true curve actually is *between* them.
+    """
+    x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
+    y_full = jnp.concatenate([data.y_truth_train[:, 0], data.y_truth_test[:, 0]])
+    order = jnp.argsort(x_full)
+    x_sorted, y_sorted = x_full[order], y_full[order]
+
+    ax.plot(x_sorted, y_sorted, color="C0", linewidth=1.0, alpha=0.6)
+    ax.scatter(data.x_test, data.y_test, color="gray", s=6, zorder=2)
+    ax.scatter(data.x_train, data.y_train, color="black", s=20, zorder=3)
+    ax.set_title(
+        f"$\\ell$={data.ell:.2f}  $\\alpha$={data.alpha:.2f}  n={data.x_train.shape[0]}",
+        fontsize=9,
+    )
+
+
 # `source` -> `(ax, data) -> None` plotting function, used by `make_dataset_panel`/
 # `run_dataset_instance`. Each dataset's `data` struct has different fields (noise
 # regions vs. two candidate functions + hidden mode), so unlike `_DATASET_SOURCES` etc.
@@ -352,6 +376,7 @@ _PLOT_CASE_FNS = {
     "saturation": _plot_saturation_case,
     "linear_mismatch": _plot_linear_mismatch_case,
     "extrapolation": _plot_extrapolation_case,
+    "hyperparameter_ambiguous": _plot_hyperparameter_ambiguous_case,
 }
 
 
@@ -528,6 +553,7 @@ def fit_pro(  # noqa: PLR0913
         y_test, test_basis, test_cov, particles, parameters=pro_params, return_per_point=True
     )
 
+
 def evaluate(get_instance, fit_function, key, num_instances, *, region_mask_fn=None):
     """Fit/evaluate `num_instances` draws, returning (mean, std, nlpds, region_nlpds).
 
@@ -682,6 +708,16 @@ def _extrapolation_instance_fn(cfg: DictConfig):
     return lambda key: make_extrapolation_instance(key, **kwargs)
 
 
+_HYPERPARAMETER_AMBIGUOUS_KWARGS = (
+    "n_train", "n_test", "x_min", "x_max", "noise_std_frac", "ell_range", "alpha_range",
+)
+
+
+def _hyperparameter_ambiguous_instance_fn(cfg: DictConfig):
+    kwargs = {k: cfg[k] for k in _HYPERPARAMETER_AMBIGUOUS_KWARGS if k in cfg}
+    return lambda key: make_hyperparameter_ambiguous_instance(key, **kwargs)
+
+
 _DATASET_SOURCES = {
     "heteroskedastic": _heteroskedastic_instance_fn,
     "multimodal": _multimodal_instance_fn,
@@ -693,6 +729,7 @@ _DATASET_SOURCES = {
     "saturation": _saturation_instance_fn,
     "linear_mismatch": _linear_mismatch_instance_fn,
     "extrapolation": _extrapolation_instance_fn,
+    "hyperparameter_ambiguous": _hyperparameter_ambiguous_instance_fn,
 }
 
 
@@ -722,7 +759,9 @@ def _extrapolation_region_mask_fn(data):
 # `main` treats that as "skip the region split" rather than an error. `heavy_tailed`,
 # `huber`, `skewed`, `saturation`, and `linear_mismatch` are deliberately absent: their
 # misspecification is global, not regional (see their module docstrings), so there's no
-# "region" to split on.
+# "region" to split on. `hyperparameter_ambiguous` is deliberately absent too -- its
+# test points are drawn independently and densely, not split into a distinguished
+# region vs. background.
 _REGION_MASK_FNS = {
     "heteroskedastic": _heteroskedastic_region_mask_fn,
     "multimodal": _multimodal_region_mask_fn,

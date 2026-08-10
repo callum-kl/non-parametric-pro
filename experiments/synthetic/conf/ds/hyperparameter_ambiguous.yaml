@@ -1,0 +1,4 @@
+source: hyperparameter_ambiguous
+param_name: n_train
+n_train: 20
+noise_std_frac: 0.2
