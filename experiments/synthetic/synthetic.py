@@ -28,34 +28,58 @@ from omegaconf import DictConfig, OmegaConf
 
 from non_parametric_pro import ula
 from non_parametric_pro.data.extrapolation import (
+    EXTRAPOLATION_KWARGS,
     extrapolation_region_mask,
     make_extrapolation_instance,
+    plot_extrapolation_case,
 )
-from non_parametric_pro.data.heavy_tailed import make_heavy_tailed_instance
+from non_parametric_pro.data.heavy_tailed import (
+    HEAVY_TAILED_KWARGS,
+    make_heavy_tailed_instance,
+    plot_heavy_tailed_case,
+)
 from non_parametric_pro.data.heteroskedastic import (
-    heteroskedastic_noise_std,
+    HETEROSKEDASTIC_KWARGS,
     heteroskedastic_region_mask,
     make_heteroskedastic_instance,
+    plot_heteroskedastic_case,
 )
-from non_parametric_pro.data.huber import make_huber_instance
-from non_parametric_pro.data.hyperparameter_ambiguous import (
-    make_hyperparameter_ambiguous_instance,
-)
+from non_parametric_pro.data.huber import HUBER_KWARGS, make_huber_instance, plot_huber_case
 from non_parametric_pro.data.interpolation_gap import (
+    INTERPOLATION_GAP_KWARGS,
     interpolation_gap_mask,
     make_interpolation_instance,
+    plot_interpolation_case,
 )
-from non_parametric_pro.data.linear_mismatch import make_linear_mismatch_instance
+from non_parametric_pro.data.linear_mismatch import (
+    LINEAR_MISMATCH_KWARGS,
+    make_linear_mismatch_instance,
+    plot_linear_mismatch_case,
+)
 from non_parametric_pro.data.multimodal import (
+    MULTIMODAL_KWARGS,
     make_multimodal_instance,
     multimodal_region_mask,
+    plot_multimodal_case,
 )
 from non_parametric_pro.data.regime_switch import (
+    REGIME_SWITCH_KWARGS,
     make_regime_switch_instance,
+    plot_regime_switch_case,
     regime_switch_region_mask,
 )
-from non_parametric_pro.data.saturation import make_saturation_instance
-from non_parametric_pro.data.skewed import make_skewed_instance
+from non_parametric_pro.data.saturation import (
+    SATURATION_KWARGS,
+    make_saturation_instance,
+    plot_saturation_case,
+)
+from non_parametric_pro.data.skewed import SKEWED_KWARGS, make_skewed_instance, plot_skewed_case
+from non_parametric_pro.data.well_specified import (
+    WELL_SPECIFIED_KWARGS,
+    build_kernel,
+    make_well_specified_instance,
+    plot_well_specified_case,
+)
 from non_parametric_pro.density import (
     ProParameters,
     pro_logdensity_fn,
@@ -80,303 +104,23 @@ OmegaConf.register_new_resolver(
 FIGURES_DIR = Path(__file__).resolve().parent / "figures"
 
 
-def _plot_heteroskedastic_case(ax, data):
-    """
-    Plot one HeteroskedasticCase: true curve, +-1sigma/+-2sigma noise bands (both
-    evaluated on the full, sorted train+test pool for a smooth curve), and the
-    noisy observed training points.
-    """
-    x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
-    y_truth_full = jnp.concatenate([data.y_truth_train[:, 0], data.y_truth_test[:, 0]])
-    order = jnp.argsort(x_full)
-    x_sorted, y_truth_sorted = x_full[order], y_truth_full[order]
-    sigma_sorted = heteroskedastic_noise_std(x_sorted, data.regions, noise_floor=data.noise_floor)
-
-    ax.plot(x_sorted, y_truth_sorted, color="C0", linewidth=1.5)
-    ax.fill_between(
-        x_sorted, y_truth_sorted - 2 * sigma_sorted, y_truth_sorted + 2 * sigma_sorted,
-        color="C0", alpha=0.15, linewidth=0,
-    )
-    ax.fill_between(
-        x_sorted, y_truth_sorted - sigma_sorted, y_truth_sorted + sigma_sorted,
-        color="C0", alpha=0.3, linewidth=0,
-    )
-    ax.scatter(data.x_train, data.y_train, color="black", s=8, zorder=3)
-    ax.set_title(
-        f"$\\sigma_0$={data.noise_floor:.2f}  $\\ell$={data.ell:.2f}  $\\alpha$={data.alpha:.2f}",
-        fontsize=9,
-    )
-
-
-def _plot_multimodal_case(ax, data):
-    """
-    Plot one MultimodalCase: the shared background curve (blue) and the alternate
-    branch (orange) -- `y_alt` is constructed to already coincide with `y_shared`
-    outside a region (see `make_multimodal_instance`), so plotting both over their full
-    extent shows a genuine fork: the two curves visibly touch at each region's edges
-    and diverge only toward its center, rather than needing to be cut off/hidden away
-    from the region. Training points are colored by which branch actually generated
-    them (recovering that split is exactly what a model *can't* do, since `z` is
-    hidden -- this is a diagnostic only).
-    """
-    x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
-    y_shared_full = jnp.concatenate(
-        [data.y_truth_shared_train[:, 0], data.y_truth_shared_test[:, 0]]
-    )
-    y_alt_full = jnp.concatenate([data.y_truth_alt_train[:, 0], data.y_truth_alt_test[:, 0]])
-    order = jnp.argsort(x_full)
-    x_sorted = x_full[order]
-    y_shared_sorted = y_shared_full[order]
-    y_alt_sorted = y_alt_full[order]
-
-    ax.plot(x_sorted, y_shared_sorted, color="C0", linewidth=1.5)
-    ax.plot(x_sorted, y_alt_sorted, color="C1", linewidth=1.5)
-
-    z_train = data.z_train
-    ax.scatter(data.x_train[~z_train], data.y_train[~z_train], color="C0", s=8, zorder=3)
-    ax.scatter(data.x_train[z_train], data.y_train[z_train], color="C1", s=8, zorder=3)
-    ax.set_title(f"$\\ell$={data.ell:.2f}  $\\alpha$={data.alpha:.2f}", fontsize=9)
-
-
-def _plot_regime_switch_case(ax, data):
-    """
-    Plot one RegimeSwitchCase: the single latent truth curve (no bands, no second
-    branch -- it's an unambiguous, single-valued function throughout) and the noisy
-    observed training points. Each region's span is lightly shaded so it's visible
-    where the shorter-lengthscale (rougher) perturbation applies, since otherwise
-    there's no color/branch cue the way there is for `_plot_multimodal_case`.
-    """
-    x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
-    y_full = jnp.concatenate([data.y_truth_train[:, 0], data.y_truth_test[:, 0]])
-    order = jnp.argsort(x_full)
-    x_sorted, y_sorted = x_full[order], y_full[order]
-
-    for center, width in zip(data.regions.centers, data.regions.widths, strict=True):
-        ax.axvspan(float(center - width), float(center + width), color="C1", alpha=0.15, linewidth=0)
-
-    ax.plot(x_sorted, y_sorted, color="C0", linewidth=1.5)
-    ax.scatter(data.x_train, data.y_train, color="black", s=8, zorder=3)
-    ax.set_title(
-        f"$\\ell$={data.ell:.2f}  $\\ell_r$={data.ell_region:.2f}  $\\alpha$={data.alpha:.2f}",
-        fontsize=9,
-    )
-
-
-def _plot_heavy_tailed_case(ax, data):
-    """
-    Plot one HeavyTailedCase: the single latent truth curve and observed points, applied
-    over the whole domain (no region -- see the module docstring on why this dataset
-    tests a *global* rather than local misspecification). Points more than 2 noise stds
-    from the curve are highlighted (orange) purely as a visual diagnostic of where the
-    heavy tails show up in this particular draw -- it's not a structural split like the
-    other datasets' region masks, just `|residual| > 2*noise_std`.
-    """
-    x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
-    y_full = jnp.concatenate([data.y_truth_train[:, 0], data.y_truth_test[:, 0]])
-    order = jnp.argsort(x_full)
-    x_sorted, y_sorted = x_full[order], y_full[order]
-
-    ax.plot(x_sorted, y_sorted, color="C0", linewidth=1.5)
-
-    residual = data.y_train[:, 0] - data.y_truth_train[:, 0]
-    is_outlier = jnp.abs(residual) > 2 * data.noise_std
-    ax.scatter(data.x_train[~is_outlier], data.y_train[~is_outlier], color="black", s=8, zorder=3)
-    ax.scatter(data.x_train[is_outlier], data.y_train[is_outlier], color="C1", s=8, zorder=3)
-    ax.set_title(
-        f"$\\ell$={data.ell:.2f}  $\\alpha$={data.alpha:.2f}  $\\nu$={data.noise_df:.1f}",
-        fontsize=9,
-    )
-
-
-def _plot_huber_case(ax, data):
-    """
-    Plot one HuberCase: the single latent truth curve and observed points, colored by
-    the *true* (hidden) contamination indicator -- orange = drawn from the wide
-    outlier-scale Gaussian, black = ordinary noise. Applied over the whole domain (no
-    region), matching `heavy_tailed.py`'s final form -- gross errors aren't spatially
-    correlated with x in the classical Huber model. Unlike `_plot_heavy_tailed_case`
-    (which has to guess outliers via a residual threshold), this dataset actually
-    generates a ground-truth contamination label, so we use it directly.
-    """
-    x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
-    y_full = jnp.concatenate([data.y_truth_train[:, 0], data.y_truth_test[:, 0]])
-    order = jnp.argsort(x_full)
-    x_sorted, y_sorted = x_full[order], y_full[order]
-
-    ax.plot(x_sorted, y_sorted, color="C0", linewidth=1.5)
-
-    is_outlier = data.is_outlier_train
-    ax.scatter(data.x_train[~is_outlier], data.y_train[~is_outlier], color="black", s=8, zorder=3)
-    ax.scatter(data.x_train[is_outlier], data.y_train[is_outlier], color="C1", s=8, zorder=3)
-    ax.set_title(
-        f"$\\ell$={data.ell:.2f}  $\\alpha$={data.alpha:.2f}  $\\epsilon$={data.contamination_prob:.2f}",
-        fontsize=9,
-    )
-
-
-def _plot_skewed_case(ax, data):
-    """
-    Plot one SkewedCase: the single latent truth curve and observed points, applied
-    over the whole domain (no region -- skewness isn't spatially correlated with x any
-    more than heavy tails or contamination are). Points more than 1.5 noise stds out on
-    the *long-tail side* (using the instance's known `skew_sign`, not a symmetric
-    threshold like `_plot_heavy_tailed_case`'s) are highlighted -- the asymmetry should
-    show up as most of the highlighted points sitting on one side of the curve, not
-    scattered evenly above and below it.
-    """
-    x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
-    y_full = jnp.concatenate([data.y_truth_train[:, 0], data.y_truth_test[:, 0]])
-    order = jnp.argsort(x_full)
-    x_sorted, y_sorted = x_full[order], y_full[order]
-
-    ax.plot(x_sorted, y_sorted, color="C0", linewidth=1.5)
-
-    residual = data.y_train[:, 0] - data.y_truth_train[:, 0]
-    is_long_tail = (data.skew_sign * residual) > 1.5 * data.noise_std
-    ax.scatter(data.x_train[~is_long_tail], data.y_train[~is_long_tail], color="black", s=8, zorder=3)
-    ax.scatter(data.x_train[is_long_tail], data.y_train[is_long_tail], color="C1", s=8, zorder=3)
-    ax.set_title(
-        f"$\\ell$={data.ell:.2f}  $\\alpha$={data.alpha:.2f}  "
-        f"skew={data.skew_sign * data.noise_skewness:+.1f}",
-        fontsize=9,
-    )
-
-
-def _plot_saturation_case(ax, data):
-    """
-    Plot one SaturationCase: the single latent truth curve, dashed lines at the +/-
-    saturation threshold, and observed points colored by the *true* (hidden) censoring
-    indicator -- orange points sit exactly on one of the threshold lines (the classic
-    "flat-lined" signature of a saturated sensor), black points are uncensored.
-    """
-    x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
-    y_full = jnp.concatenate([data.y_truth_train[:, 0], data.y_truth_test[:, 0]])
-    order = jnp.argsort(x_full)
-    x_sorted, y_sorted = x_full[order], y_full[order]
-
-    ax.axhline(data.threshold, color="C1", linewidth=1.0, linestyle="--", alpha=0.6)
-    ax.axhline(-data.threshold, color="C1", linewidth=1.0, linestyle="--", alpha=0.6)
-    ax.plot(x_sorted, y_sorted, color="C0", linewidth=1.5)
-
-    is_censored = data.is_censored_train
-    ax.scatter(data.x_train[~is_censored], data.y_train[~is_censored], color="black", s=8, zorder=3)
-    ax.scatter(data.x_train[is_censored], data.y_train[is_censored], color="C1", s=8, zorder=3)
-    ax.set_title(
-        f"$\\ell$={data.ell:.2f}  $\\alpha$={data.alpha:.2f}  thr={data.threshold:.2f}",
-        fontsize=9,
-    )
-
-
-def _plot_linear_mismatch_case(ax, data):
-    """
-    Plot one LinearMismatchCase: the single latent truth curve (drawn from the
-    RBF/Linear blend -- visibly wider swings toward the domain edges as `linear_mix`
-    grows, since the Linear component's marginal variance grows away from `x=0`) and
-    the noisy observed points. No special coloring -- there's no hidden branch,
-    censoring, or outlier label here, just a single well-defined function whose
-    *non-stationarity* is what's being tested.
-    """
-    x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
-    y_full = jnp.concatenate([data.y_truth_train[:, 0], data.y_truth_test[:, 0]])
-    order = jnp.argsort(x_full)
-    x_sorted, y_sorted = x_full[order], y_full[order]
-
-    ax.plot(x_sorted, y_sorted, color="C0", linewidth=1.5)
-    ax.scatter(data.x_train, data.y_train, color="black", s=8, zorder=3)
-    ax.set_title(
-        f"$\\ell$={data.ell:.2f}  $\\alpha$={data.alpha:.2f}  linear={data.linear_mix:.2f}",
-        fontsize=9,
-    )
-
-
-def _plot_interpolation_case(ax, data):
-    """
-    Plot one InterpolationCase: the single latent truth curve, the gap's span shaded,
-    training points (black), the interpolation-gap test points (orange, inside the
-    shading -- the model never saw any training data anywhere nearby), and the ordinary
-    random-holdout test points (gray, scattered like any other train/test split).
-    """
-    x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
-    y_full = jnp.concatenate([data.y_truth_train[:, 0], data.y_truth_test[:, 0]])
-    order = jnp.argsort(x_full)
-    x_sorted, y_sorted = x_full[order], y_full[order]
-
-    ax.axvspan(
-        data.gap_center - data.gap_width / 2, data.gap_center + data.gap_width / 2,
-        color="C1", alpha=0.15, linewidth=0,
-    )
-    ax.plot(x_sorted, y_sorted, color="C0", linewidth=1.5)
-
-    in_gap = interpolation_gap_mask(data.x_test[:, 0], data.gap_center, data.gap_width)
-    ax.scatter(data.x_train, data.y_train, color="black", s=8, zorder=3)
-    ax.scatter(data.x_test[~in_gap], data.y_test[~in_gap], color="gray", s=8, zorder=3)
-    ax.scatter(data.x_test[in_gap], data.y_test[in_gap], color="C1", s=8, zorder=3)
-    ax.set_title(f"$\\ell$={data.ell:.2f}  $\\alpha$={data.alpha:.2f}", fontsize=9)
-
-
-def _plot_extrapolation_case(ax, data):
-    """
-    Plot one ExtrapolationCase: the single latent truth curve, the held-out edge
-    shaded, training points (black), the extrapolation test points (orange, inside the
-    shading -- beyond the edge of any training data, unlike `_plot_interpolation_case`'s
-    gap which has data on both sides), and the ordinary random-holdout test points
-    (gray, scattered like any other train/test split).
-    """
-    x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
-    y_full = jnp.concatenate([data.y_truth_train[:, 0], data.y_truth_test[:, 0]])
-    order = jnp.argsort(x_full)
-    x_sorted, y_sorted = x_full[order], y_full[order]
-
-    edge = float(x_sorted.max()) if data.extrapolate_right else float(x_sorted.min())
-    ax.axvspan(
-        min(data.boundary, edge), max(data.boundary, edge), color="C1", alpha=0.15, linewidth=0
-    )
-    ax.plot(x_sorted, y_sorted, color="C0", linewidth=1.5)
-
-    in_extrap = extrapolation_region_mask(data.x_test[:, 0], data.boundary, data.extrapolate_right)
-    ax.scatter(data.x_train, data.y_train, color="black", s=8, zorder=3)
-    ax.scatter(data.x_test[~in_extrap], data.y_test[~in_extrap], color="gray", s=8, zorder=3)
-    ax.scatter(data.x_test[in_extrap], data.y_test[in_extrap], color="C1", s=8, zorder=3)
-    ax.set_title(f"$\\ell$={data.ell:.2f}  $\\alpha$={data.alpha:.2f}", fontsize=9)
-
-
-def _plot_hyperparameter_ambiguous_case(ax, data):
-    """
-    Plot one HyperparameterAmbiguousCase: the true (short-lengthscale) curve evaluated
-    densely over the combined train+test pool, the sparse black training points, and
-    the much denser gray test points -- visually, the point is that the black points
-    alone give little hint of how wiggly the true curve actually is *between* them.
-    """
-    x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
-    y_full = jnp.concatenate([data.y_truth_train[:, 0], data.y_truth_test[:, 0]])
-    order = jnp.argsort(x_full)
-    x_sorted, y_sorted = x_full[order], y_full[order]
-
-    ax.plot(x_sorted, y_sorted, color="C0", linewidth=1.0, alpha=0.6)
-    ax.scatter(data.x_test, data.y_test, color="gray", s=6, zorder=2)
-    ax.scatter(data.x_train, data.y_train, color="black", s=20, zorder=3)
-    ax.set_title(
-        f"$\\ell$={data.ell:.2f}  $\\alpha$={data.alpha:.2f}  n={data.x_train.shape[0]}",
-        fontsize=9,
-    )
-
-
 # `source` -> `(ax, data) -> None` plotting function, used by `make_dataset_panel`/
-# `run_dataset_instance`. Each dataset's `data` struct has different fields (noise
-# regions vs. two candidate functions + hidden mode), so unlike `_DATASET_SOURCES` etc.
-# there's no shared generic plot -- each source needs its own.
+# `run_dataset_instance`. Each plot function lives next to its dataset's generator (in
+# `non_parametric_pro.data.<source>`), since it's tied to that dataset's specific case
+# fields (noise regions vs. two candidate functions + hidden mode, etc.) -- there's no
+# shared generic plot the way there's a generic `_instance_fn` below.
 _PLOT_CASE_FNS = {
-    "heteroskedastic": _plot_heteroskedastic_case,
-    "multimodal": _plot_multimodal_case,
-    "regime_switch": _plot_regime_switch_case,
-    "heavy_tailed": _plot_heavy_tailed_case,
-    "interpolation_gap": _plot_interpolation_case,
-    "huber": _plot_huber_case,
-    "skewed": _plot_skewed_case,
-    "saturation": _plot_saturation_case,
-    "linear_mismatch": _plot_linear_mismatch_case,
-    "extrapolation": _plot_extrapolation_case,
-    "hyperparameter_ambiguous": _plot_hyperparameter_ambiguous_case,
+    "heteroskedastic": plot_heteroskedastic_case,
+    "multimodal": plot_multimodal_case,
+    "regime_switch": plot_regime_switch_case,
+    "heavy_tailed": plot_heavy_tailed_case,
+    "interpolation_gap": plot_interpolation_case,
+    "huber": plot_huber_case,
+    "skewed": plot_skewed_case,
+    "saturation": plot_saturation_case,
+    "linear_mismatch": plot_linear_mismatch_case,
+    "extrapolation": plot_extrapolation_case,
+    "well_specified": plot_well_specified_case,
 }
 
 
@@ -392,7 +136,7 @@ def make_dataset_panel(
     key,
     *,
     get_instance=make_heteroskedastic_instance,
-    plot_case_fn=_plot_heteroskedastic_case,
+    plot_case_fn=plot_heteroskedastic_case,
     num_instances=20,
     grid_shape=(5, 4),
     filename="heteroskedastic_panel.png",
@@ -413,7 +157,7 @@ def run_dataset_instance(
     key,
     *,
     get_instance=make_heteroskedastic_instance,
-    plot_case_fn=_plot_heteroskedastic_case,
+    plot_case_fn=plot_heteroskedastic_case,
     num_instances=20,
     filename="heteroskedastic_instance.png",
 ):
@@ -429,13 +173,16 @@ def run_dataset_instance(
     fig.tight_layout()
     fig.savefig(FIGURES_DIR / filename, dpi=150)
 
-def fit_gp(data, key=None, *, kernel_lengthscale=0.3):
+def fit_gp(data, key=None, *, kernel_lengthscale=0.3, kernel_type="rbf"):
 
     x_train, y_train = data.x_train, data.y_train
     x_test, y_test = data.x_test, data.y_test
     gp_data = gpx.Dataset(X=x_train, y=y_train)
 
-    kernel = gpx.kernels.RBF(lengthscale=kernel_lengthscale)
+    # `kernel_type` defaults to "rbf" (matching every dataset except well_specified,
+    # which is the one place fitting deliberately matches the data's own generative
+    # kernel family -- see `_fit_gp_fn`, which pulls it from `data.kernel_type`).
+    kernel = build_kernel(kernel_type, lengthscale=kernel_lengthscale)
     prior = gpx.gps.Prior(mean_function=gpx.mean_functions.Zero(), kernel=kernel)
     likelihood = gpx.likelihoods.Gaussian(num_datapoints=x_train.shape[0])
     posterior = likelihood * prior
@@ -462,6 +209,7 @@ def fit_pro(  # noqa: PLR0913
     key,
     *,
     kernel_lengthscale=0.3,
+    kernel_type="rbf",
     step_size=0.0001,
     alpha=1.0,
     sigma_init=0.4,
@@ -495,9 +243,7 @@ def fit_pro(  # noqa: PLR0913
     # kernel = gpx.kernels.RBF(
     #     lengthscale=kernel_lengthscale, variance=px.NonTrainable(jnp.array(1.0))
     # )
-    kernel = gpx.kernels.RBF(
-        lengthscale=kernel_lengthscale
-    )
+    kernel = build_kernel(kernel_type, lengthscale=kernel_lengthscale)
     key, cv_key = jr.split(key)
     cv_result = cross_validated_parameter_adaptation(
         ula,
@@ -594,143 +340,27 @@ def evaluate(get_instance, fit_function, key, num_instances, *, region_mask_fn=N
     return mean, std, nlpds, region_nlpds
 
 
-# `source` -> kwarg names each dataset's yaml (conf/ds/*.yaml) is allowed to set on
-# top of `source` itself; only these are forwarded to the underlying instance
-# generator, so a ds config can override any subset without a code change here.
-_HETEROSKEDASTIC_KWARGS = (
-    "n", "test_fraction", "x_min", "x_max", "noise_floor_frac_range",
-    "amplitude_frac", "min_width", "max_width",
-    "ell_range", "alpha_range", "num_regions",
-)
-
-
-def _heteroskedastic_instance_fn(cfg: DictConfig):
-    kwargs = {k: cfg[k] for k in _HETEROSKEDASTIC_KWARGS if k in cfg}
-    return lambda key: make_heteroskedastic_instance(key, **kwargs)
-
-
-_MULTIMODAL_KWARGS = (
-    "n", "test_fraction", "x_min", "x_max", "noise_std_frac",
-    "mix_prob", "min_width", "max_width", "ell_range", "alpha_range", "num_regions",
-)
-
-
-def _multimodal_instance_fn(cfg: DictConfig):
-    kwargs = {k: cfg[k] for k in _MULTIMODAL_KWARGS if k in cfg}
-    return lambda key: make_multimodal_instance(key, **kwargs)
-
-
-_REGIME_SWITCH_KWARGS = (
-    "n", "test_fraction", "x_min", "x_max", "noise_std_frac",
-    "roughness_factor", "min_width", "max_width", "ell_range", "alpha_range", "num_regions",
-)
-
-
-def _regime_switch_instance_fn(cfg: DictConfig):
-    kwargs = {k: cfg[k] for k in _REGIME_SWITCH_KWARGS if k in cfg}
-    return lambda key: make_regime_switch_instance(key, **kwargs)
-
-
-_HEAVY_TAILED_KWARGS = (
-    "n", "test_fraction", "x_min", "x_max", "noise_std_frac",
-    "noise_df", "ell_range", "alpha_range",
-)
-
-
-def _heavy_tailed_instance_fn(cfg: DictConfig):
-    kwargs = {k: cfg[k] for k in _HEAVY_TAILED_KWARGS if k in cfg}
-    return lambda key: make_heavy_tailed_instance(key, **kwargs)
-
-
-_INTERPOLATION_GAP_KWARGS = (
-    "n", "test_fraction", "x_min", "x_max", "noise_std_frac",
-    "gap_frac", "ell_range", "alpha_range",
-)
-
-
-def _interpolation_gap_instance_fn(cfg: DictConfig):
-    kwargs = {k: cfg[k] for k in _INTERPOLATION_GAP_KWARGS if k in cfg}
-    return lambda key: make_interpolation_instance(key, **kwargs)
-
-
-_HUBER_KWARGS = (
-    "n", "test_fraction", "x_min", "x_max", "noise_std_frac",
-    "contamination_prob", "outlier_scale", "ell_range", "alpha_range",
-)
-
-
-def _huber_instance_fn(cfg: DictConfig):
-    kwargs = {k: cfg[k] for k in _HUBER_KWARGS if k in cfg}
-    return lambda key: make_huber_instance(key, **kwargs)
-
-
-_SKEWED_KWARGS = (
-    "n", "test_fraction", "x_min", "x_max", "noise_std_frac",
-    "noise_skewness", "ell_range", "alpha_range",
-)
-
-
-def _skewed_instance_fn(cfg: DictConfig):
-    kwargs = {k: cfg[k] for k in _SKEWED_KWARGS if k in cfg}
-    return lambda key: make_skewed_instance(key, **kwargs)
-
-
-_SATURATION_KWARGS = (
-    "n", "test_fraction", "x_min", "x_max", "noise_std_frac",
-    "threshold_frac", "ell_range", "alpha_range",
-)
-
-
-def _saturation_instance_fn(cfg: DictConfig):
-    kwargs = {k: cfg[k] for k in _SATURATION_KWARGS if k in cfg}
-    return lambda key: make_saturation_instance(key, **kwargs)
-
-
-_LINEAR_MISMATCH_KWARGS = (
-    "n", "test_fraction", "x_min", "x_max", "noise_std_frac",
-    "linear_mix", "ell_range", "alpha_range",
-)
-
-
-def _linear_mismatch_instance_fn(cfg: DictConfig):
-    kwargs = {k: cfg[k] for k in _LINEAR_MISMATCH_KWARGS if k in cfg}
-    return lambda key: make_linear_mismatch_instance(key, **kwargs)
-
-
-_EXTRAPOLATION_KWARGS = (
-    "n", "test_fraction", "x_min", "x_max", "noise_std_frac",
-    "extrapolation_frac", "ell_range", "alpha_range",
-)
-
-
-def _extrapolation_instance_fn(cfg: DictConfig):
-    kwargs = {k: cfg[k] for k in _EXTRAPOLATION_KWARGS if k in cfg}
-    return lambda key: make_extrapolation_instance(key, **kwargs)
-
-
-_HYPERPARAMETER_AMBIGUOUS_KWARGS = (
-    "n_train", "n_test", "x_min", "x_max", "noise_std_frac", "ell_range", "alpha_range",
-)
-
-
-def _hyperparameter_ambiguous_instance_fn(cfg: DictConfig):
-    kwargs = {k: cfg[k] for k in _HYPERPARAMETER_AMBIGUOUS_KWARGS if k in cfg}
-    return lambda key: make_hyperparameter_ambiguous_instance(key, **kwargs)
-
-
 _DATASET_SOURCES = {
-    "heteroskedastic": _heteroskedastic_instance_fn,
-    "multimodal": _multimodal_instance_fn,
-    "regime_switch": _regime_switch_instance_fn,
-    "heavy_tailed": _heavy_tailed_instance_fn,
-    "interpolation_gap": _interpolation_gap_instance_fn,
-    "huber": _huber_instance_fn,
-    "skewed": _skewed_instance_fn,
-    "saturation": _saturation_instance_fn,
-    "linear_mismatch": _linear_mismatch_instance_fn,
-    "extrapolation": _extrapolation_instance_fn,
-    "hyperparameter_ambiguous": _hyperparameter_ambiguous_instance_fn,
+    "heteroskedastic": (make_heteroskedastic_instance, HETEROSKEDASTIC_KWARGS),
+    "multimodal": (make_multimodal_instance, MULTIMODAL_KWARGS),
+    "regime_switch": (make_regime_switch_instance, REGIME_SWITCH_KWARGS),
+    "heavy_tailed": (make_heavy_tailed_instance, HEAVY_TAILED_KWARGS),
+    "interpolation_gap": (make_interpolation_instance, INTERPOLATION_GAP_KWARGS),
+    "huber": (make_huber_instance, HUBER_KWARGS),
+    "skewed": (make_skewed_instance, SKEWED_KWARGS),
+    "saturation": (make_saturation_instance, SATURATION_KWARGS),
+    "linear_mismatch": (make_linear_mismatch_instance, LINEAR_MISMATCH_KWARGS),
+    "extrapolation": (make_extrapolation_instance, EXTRAPOLATION_KWARGS),
+    "well_specified": (make_well_specified_instance, WELL_SPECIFIED_KWARGS),
 }
+
+
+def _instance_fn(make_instance, kwarg_names, cfg: DictConfig):
+    """Build a `key -> data` closure for `make_instance`, forwarding only the subset of
+    `kwarg_names` that `cfg` actually sets -- so a `ds` config can override any subset
+    of a generator's parameters without a code change here."""
+    kwargs = {k: cfg[k] for k in kwarg_names if k in cfg}
+    return lambda key: make_instance(key, **kwargs)
 
 
 def _heteroskedastic_region_mask_fn(data):
@@ -753,15 +383,6 @@ def _extrapolation_region_mask_fn(data):
     return extrapolation_region_mask(data.x_test[:, 0], data.boundary, data.extrapolate_right)
 
 
-# `source` -> `data -> bool mask over data.x_test` for region-conditional evaluation
-# (see `evaluate`'s `region_mask_fn`). Sources with no natural "region" notion (or not
-# yet wired up) are simply absent, and `_get_region_mask_fn` returns None for them --
-# `main` treats that as "skip the region split" rather than an error. `heavy_tailed`,
-# `huber`, `skewed`, `saturation`, and `linear_mismatch` are deliberately absent: their
-# misspecification is global, not regional (see their module docstrings), so there's no
-# "region" to split on. `hyperparameter_ambiguous` is deliberately absent too -- its
-# test points are drawn independently and densely, not split into a distinguished
-# region vs. background.
 _REGION_MASK_FNS = {
     "heteroskedastic": _heteroskedastic_region_mask_fn,
     "multimodal": _multimodal_region_mask_fn,
@@ -776,7 +397,15 @@ def _get_region_mask_fn(cfg: DictConfig):
 
 
 def _fit_gp_fn(cfg: DictConfig):
-    return lambda data, key=None: fit_gp(data, key=key, kernel_lengthscale=cfg.kernel.lengthscale)
+    # `data.kernel_type` only exists on WellSpecifiedCase -- every other dataset fits a
+    # fixed generic RBF regardless of (or *because* it doesn't match) how the data was
+    # generated, which is the whole point of those datasets being misspecified.
+    return lambda data, key=None: fit_gp(
+        data,
+        key=key,
+        kernel_lengthscale=cfg.kernel.lengthscale,
+        kernel_type=getattr(data, "kernel_type", "rbf"),
+    )
 
 
 def _fit_pro_fn(cfg: DictConfig):
@@ -784,6 +413,7 @@ def _fit_pro_fn(cfg: DictConfig):
         data,
         key,
         kernel_lengthscale=cfg.kernel.lengthscale,
+        kernel_type=getattr(data, "kernel_type", "rbf"),
         step_size=cfg.pro.step_size,
         alpha=cfg.pro.alpha,
         sigma_init=cfg.pro.sigma_init,
@@ -812,11 +442,11 @@ _FIT_ALGORITHMS = {
 
 def _get_instance_fn(cfg: DictConfig):
     try:
-        build = _DATASET_SOURCES[cfg.source]
+        make_instance, kwarg_names = _DATASET_SOURCES[cfg.source]
     except KeyError:
         msg = f"Dataset {cfg.source} not supported"
         raise ValueError(msg) from None
-    return build(cfg)
+    return _instance_fn(make_instance, kwarg_names, cfg)
 
 
 def _get_fit_algorithm(cfg: DictConfig):
@@ -826,6 +456,41 @@ def _get_fit_algorithm(cfg: DictConfig):
         msg = f"Algorithm {cfg.algorithm} not supported"
         raise ValueError(msg) from None
     return build(cfg)
+
+
+def debug_instance(cfg: DictConfig) -> None:
+    """Re-run a single instance from an `evaluate` run by index, reproducing exactly
+    the same draw and fit `evaluate` used -- for isolating an outlier NLPD spotted in
+    a saved metrics.json (`nlpds[i]`) without re-running the whole sweep.
+
+    Pass the *same* seed/source/algorithm/param overrides the original run used (they
+    round-trip through the saved `config.json`) plus `mode=instance instance_index=i`;
+    `jr.split(key, num_instances)` is deterministic, so `keys[i]` -- and everything
+    downstream of it -- reproduces bit-for-bit.
+    """
+    get_instance = _get_instance_fn(cfg)
+    fit_algorithm = _get_fit_algorithm(cfg)
+    plot_case_fn = _get_plot_case_fn(cfg)
+
+    key = jr.PRNGKey(cfg.seed)
+    keys = jr.split(key, cfg.num_instances)
+    instance_key = keys[cfg.instance_index]
+
+    data = get_instance(instance_key)
+    fit_key, _ = jr.split(instance_key)
+    nlpd_per_point = fit_algorithm(data, fit_key)
+    nlpd = float(jnp.mean(nlpd_per_point))
+    log.info(
+        "Instance %d/%d (%s, %s=%s): NLPD=%.4f",
+        cfg.instance_index, cfg.num_instances, cfg.algorithm, cfg.param_name,
+        cfg[cfg.param_name], nlpd,
+    )
+
+    fig, ax = plt.subplots()
+    plot_case_fn(ax, data)
+    filename = f"{cfg.source}_instance{cfg.instance_index}.png"
+    fig.savefig(FIGURES_DIR / filename, dpi=150)
+    log.info("Saved instance plot to %s", FIGURES_DIR / filename)
 
 
 def out_dir(cfg: DictConfig, param_value) -> Path:
@@ -842,6 +507,10 @@ def out_dir(cfg: DictConfig, param_value) -> Path:
 
 @hydra.main(version_base=None, config_path="conf", config_name="synthetic")
 def main(cfg: DictConfig) -> None:
+    if cfg.mode == "instance":
+        debug_instance(cfg)
+        return
+
     get_instance = _get_instance_fn(cfg)
     key = jr.PRNGKey(cfg.seed)
 

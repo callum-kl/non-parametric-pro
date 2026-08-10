@@ -116,3 +116,36 @@ def make_heavy_tailed_instance(
         ell=float(ell),
         alpha=float(alpha),
     )
+
+
+def plot_heavy_tailed_case(ax, data: HeavyTailedCase) -> None:
+    """Plot one HeavyTailedCase: the single latent truth curve and observed points, applied
+    over the whole domain (no region -- see the module docstring on why this dataset
+    tests a *global* rather than local misspecification). Points more than 2 noise stds
+    from the curve are highlighted (orange) purely as a visual diagnostic of where the
+    heavy tails show up in this particular draw -- it's not a structural split like the
+    other datasets' region masks, just `|residual| > 2*noise_std`."""
+    x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
+    y_full = jnp.concatenate([data.y_truth_train[:, 0], data.y_truth_test[:, 0]])
+    order = jnp.argsort(x_full)
+    x_sorted, y_sorted = x_full[order], y_full[order]
+
+    ax.plot(x_sorted, y_sorted, color="C0", linewidth=1.5)
+
+    residual = data.y_train[:, 0] - data.y_truth_train[:, 0]
+    is_outlier = jnp.abs(residual) > 2 * data.noise_std
+    ax.scatter(data.x_train[~is_outlier], data.y_train[~is_outlier], color="black", s=8, zorder=3)
+    ax.scatter(data.x_train[is_outlier], data.y_train[is_outlier], color="C1", s=8, zorder=3)
+    ax.set_title(
+        f"$\\ell$={data.ell:.2f}  $\\alpha$={data.alpha:.2f}  $\\nu$={data.noise_df:.1f}",
+        fontsize=9,
+    )
+
+
+# Allowed keys a `ds` config (experiments/synthetic/conf/ds/*.yaml) can set on top of
+# `source` itself; only these are forwarded to `make_heavy_tailed_instance`, so a
+# config can override any subset without a code change in synthetic.py.
+HEAVY_TAILED_KWARGS = (
+    "n", "test_fraction", "x_min", "x_max", "noise_std_frac",
+    "noise_df", "ell_range", "alpha_range",
+)

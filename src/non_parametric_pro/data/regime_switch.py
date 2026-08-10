@@ -215,3 +215,34 @@ def make_regime_switch_instance(  # noqa: PLR0913
         ell_region=float(ell_region),
         regions=regions,
     )
+
+
+def plot_regime_switch_case(ax, data: RegimeSwitchCase) -> None:
+    """Plot one RegimeSwitchCase: the single latent truth curve (no bands, no second
+    branch -- it's an unambiguous, single-valued function throughout) and the noisy
+    observed training points. Each region's span is lightly shaded so it's visible
+    where the shorter-lengthscale (rougher) perturbation applies, since otherwise
+    there's no color/branch cue the way there is for `plot_multimodal_case`."""
+    x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
+    y_full = jnp.concatenate([data.y_truth_train[:, 0], data.y_truth_test[:, 0]])
+    order = jnp.argsort(x_full)
+    x_sorted, y_sorted = x_full[order], y_full[order]
+
+    for center, width in zip(data.regions.centers, data.regions.widths, strict=True):
+        ax.axvspan(float(center - width), float(center + width), color="C1", alpha=0.15, linewidth=0)
+
+    ax.plot(x_sorted, y_sorted, color="C0", linewidth=1.5)
+    ax.scatter(data.x_train, data.y_train, color="black", s=8, zorder=3)
+    ax.set_title(
+        f"$\\ell$={data.ell:.2f}  $\\ell_r$={data.ell_region:.2f}  $\\alpha$={data.alpha:.2f}",
+        fontsize=9,
+    )
+
+
+# Allowed keys a `ds` config (experiments/synthetic/conf/ds/*.yaml) can set on top of
+# `source` itself; only these are forwarded to `make_regime_switch_instance`, so a
+# config can override any subset without a code change in synthetic.py.
+REGIME_SWITCH_KWARGS = (
+    "n", "test_fraction", "x_min", "x_max", "noise_std_frac",
+    "roughness_factor", "min_width", "max_width", "ell_range", "alpha_range", "num_regions",
+)

@@ -119,3 +119,38 @@ def make_skewed_instance(
         ell=float(ell),
         alpha=float(alpha),
     )
+
+
+def plot_skewed_case(ax, data: SkewedCase) -> None:
+    """Plot one SkewedCase: the single latent truth curve and observed points, applied
+    over the whole domain (no region -- skewness isn't spatially correlated with x any
+    more than heavy tails or contamination are). Points more than 1.5 noise stds out on
+    the *long-tail side* (using the instance's known `skew_sign`, not a symmetric
+    threshold like `plot_heavy_tailed_case`'s) are highlighted -- the asymmetry should
+    show up as most of the highlighted points sitting on one side of the curve, not
+    scattered evenly above and below it."""
+    x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
+    y_full = jnp.concatenate([data.y_truth_train[:, 0], data.y_truth_test[:, 0]])
+    order = jnp.argsort(x_full)
+    x_sorted, y_sorted = x_full[order], y_full[order]
+
+    ax.plot(x_sorted, y_sorted, color="C0", linewidth=1.5)
+
+    residual = data.y_train[:, 0] - data.y_truth_train[:, 0]
+    is_long_tail = (data.skew_sign * residual) > 1.5 * data.noise_std
+    ax.scatter(data.x_train[~is_long_tail], data.y_train[~is_long_tail], color="black", s=8, zorder=3)
+    ax.scatter(data.x_train[is_long_tail], data.y_train[is_long_tail], color="C1", s=8, zorder=3)
+    ax.set_title(
+        f"$\\ell$={data.ell:.2f}  $\\alpha$={data.alpha:.2f}  "
+        f"skew={data.skew_sign * data.noise_skewness:+.1f}",
+        fontsize=9,
+    )
+
+
+# Allowed keys a `ds` config (experiments/synthetic/conf/ds/*.yaml) can set on top of
+# `source` itself; only these are forwarded to `make_skewed_instance`, so a
+# config can override any subset without a code change in synthetic.py.
+SKEWED_KWARGS = (
+    "n", "test_fraction", "x_min", "x_max", "noise_std_frac",
+    "noise_skewness", "ell_range", "alpha_range",
+)

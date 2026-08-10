@@ -130,3 +130,35 @@ def make_interpolation_instance(  # noqa: PLR0913
         gap_center=float(gap_center),
         gap_width=float(gap_width),
     )
+
+
+def plot_interpolation_case(ax, data: InterpolationCase) -> None:
+    """Plot one InterpolationCase: the single latent truth curve, the gap's span shaded,
+    training points (black), the interpolation-gap test points (orange, inside the
+    shading -- the model never saw any training data anywhere nearby), and the ordinary
+    random-holdout test points (gray, scattered like any other train/test split)."""
+    x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
+    y_full = jnp.concatenate([data.y_truth_train[:, 0], data.y_truth_test[:, 0]])
+    order = jnp.argsort(x_full)
+    x_sorted, y_sorted = x_full[order], y_full[order]
+
+    ax.axvspan(
+        data.gap_center - data.gap_width / 2, data.gap_center + data.gap_width / 2,
+        color="C1", alpha=0.15, linewidth=0,
+    )
+    ax.plot(x_sorted, y_sorted, color="C0", linewidth=1.5)
+
+    in_gap = interpolation_gap_mask(data.x_test[:, 0], data.gap_center, data.gap_width)
+    ax.scatter(data.x_train, data.y_train, color="black", s=8, zorder=3)
+    ax.scatter(data.x_test[~in_gap], data.y_test[~in_gap], color="gray", s=8, zorder=3)
+    ax.scatter(data.x_test[in_gap], data.y_test[in_gap], color="C1", s=8, zorder=3)
+    ax.set_title(f"$\\ell$={data.ell:.2f}  $\\alpha$={data.alpha:.2f}", fontsize=9)
+
+
+# Allowed keys a `ds` config (experiments/synthetic/conf/ds/*.yaml) can set on top of
+# `source` itself; only these are forwarded to `make_interpolation_instance`, so a
+# config can override any subset without a code change in synthetic.py.
+INTERPOLATION_GAP_KWARGS = (
+    "n", "test_fraction", "x_min", "x_max", "noise_std_frac",
+    "gap_frac", "ell_range", "alpha_range",
+)

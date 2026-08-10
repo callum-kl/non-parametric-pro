@@ -216,3 +216,39 @@ def make_heteroskedastic_instance(  # noqa: PLR0913
         alpha=float(alpha),
         regions=regions,
     )
+
+
+def plot_heteroskedastic_case(ax, data: HeteroskedasticCase) -> None:
+    """Plot one HeteroskedasticCase: true curve, +-1sigma/+-2sigma noise bands (both
+    evaluated on the full, sorted train+test pool for a smooth curve), and the noisy
+    observed training points."""
+    x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
+    y_truth_full = jnp.concatenate([data.y_truth_train[:, 0], data.y_truth_test[:, 0]])
+    order = jnp.argsort(x_full)
+    x_sorted, y_truth_sorted = x_full[order], y_truth_full[order]
+    sigma_sorted = heteroskedastic_noise_std(x_sorted, data.regions, noise_floor=data.noise_floor)
+
+    ax.plot(x_sorted, y_truth_sorted, color="C0", linewidth=1.5)
+    ax.fill_between(
+        x_sorted, y_truth_sorted - 2 * sigma_sorted, y_truth_sorted + 2 * sigma_sorted,
+        color="C0", alpha=0.15, linewidth=0,
+    )
+    ax.fill_between(
+        x_sorted, y_truth_sorted - sigma_sorted, y_truth_sorted + sigma_sorted,
+        color="C0", alpha=0.3, linewidth=0,
+    )
+    ax.scatter(data.x_train, data.y_train, color="black", s=8, zorder=3)
+    ax.set_title(
+        f"$\\sigma_0$={data.noise_floor:.2f}  $\\ell$={data.ell:.2f}  $\\alpha$={data.alpha:.2f}",
+        fontsize=9,
+    )
+
+
+# Allowed keys a `ds` config (experiments/synthetic/conf/ds/*.yaml) can set on top of
+# `source` itself; only these are forwarded to `make_heteroskedastic_instance`, so a
+# config can override any subset without a code change in synthetic.py.
+HETEROSKEDASTIC_KWARGS = (
+    "n", "test_fraction", "x_min", "x_max", "noise_floor_frac_range",
+    "amplitude_frac", "min_width", "max_width",
+    "ell_range", "alpha_range", "num_regions",
+)

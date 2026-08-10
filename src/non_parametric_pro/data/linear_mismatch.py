@@ -119,3 +119,32 @@ def make_linear_mismatch_instance(
         ell=float(ell),
         alpha=float(alpha),
     )
+
+
+def plot_linear_mismatch_case(ax, data: LinearMismatchCase) -> None:
+    """Plot one LinearMismatchCase: the single latent truth curve (drawn from the
+    RBF/Linear blend -- visibly wider swings toward the domain edges as `linear_mix`
+    grows, since the Linear component's marginal variance grows away from `x=0`) and
+    the noisy observed points. No special coloring -- there's no hidden branch,
+    censoring, or outlier label here, just a single well-defined function whose
+    *non-stationarity* is what's being tested."""
+    x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
+    y_full = jnp.concatenate([data.y_truth_train[:, 0], data.y_truth_test[:, 0]])
+    order = jnp.argsort(x_full)
+    x_sorted, y_sorted = x_full[order], y_full[order]
+
+    ax.plot(x_sorted, y_sorted, color="C0", linewidth=1.5)
+    ax.scatter(data.x_train, data.y_train, color="black", s=8, zorder=3)
+    ax.set_title(
+        f"$\\ell$={data.ell:.2f}  $\\alpha$={data.alpha:.2f}  linear={data.linear_mix:.2f}",
+        fontsize=9,
+    )
+
+
+# Allowed keys a `ds` config (experiments/synthetic/conf/ds/*.yaml) can set on top of
+# `source` itself; only these are forwarded to `make_linear_mismatch_instance`, so a
+# config can override any subset without a code change in synthetic.py.
+LINEAR_MISMATCH_KWARGS = (
+    "n", "test_fraction", "x_min", "x_max", "noise_std_frac",
+    "linear_mix", "ell_range", "alpha_range",
+)

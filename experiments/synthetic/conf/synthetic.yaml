@@ -6,6 +6,7 @@ seed: 2421
 mode: evaluate
 algorithm: standard_gp
 num_instances: 10
+instance_index: 0  # only used by mode=instance -- see debug_instance()
 
 results_root: ${script_dir:}/results
 

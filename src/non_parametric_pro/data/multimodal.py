@@ -246,3 +246,40 @@ def make_multimodal_instance(  # noqa: PLR0913
         alpha=float(alpha),
         regions=regions,
     )
+
+
+def plot_multimodal_case(ax, data: MultimodalCase) -> None:
+    """Plot one MultimodalCase: the shared background curve (blue) and the alternate
+    branch (orange) -- `y_alt` is constructed to already coincide with `y_shared`
+    outside a region (see `make_multimodal_instance`), so plotting both over their full
+    extent shows a genuine fork: the two curves visibly touch at each region's edges
+    and diverge only toward its center, rather than needing to be cut off/hidden away
+    from the region. Training points are colored by which branch actually generated
+    them (recovering that split is exactly what a model *can't* do, since `z` is
+    hidden -- this is a diagnostic only)."""
+    x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
+    y_shared_full = jnp.concatenate(
+        [data.y_truth_shared_train[:, 0], data.y_truth_shared_test[:, 0]]
+    )
+    y_alt_full = jnp.concatenate([data.y_truth_alt_train[:, 0], data.y_truth_alt_test[:, 0]])
+    order = jnp.argsort(x_full)
+    x_sorted = x_full[order]
+    y_shared_sorted = y_shared_full[order]
+    y_alt_sorted = y_alt_full[order]
+
+    ax.plot(x_sorted, y_shared_sorted, color="C0", linewidth=1.5)
+    ax.plot(x_sorted, y_alt_sorted, color="C1", linewidth=1.5)
+
+    z_train = data.z_train
+    ax.scatter(data.x_train[~z_train], data.y_train[~z_train], color="C0", s=8, zorder=3)
+    ax.scatter(data.x_train[z_train], data.y_train[z_train], color="C1", s=8, zorder=3)
+    ax.set_title(f"$\\ell$={data.ell:.2f}  $\\alpha$={data.alpha:.2f}", fontsize=9)
+
+
+# Allowed keys a `ds` config (experiments/synthetic/conf/ds/*.yaml) can set on top of
+# `source` itself; only these are forwarded to `make_multimodal_instance`, so a
+# config can override any subset without a code change in synthetic.py.
+MULTIMODAL_KWARGS = (
+    "n", "test_fraction", "x_min", "x_max", "noise_std_frac",
+    "mix_prob", "min_width", "max_width", "ell_range", "alpha_range", "num_regions",
+)

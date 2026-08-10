@@ -145,3 +145,36 @@ def make_extrapolation_instance(  # noqa: PLR0913
         boundary=float(boundary),
         extrapolate_right=bool(extrapolate_right),
     )
+
+
+def plot_extrapolation_case(ax, data: ExtrapolationCase) -> None:
+    """Plot one ExtrapolationCase: the single latent truth curve, the held-out edge
+    shaded, training points (black), the extrapolation test points (orange, inside the
+    shading -- beyond the edge of any training data, unlike `plot_interpolation_case`'s
+    gap which has data on both sides), and the ordinary random-holdout test points
+    (gray, scattered like any other train/test split)."""
+    x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
+    y_full = jnp.concatenate([data.y_truth_train[:, 0], data.y_truth_test[:, 0]])
+    order = jnp.argsort(x_full)
+    x_sorted, y_sorted = x_full[order], y_full[order]
+
+    edge = float(x_sorted.max()) if data.extrapolate_right else float(x_sorted.min())
+    ax.axvspan(
+        min(data.boundary, edge), max(data.boundary, edge), color="C1", alpha=0.15, linewidth=0
+    )
+    ax.plot(x_sorted, y_sorted, color="C0", linewidth=1.5)
+
+    in_extrap = extrapolation_region_mask(data.x_test[:, 0], data.boundary, data.extrapolate_right)
+    ax.scatter(data.x_train, data.y_train, color="black", s=8, zorder=3)
+    ax.scatter(data.x_test[~in_extrap], data.y_test[~in_extrap], color="gray", s=8, zorder=3)
+    ax.scatter(data.x_test[in_extrap], data.y_test[in_extrap], color="C1", s=8, zorder=3)
+    ax.set_title(f"$\\ell$={data.ell:.2f}  $\\alpha$={data.alpha:.2f}", fontsize=9)
+
+
+# Allowed keys a `ds` config (experiments/synthetic/conf/ds/*.yaml) can set on top of
+# `source` itself; only these are forwarded to `make_extrapolation_instance`, so a
+# config can override any subset without a code change in synthetic.py.
+EXTRAPOLATION_KWARGS = (
+    "n", "test_fraction", "x_min", "x_max", "noise_std_frac",
+    "extrapolation_frac", "ell_range", "alpha_range",
+)

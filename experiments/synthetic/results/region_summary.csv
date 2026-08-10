@@ -1,0 +1,3 @@
+source,param_name,param_value,region,algorithm,nlpd_mean,nlpd_ci95,n
+heteroskedastic,amplitude_frac,0.8,region,standard_gp,1.400622969095502,0.25503807643791565,3
+heteroskedastic,amplitude_frac,0.8,background,standard_gp,0.5400700214387185,0.3767170239208398,3

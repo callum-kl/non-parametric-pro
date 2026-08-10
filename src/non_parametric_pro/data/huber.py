@@ -114,3 +114,36 @@ def make_huber_instance(  # noqa: PLR0913
         ell=float(ell),
         alpha=float(alpha),
     )
+
+
+def plot_huber_case(ax, data: HuberCase) -> None:
+    """Plot one HuberCase: the single latent truth curve and observed points, colored by
+    the *true* (hidden) contamination indicator -- orange = drawn from the wide
+    outlier-scale Gaussian, black = ordinary noise. Applied over the whole domain (no
+    region), matching `heavy_tailed.py`'s final form -- gross errors aren't spatially
+    correlated with x in the classical Huber model. Unlike `plot_heavy_tailed_case`
+    (which has to guess outliers via a residual threshold), this dataset actually
+    generates a ground-truth contamination label, so we use it directly."""
+    x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
+    y_full = jnp.concatenate([data.y_truth_train[:, 0], data.y_truth_test[:, 0]])
+    order = jnp.argsort(x_full)
+    x_sorted, y_sorted = x_full[order], y_full[order]
+
+    ax.plot(x_sorted, y_sorted, color="C0", linewidth=1.5)
+
+    is_outlier = data.is_outlier_train
+    ax.scatter(data.x_train[~is_outlier], data.y_train[~is_outlier], color="black", s=8, zorder=3)
+    ax.scatter(data.x_train[is_outlier], data.y_train[is_outlier], color="C1", s=8, zorder=3)
+    ax.set_title(
+        f"$\\ell$={data.ell:.2f}  $\\alpha$={data.alpha:.2f}  $\\epsilon$={data.contamination_prob:.2f}",
+        fontsize=9,
+    )
+
+
+# Allowed keys a `ds` config (experiments/synthetic/conf/ds/*.yaml) can set on top of
+# `source` itself; only these are forwarded to `make_huber_instance`, so a
+# config can override any subset without a code change in synthetic.py.
+HUBER_KWARGS = (
+    "n", "test_fraction", "x_min", "x_max", "noise_std_frac",
+    "contamination_prob", "outlier_scale", "ell_range", "alpha_range",
+)

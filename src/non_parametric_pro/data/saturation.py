@@ -113,3 +113,35 @@ def make_saturation_instance(
         ell=float(ell),
         alpha=float(alpha),
     )
+
+
+def plot_saturation_case(ax, data: SaturationCase) -> None:
+    """Plot one SaturationCase: the single latent truth curve, dashed lines at the +/-
+    saturation threshold, and observed points colored by the *true* (hidden) censoring
+    indicator -- orange points sit exactly on one of the threshold lines (the classic
+    "flat-lined" signature of a saturated sensor), black points are uncensored."""
+    x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
+    y_full = jnp.concatenate([data.y_truth_train[:, 0], data.y_truth_test[:, 0]])
+    order = jnp.argsort(x_full)
+    x_sorted, y_sorted = x_full[order], y_full[order]
+
+    ax.axhline(data.threshold, color="C1", linewidth=1.0, linestyle="--", alpha=0.6)
+    ax.axhline(-data.threshold, color="C1", linewidth=1.0, linestyle="--", alpha=0.6)
+    ax.plot(x_sorted, y_sorted, color="C0", linewidth=1.5)
+
+    is_censored = data.is_censored_train
+    ax.scatter(data.x_train[~is_censored], data.y_train[~is_censored], color="black", s=8, zorder=3)
+    ax.scatter(data.x_train[is_censored], data.y_train[is_censored], color="C1", s=8, zorder=3)
+    ax.set_title(
+        f"$\\ell$={data.ell:.2f}  $\\alpha$={data.alpha:.2f}  thr={data.threshold:.2f}",
+        fontsize=9,
+    )
+
+
+# Allowed keys a `ds` config (experiments/synthetic/conf/ds/*.yaml) can set on top of
+# `source` itself; only these are forwarded to `make_saturation_instance`, so a
+# config can override any subset without a code change in synthetic.py.
+SATURATION_KWARGS = (
+    "n", "test_fraction", "x_min", "x_max", "noise_std_frac",
+    "threshold_frac", "ell_range", "alpha_range",
+)

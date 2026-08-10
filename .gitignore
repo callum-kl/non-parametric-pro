@@ -168,5 +168,4 @@ experiments/uci/multirun/
 experiments/uci/results/
 experiments/uci/.hydra_logs/*
 experiments/synthetic/multirun/
-experiments/synthetic/results/
 experiments/synthetic/.hydra_logs/*
