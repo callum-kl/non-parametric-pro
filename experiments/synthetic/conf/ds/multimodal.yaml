@@ -1,9 +1,9 @@
 source: multimodal
-param_name: mix_prob
+param_name: n
+n: 400
 num_regions: 2
 mix_prob: 0.5
 min_width: 0.3
 max_width: 0.8
 ell_range: [0.5, 1.0]
 noise_std_frac: 0.15
-n: 400

@@ -202,16 +202,23 @@ def make_block_outlier_instance(  # noqa: PLR0913
 def plot_block_outlier_case(
     ax, data: BlockOutlierCase, *,
     show_curve: bool = True, show_train: bool = True, color_by_outlier: bool = True,
+    outlier_subsample_frac: float = 1.0,
 ) -> None:
     """Plot one BlockOutlierCase: the single latent truth curve, and observed points --
     training points by default (`show_train=True`), or (for comparing a fitted model's
     predictive band against genuinely held-out data rather than the data it was fit to)
     the always-uncorrupted test points instead (`show_train=False`). Corrupted training
-    points are marked with a red X (`color_by_outlier=True`, the default) *regardless*
+    points are marked with a maroon X (`color_by_outlier=True`, the default) *regardless*
     of `show_train` -- they're the ground-truth explanation for whatever pull a fitted
     model shows near the block, a structurally different thing from "training data" in
     general, so hiding them under `show_train=False` would defeat this dataset's whole
-    diagnostic point. `show_curve=False` skips the truth-curve line."""
+    diagnostic point. `show_curve=False` skips the truth-curve line.
+
+    `outlier_subsample_frac` thins the plotted markers to roughly that fraction of the
+    corrupted points (every `round(1/outlier_subsample_frac)`-th one, deterministic --
+    not a random draw, so the same call always plots the same markers) -- e.g. so the
+    marker count doesn't visually dwarf the (usually much smaller) number of test points
+    shown alongside them."""
     x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
     y_full = jnp.concatenate([data.y_truth_train[:, 0], data.y_truth_test[:, 0]])
     order = jnp.argsort(x_full)
@@ -227,9 +234,13 @@ def plot_block_outlier_case(
         ax.scatter(data.x_test, data.y_test, color="black", s=8, zorder=3)
 
     if color_by_outlier:
+        outlier_idx = jnp.where(is_outlier)[0]
+        if outlier_subsample_frac < 1.0 and outlier_idx.size > 0:
+            stride = max(1, round(1.0 / outlier_subsample_frac))
+            outlier_idx = outlier_idx[::stride]
         ax.scatter(
-            data.x_train[is_outlier], data.y_train[is_outlier],
-            color="red", marker="x", s=40, linewidths=1.5, zorder=4,
+            data.x_train[outlier_idx], data.y_train[outlier_idx],
+            color="maroon", marker="x", s=40, linewidths=1.5, zorder=4,
         )
     ax.set_title(
         f"$\\ell$={data.ell:.2f}  $\\alpha$={data.alpha:.2f}  "

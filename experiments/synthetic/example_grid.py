@@ -28,6 +28,7 @@ import jax.random as jr
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
 from non_parametric_pro.data.block_outliers import (
@@ -78,15 +79,15 @@ class SourceSpec(NamedTuple):
 
 _SOURCES = [
     SourceSpec(
-        "multimodal",
-        "Multimodal",
-        make_multimodal_instance,
-        plot_multimodal_case,
+        "block_outliers",
+        "Block outliers",
+        make_block_outlier_instance,
+        plot_block_outlier_case,
         {
-            "num_regions": 1, "mix_prob": 0.5, "min_width": 0.3, "max_width": 0.8,
-            "ell_range": (0.5, 1.0), "noise_std_frac": 0.1, "n": 300,
+            "num_regions": 1, "outlier_offset_frac": 1.5,
+            "min_width": 0.15, "max_width": 0.3, "ell_range": (0.5, 1.0), "noise_std_frac": 0.15,
         },
-        {"show_curves": False, "color_by_branch": False, "show_train": False},
+        {"show_curve": False, "show_train": False, "color_by_outlier": True, "outlier_subsample_frac": 0.3},
         instance_index=3,
     ),
     SourceSpec(
@@ -99,16 +100,16 @@ _SOURCES = [
         instance_index=4,
     ),
     SourceSpec(
-        "block_outliers",
-        "Block outliers",
-        make_block_outlier_instance,
-        plot_block_outlier_case,
+        "multimodal",
+        "Multimodal",
+        make_multimodal_instance,
+        plot_multimodal_case,
         {
-            "num_regions": 1, "outlier_offset_frac": 1.5,
-            "min_width": 0.15, "max_width": 0.3, "ell_range": (0.5, 1.0), "noise_std_frac": 0.15,
+            "num_regions": 1, "mix_prob": 0.5, "min_width": 0.3, "max_width": 0.8,
+            "ell_range": (0.5, 1.0), "noise_std_frac": 0.1, "n": 300,
         },
-        {"show_curve": False, "show_train": False, "color_by_outlier": True},
-        instance_index=5,
+        {"show_curves": False, "color_by_branch": False, "show_train": False},
+        instance_index=3,
     ),
     SourceSpec(
         "well_specified",
@@ -182,44 +183,65 @@ def _overlay_pro_density(ax, x_test, result: FitResult, *, cmap, alpha=1.0, **de
     )
 
 
-def main(seed: int, num_instances: int, index_overrides: dict[str, int]) -> None:
+def plot_example_panel(ax, spec: SourceSpec, instance_key) -> None:
+    """Draw one dataset's fit-overlay panel (data + GP/PRO density bands) into `ax`."""
+    data = spec.make_instance(instance_key, **spec.kwargs)
+
+    # `plot_case` draws the dataset's own data/truth (using "C0"/"C1"/"black" --
+    # see each source's own module); GP_COLOR/PRO_COLOR are picked to not clash.
+    spec.plot_case(ax, data, **spec.plot_kwargs)
+
+    # well_specified's fit is meant to match the data's own generative kernel family
+    # (see non_parametric_pro/data/well_specified.py); every other source has no such
+    # field, so this falls back to the standard fixed-RBF fit.
+    kernel_type = getattr(data, "kernel_type", "rbf")
+
+    gp_result = fit_gp(data, kernel_type=kernel_type)
+    _overlay_gp_density(ax, data.x_test, gp_result, cmap=GP_CMAP)
+
+    fit_key, _ = jr.split(instance_key)
+    pro_result = fit_pro(data, fit_key, kernel_type=kernel_type)
+    _overlay_pro_density(ax, data.x_test, pro_result, cmap=PRO_CMAP, alpha=PRO_ALPHA)
+
+    ax.set_title(spec.title, fontsize=13)
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+
+def plot_examples(
+    axes, seed: int, num_instances: int, index_overrides: dict[str, int] | None = None,
+) -> None:
+    """Draw all `_SOURCES` panels into `axes` -- any flat sequence of (at least)
+    `len(_SOURCES)` axes, e.g. `plt.subplots(2, 2).flat` (this module's own `main`) or
+    one row of a larger externally-built grid (see `combine_grid_summary_columns.py`)."""
+    index_overrides = index_overrides or {}
     keys = jr.split(jr.PRNGKey(seed), num_instances)
-
-    fig, axes = plt.subplots(2, 2, figsize=(12, 9))
-
-    for ax, spec in zip(axes.flat, _SOURCES, strict=True):
+    for ax, spec in zip(axes, _SOURCES, strict=True):
         index = index_overrides.get(spec.name, spec.instance_index)
-        instance_key = keys[index]
+        plot_example_panel(ax, spec, keys[index])
 
-        data = spec.make_instance(instance_key, **spec.kwargs)
 
-        # `plot_case` draws the dataset's own data/truth (using "C0"/"C1"/"black" --
-        # see each source's own module); GP_COLOR/PRO_COLOR are picked to not clash.
-        spec.plot_case(ax, data, **spec.plot_kwargs)
+# contourf isn't a labeled artist `ax.get_legend_handles_labels()` picks up, so this is
+# built from explicit proxies instead of collected from an axes. "Test data"/"Outliers"
+# only apply to (block_outliers's) black dots/maroon X's, but a shared legend
+# describing the whole figure's visual vocabulary -- not just what's in every single
+# panel -- is the point.
+LEGEND_HANDLES = [
+    Patch(color=GP_COLOR, label="Standard GP"),
+    Patch(color=PRO_COLOR, label="PRO GP"),
+    Line2D([0], [0], marker="o", color="black", linestyle="None", markersize=6, label="Test data"),
+    Line2D(
+        [0], [0], marker="x", color="maroon", linestyle="None",
+        markersize=8, markeredgewidth=1.5, label="Outliers",
+    ),
+]
 
-        # well_specified's fit is meant to match the data's own generative kernel
-        # family (see non_parametric_pro/data/well_specified.py); every other source
-        # has no such field, so this falls back to the standard fixed-RBF fit.
-        kernel_type = getattr(data, "kernel_type", "rbf")
 
-        gp_result = fit_gp(data, kernel_type=kernel_type)
-        _overlay_gp_density(ax, data.x_test, gp_result, cmap=GP_CMAP)
+def main(seed: int, num_instances: int, index_overrides: dict[str, int]) -> None:
+    fig, axes = plt.subplots(2, 2, figsize=(12, 9))
+    plot_examples(axes.flat, seed, num_instances, index_overrides)
 
-        fit_key, _ = jr.split(instance_key)
-        pro_result = fit_pro(data, fit_key, kernel_type=kernel_type)
-        _overlay_pro_density(ax, data.x_test, pro_result, cmap=PRO_CMAP, alpha=PRO_ALPHA)
-
-        ax.set_title(spec.title, fontsize=13)
-        ax.set_xticks([])
-        ax.set_yticks([])
-
-    # contourf isn't a labeled artist `ax.get_legend_handles_labels()` picks up, so
-    # build the shared legend from explicit proxies instead of collecting from an axes.
-    legend_handles = [
-        Patch(color=GP_COLOR, label="Standard GP"),
-        Patch(color=PRO_COLOR, label="PRO GP"),
-    ]
-    fig.legend(handles=legend_handles, loc="lower center", ncol=2, fontsize=10, frameon=False)
+    fig.legend(handles=LEGEND_HANDLES, loc="lower center", ncol=4, fontsize=10, frameon=False)
     fig.tight_layout(rect=(0, 0.04, 1, 1))
     out_path = FIGURES_DIR / "example_grid.png"
     fig.savefig(out_path, dpi=150)

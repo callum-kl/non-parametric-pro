@@ -1,5 +1,5 @@
 source: heteroskedastic
-param_name: amplitude_frac
+param_name: n
 num_regions: 2
 amplitude_frac: 1.0
 min_width: 0.3

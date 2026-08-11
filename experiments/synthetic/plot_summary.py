@@ -47,7 +47,7 @@ SUMMARY_CSV = RESULTS_ROOT / "summary.csv"
 
 # Same order as example_grid.py's `_SOURCES`, laid out row-major over a 2x2 grid (i.e.
 # `axes.flat`) so a given dataset lands in the same cell in both figures.
-SOURCES = ("multimodal", "heteroskedastic", "block_outliers", "well_specified")
+SOURCES = ("block_outliers", "heteroskedastic", "multimodal", "well_specified")
 SOURCE_TITLES = {
     # Exact strings from example_grid.py's SourceSpec.title, for consistency.
     "multimodal": "Multimodal",
@@ -74,7 +74,7 @@ ALGORITHM_LABELS = {"pro_gp": "PrO-GP", "standard_gp": "Standard GP"}
 # stack (synthetic.fit_gp/fit_pro) that this CSV-only script has no other need for.
 ALGORITHM_COLORS = {"pro_gp": "#3a76c4", "standard_gp": "#3f8f5f"}
 
-WELL_SPECIFIED_N_MIN = 50  # drop the n=50 row -- "n increasing from 100 to 800"
+WELL_SPECIFIED_N_MIN = 100  # drop the n=50 row -- "n increasing from 100 to 800"
 DODGE_FRAC = 0.03  # multiplicative x-offset between the two algorithms' error bars
 
 DIVIDER_COLOR = "#cccac0"
@@ -140,11 +140,15 @@ def _plot_sweep(
         )
 
     ax.set_xlabel(xlabel)
-    ax.set_xticks(all_values)
+    # `set_xscale` must come *before* `set_xticks` -- changing the scale resets the
+    # tick locator, which would silently discard explicit ticks set beforehand (and
+    # fall back to log2's own default locator, e.g. 64/128/256 instead of the actual
+    # swept values).
     if use_log2:
         ax.set_xscale("log", base=2)
         ax.xaxis.set_major_formatter(mticker.ScalarFormatter())
         ax.xaxis.set_minor_formatter(mticker.NullFormatter())
+    ax.set_xticks(all_values)
 
 
 def _plot_categorical(ax, by_algorithm: dict[str, list[tuple[float, float, float]]]):
@@ -180,6 +184,11 @@ def _plot_source(ax, source: str, by_algorithm: dict[str, list[tuple[float, floa
     else:
         _plot_categorical(ax, by_algorithm)
 
+    # Less-dense y ticks (e.g. -0.5, 0, 0.5, 1.0 rather than every 0.25) -- a fixed
+    # step rather than a fixed tick list, so it still reads cleanly whatever the
+    # data's own range turns out to be.
+    ax.yaxis.set_major_locator(mticker.MultipleLocator(base=0.5))
+
     ax.set_title(SOURCE_TITLES[source], fontsize=13)
 
 
@@ -200,13 +209,21 @@ def _add_grid_dividers(fig, axes) -> None:
     fig.add_artist(Line2D([left, right], [h_y, h_y], color=DIVIDER_COLOR, linewidth=1.0))
 
 
+def plot_summary_row(axes, records, sources=SOURCES) -> None:
+    """Draw each `sources` dataset's NLPD error-bar panel into `axes` -- any flat
+    sequence of (at least) `len(sources)` axes, e.g. `plt.subplots(2, 2).flat` (this
+    module's own `plot_summary`) or one row of a larger externally-built grid (see
+    `combine_grid_summary_columns.py`)."""
+    for ax, source in zip(axes, sources, strict=True):
+        _plot_source(ax, source, records.get(source, {}))
+
+
 def plot_summary(records, sources=SOURCES, filename="summary_panel.png"):
     fig, axes = plt.subplots(
         2, 2, figsize=(9, 8.5), sharey=True, gridspec_kw={"hspace": 0.45, "wspace": 0.12}
     )
 
-    for ax, source in zip(axes.flat, sources, strict=True):
-        _plot_source(ax, source, records.get(source, {}))
+    plot_summary_row(axes.flat, records, sources)
 
     for row in axes:
         row[0].set_ylabel("NLPD")

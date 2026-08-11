@@ -38,8 +38,8 @@
   "param_name": "outlier_offset_frac",
   "num_regions": 1,
   "outlier_offset_frac": 1.1,
-  "min_width": 0.15,
-  "max_width": 0.3,
+  "min_width": 0.2,
+  "max_width": 0.21,
   "ell_range": [
     0.5,
     1.0
