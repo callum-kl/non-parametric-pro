@@ -5,4 +5,4 @@ mix_prob: 0.5
 min_width: 0.3
 max_width: 0.8
 ell_range: [0.5, 1.0]
-noise_std_frac: 0.2
+noise_std_frac: 0.1

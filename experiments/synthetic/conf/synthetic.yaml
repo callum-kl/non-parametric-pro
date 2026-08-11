@@ -24,8 +24,8 @@ pro:
   val_fraction: 0.25
   num_adapt_steps: 10000
   warmup_steps: 1000
-  sigma_adapt_steps: 200
-  kernel_adapt_steps: 100
+  sigma_adapt_steps: 300
+  kernel_adapt_steps: 150
   sigma_lr: 0.1
   kernel_lr: 0.01
   num_sample_steps: 30000

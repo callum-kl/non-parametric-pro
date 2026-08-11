@@ -95,6 +95,7 @@ from non_parametric_pro.util import (
     posterior_function_draws,
     prediction_basis,
     predictive_moments,
+    project_particles,
     run_inference_algorithm_with_burn_in,
 )
 
@@ -179,15 +180,21 @@ def run_dataset_instance(
 class FitResult(NamedTuple):
     """A fitted model's test-set predictive summary: `mean`/`std` for plotting a
     (moment-matched) predictive band, `nlpd_per_point` for scoring (what `evaluate`
-    actually uses). `function_draws` is `fit_pro`-only (shape `(N_test, num_draws)`,
-    `None` for `fit_gp`) -- smooth, coherent posterior function trajectories, for when
-    `mean`/`std` alone would hide a multimodal predictive (see
-    `non_parametric_pro.util.posterior_function_draws`)."""
+    actually uses). The remaining fields are `fit_pro`-only (`None` for `fit_gp`) --
+    ways to see the actual mixture predictive that `mean`/`std` moment-match away:
+    `function_draws` (shape `(N_test, num_draws)`) are smooth, coherent posterior
+    function trajectories (see `non_parametric_pro.util.posterior_function_draws`);
+    `particle_predictions` (shape `(N_test, J_total)`, one column per retained
+    particle) and `sigma_eff` (shape `(N_test,)`) are the raw ingredients of the exact
+    mixture density `p(y|x) = mean_j N(y; particle_predictions[:, j], sigma_eff)` --
+    e.g. for rendering it directly as a density heatmap rather than sampling it."""
 
     mean: jnp.ndarray
     std: jnp.ndarray
     nlpd_per_point: jnp.ndarray
     function_draws: jnp.ndarray | None = None
+    particle_predictions: jnp.ndarray | None = None
+    sigma_eff: jnp.ndarray | None = None
 
 
 def fit_gp(data, key=None, *, kernel_lengthscale=0.3, kernel_type="rbf") -> FitResult:
@@ -336,7 +343,13 @@ def fit_pro(  # noqa: PLR0913
         draw_key, test_basis, test_cov, particles, num_draws=num_function_draws
     )
 
-    return FitResult(mean=mean, std=std, nlpd_per_point=nlpd_per_point, function_draws=function_draws)
+    particle_predictions = project_particles(test_basis, particles)
+    sigma_eff = jnp.sqrt(sigma_val**2 + residual_std**2)
+
+    return FitResult(
+        mean=mean, std=std, nlpd_per_point=nlpd_per_point, function_draws=function_draws,
+        particle_predictions=particle_predictions, sigma_eff=sigma_eff,
+    )
 
 
 def evaluate(get_instance, fit_function, key, num_instances, *, region_mask_fn=None):
