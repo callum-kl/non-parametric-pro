@@ -4,16 +4,10 @@ import os
 from pathlib import Path
 from typing import NamedTuple
 
-# Must be set before `import jax` (and before any transitive jax import, e.g. via
-# gpjax) -- setting it later doesn't reliably take effect before jax's backend
-# initializes.
 os.environ.setdefault("JAX_ENABLE_X64", "1")
 
 import matplotlib
 
-# This script only ever calls savefig, never show(); force a non-interactive backend
-# so it doesn't depend on a GUI toolkit being usable (e.g. Qt's xcb plugin, which
-# aborts the whole process if there's no X server -- as under plain WSL).
 matplotlib.use("Agg")
 
 import gpjax as gpx
@@ -28,6 +22,12 @@ from fastprogress.fastprogress import progress_bar
 from omegaconf import DictConfig, OmegaConf
 
 from non_parametric_pro import ula
+from non_parametric_pro.data.block_outliers import (
+    BLOCK_OUTLIERS_KWARGS,
+    block_outlier_region_mask,
+    make_block_outlier_instance,
+    plot_block_outlier_case,
+)
 from non_parametric_pro.data.extrapolation import (
     EXTRAPOLATION_KWARGS,
     extrapolation_region_mask,
@@ -84,7 +84,6 @@ from non_parametric_pro.data.well_specified import (
 from non_parametric_pro.density import (
     ProParameters,
     pro_logdensity_fn,
-    regularised_score,
 )
 from non_parametric_pro.parameter_adaptation import cross_validated_parameter_adaptation
 from non_parametric_pro.ula import parametric_ula
@@ -114,6 +113,7 @@ FIGURES_DIR = Path(__file__).resolve().parent / "figures"
 # fields (noise regions vs. two candidate functions + hidden mode, etc.) -- there's no
 # shared generic plot the way there's a generic `_instance_fn` below.
 _PLOT_CASE_FNS = {
+    "block_outliers": plot_block_outlier_case,
     "heteroskedastic": plot_heteroskedastic_case,
     "multimodal": plot_multimodal_case,
     "regime_switch": plot_regime_switch_case,
@@ -266,9 +266,6 @@ def fit_pro(  # noqa: PLR0913
         alpha=alpha,
         residual_std=None,
     )
-    # kernel = gpx.kernels.RBF(
-    #     lengthscale=kernel_lengthscale, variance=px.NonTrainable(jnp.array(1.0))
-    # )
     kernel = build_kernel(kernel_type, lengthscale=kernel_lengthscale)
     key, cv_key = jr.split(key)
     cv_result = cross_validated_parameter_adaptation(
@@ -285,7 +282,7 @@ def fit_pro(  # noqa: PLR0913
         warmup_steps=warmup_steps,
         sigma_adapt_steps=sigma_adapt_steps,
         kernel_adapt_steps=kernel_adapt_steps,
-        objective_fn=regularised_score,
+        objective_fn=pro_logdensity_fn,
         rng_key=cv_key,
         sigma_optimizer=ox.adam(sigma_lr),
         kernel_optimizer=ox.adam(kernel_lr),
@@ -393,6 +390,7 @@ def evaluate(get_instance, fit_function, key, num_instances, *, region_mask_fn=N
 
 
 _DATASET_SOURCES = {
+    "block_outliers": (make_block_outlier_instance, BLOCK_OUTLIERS_KWARGS),
     "heteroskedastic": (make_heteroskedastic_instance, HETEROSKEDASTIC_KWARGS),
     "multimodal": (make_multimodal_instance, MULTIMODAL_KWARGS),
     "regime_switch": (make_regime_switch_instance, REGIME_SWITCH_KWARGS),
@@ -413,6 +411,10 @@ def _instance_fn(make_instance, kwarg_names, cfg: DictConfig):
     of a generator's parameters without a code change here."""
     kwargs = {k: cfg[k] for k in kwarg_names if k in cfg}
     return lambda key: make_instance(key, **kwargs)
+
+
+def _block_outliers_region_mask_fn(data):
+    return block_outlier_region_mask(data.x_test[:, 0], data.regions)
 
 
 def _heteroskedastic_region_mask_fn(data):
@@ -436,6 +438,7 @@ def _extrapolation_region_mask_fn(data):
 
 
 _REGION_MASK_FNS = {
+    "block_outliers": _block_outliers_region_mask_fn,
     "heteroskedastic": _heteroskedastic_region_mask_fn,
     "multimodal": _multimodal_region_mask_fn,
     "regime_switch": _regime_switch_region_mask_fn,

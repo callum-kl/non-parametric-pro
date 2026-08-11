@@ -1,0 +1,8 @@
+source: block_outliers
+param_name: outlier_offset_frac
+num_regions: 1
+outlier_offset_frac: 1.1
+min_width: 0.29
+max_width: 0.3
+ell_range: [0.5, 1.0]
+noise_std_frac: 0.15

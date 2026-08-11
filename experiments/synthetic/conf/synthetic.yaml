@@ -27,7 +27,7 @@ pro:
   sigma_adapt_steps: 300
   kernel_adapt_steps: 150
   sigma_lr: 0.1
-  kernel_lr: 0.01
+  kernel_lr: 0.05
   num_sample_steps: 30000
   burn_fraction: 0.9
   thin: 10

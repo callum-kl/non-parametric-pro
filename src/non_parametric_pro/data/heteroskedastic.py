@@ -140,7 +140,7 @@ def make_heteroskedastic_instance(  # noqa: PLR0913
     test_fraction: float = 0.3,
     x_min: float = -2.0,
     x_max: float = 2.0,
-    noise_floor_frac_range: tuple[float, float] = (0.2, 0.3),
+    noise_std_frac: float = 0.15,
     amplitude_frac: float = 0.4,
     min_width: float = 0.15,
     max_width: float = 0.5,
@@ -158,17 +158,17 @@ def make_heteroskedastic_instance(  # noqa: PLR0913
     pool of `n` points (rather than separate grids), so both see the same noise
     structure by construction.
 
-    Noise-region amplitude/floor are specified as *fractions of the draw's own signal
-    std* (`sqrt(alpha)`) rather than absolute units: since `alpha` itself varies per
-    draw, fixed absolute noise levels would make some draws look barely noisy and
-    others look like pure noise purely because of which `alpha` got sampled, rather
-    than because of the heteroskedasticity pattern itself. `amplitude_frac` is a single
-    fixed value (not a sampled range) so it can be swept directly as an experiment
+    The noise floor (background std everywhere) and the regions' additional elevation
+    amplitude are both specified as *fractions of the draw's own signal std*
+    (`sqrt(alpha)`) rather than absolute units: since `alpha` itself varies per draw,
+    fixed absolute noise levels would make some draws look barely noisy and others look
+    like pure noise purely because of which `alpha` got sampled, rather than because of
+    the heteroskedasticity pattern itself. `noise_std_frac`/`amplitude_frac` are each a
+    single fixed value (not a sampled range), for the same reason every other dataset in
+    this package fixes `noise_std_frac`: so it can be swept directly as an experiment
     variable without an extra layer of per-instance randomness obscuring the trend.
     """
-    x_key, ell_key, alpha_key, latent_key, region_key, floor_key, split_key, noise_key = jr.split(
-        key, 8
-    )
+    x_key, ell_key, alpha_key, latent_key, region_key, split_key, noise_key = jr.split(key, 7)
 
     ell = jr.uniform(ell_key, (), minval=ell_range[0], maxval=ell_range[1])
     alpha = jr.uniform(alpha_key, (), minval=alpha_range[0], maxval=alpha_range[1])
@@ -189,10 +189,7 @@ def make_heteroskedastic_instance(  # noqa: PLR0913
         amplitude=amplitude_frac * signal_std,
         num_regions=num_regions,
     )
-    noise_floor = (
-        jr.uniform(floor_key, (), minval=noise_floor_frac_range[0], maxval=noise_floor_frac_range[1])
-        * signal_std
-    )
+    noise_floor = noise_std_frac * signal_std
 
     sigma = heteroskedastic_noise_std(x[:, 0], regions, noise_floor=noise_floor)
     y_obs = y_truth + sigma * jr.normal(noise_key, y_truth.shape)
@@ -219,14 +216,17 @@ def make_heteroskedastic_instance(  # noqa: PLR0913
 
 
 def plot_heteroskedastic_case(
-    ax, data: HeteroskedasticCase, *, show_curve: bool = True, show_noise_bands: bool = True
+    ax, data: HeteroskedasticCase, *,
+    show_curve: bool = True, show_noise_bands: bool = True, show_train: bool = True,
 ) -> None:
     """Plot one HeteroskedasticCase: true curve, +-1sigma/+-2sigma noise bands (both
     evaluated on the full, sorted train+test pool for a smooth curve), and the noisy
-    observed training points. `show_curve=False`/`show_noise_bands=False` skip the
-    truth-curve line / true-variance bands respectively -- e.g. when overlaying a
-    fitted model's own predictive band on the same axes, where the true curve/bands
-    would otherwise clutter/compete with it."""
+    observed points. `show_curve=False`/`show_noise_bands=False` skip the truth-curve
+    line / true-variance bands respectively -- e.g. when overlaying a fitted model's own
+    predictive band on the same axes, where the true curve/bands would otherwise
+    clutter/compete with it. `show_train=False` plots the held-out test points instead
+    of the training points the fit actually saw -- e.g. for comparing a fitted model's
+    predictive band against genuinely held-out data."""
     x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
     y_truth_full = jnp.concatenate([data.y_truth_train[:, 0], data.y_truth_test[:, 0]])
     order = jnp.argsort(x_full)
@@ -244,7 +244,10 @@ def plot_heteroskedastic_case(
             x_sorted, y_truth_sorted - sigma_sorted, y_truth_sorted + sigma_sorted,
             color="C0", alpha=0.3, linewidth=0,
         )
-    ax.scatter(data.x_train, data.y_train, color="black", s=8, zorder=3)
+    if show_train:
+        ax.scatter(data.x_train, data.y_train, color="black", s=8, zorder=3)
+    else:
+        ax.scatter(data.x_test, data.y_test, color="black", s=8, zorder=3)
     ax.set_title(
         f"$\\sigma_0$={data.noise_floor:.2f}  $\\ell$={data.ell:.2f}  $\\alpha$={data.alpha:.2f}",
         fontsize=9,
@@ -255,7 +258,7 @@ def plot_heteroskedastic_case(
 # `source` itself; only these are forwarded to `make_heteroskedastic_instance`, so a
 # config can override any subset without a code change in synthetic.py.
 HETEROSKEDASTIC_KWARGS = (
-    "n", "test_fraction", "x_min", "x_max", "noise_floor_frac_range",
+    "n", "test_fraction", "x_min", "x_max", "noise_std_frac",
     "amplitude_frac", "min_width", "max_width",
     "ell_range", "alpha_range", "num_regions",
 )

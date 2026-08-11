@@ -130,16 +130,23 @@ def make_well_specified_instance(  # noqa: PLR0913
     )
 
 
-def plot_well_specified_case(ax, data: WellSpecifiedCase, *, show_curve: bool = True) -> None:
+def plot_well_specified_case(
+    ax, data: WellSpecifiedCase, *, show_curve: bool = True, show_train: bool = True
+) -> None:
     """Plot one WellSpecifiedCase: the single latent truth curve and the noisy
-    observed training points -- no misspecification cue to highlight (no region, no
-    hidden branch, no outliers), just the kernel family/hyperparameters/dataset size
-    in the title, since those are the only things that vary "difficulty" here.
+    observed points -- no misspecification cue to highlight (no region, no hidden
+    branch, no outliers), just the kernel family/hyperparameters/dataset size in the
+    title, since those are the only things that vary "difficulty" here.
     `show_curve=False` skips the truth-curve line and leaves just the raw scattered
-    training data -- e.g. when overlaying a fitted model's own predictive mean on the
-    same axes, where a connect-the-dots truth curve can look misleadingly jagged for a
-    rough kernel family/low `n` (the curve is genuinely correct, just visually noisy)."""
-    ax.scatter(data.x_train, data.y_train, color="black", s=8, zorder=3)
+    data -- e.g. when overlaying a fitted model's own predictive mean on the same axes,
+    where a connect-the-dots truth curve can look misleadingly jagged for a rough
+    kernel family/low `n` (the curve is genuinely correct, just visually noisy).
+    `show_train=False` plots the held-out test points instead of the training points
+    the fit actually saw."""
+    if show_train:
+        ax.scatter(data.x_train, data.y_train, color="black", s=8, zorder=3)
+    else:
+        ax.scatter(data.x_test, data.y_test, color="black", s=8, zorder=3)
     if show_curve:
         x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
         y_full = jnp.concatenate([data.y_truth_train[:, 0], data.y_truth_test[:, 0]])

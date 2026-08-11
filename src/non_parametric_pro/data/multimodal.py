@@ -249,20 +249,23 @@ def make_multimodal_instance(  # noqa: PLR0913
 
 
 def plot_multimodal_case(
-    ax, data: MultimodalCase, *, show_curves: bool = True, color_by_branch: bool = True
+    ax, data: MultimodalCase, *,
+    show_curves: bool = True, color_by_branch: bool = True, show_train: bool = True,
 ) -> None:
     """Plot one MultimodalCase: the shared background curve (blue) and the alternate
     branch (orange) -- `y_alt` is constructed to already coincide with `y_shared`
     outside a region (see `make_multimodal_instance`), so plotting both over their full
     extent shows a genuine fork: the two curves visibly touch at each region's edges
     and diverge only toward its center, rather than needing to be cut off/hidden away
-    from the region. Training points are colored by which branch actually generated
-    them (recovering that split is exactly what a model *can't* do, since `z` is
-    hidden -- this is a diagnostic only). `show_curves=False` skips both truth-curve
-    lines; `color_by_branch=False` additionally drops the branch color split and plots
-    all training points black -- e.g. when overlaying a fitted model's own predictive
-    mean on the same axes, where the blue/orange split (with no curve to anchor it to)
-    can read as two different fits rather than one hidden-mode dataset."""
+    from the region. Points are colored by which branch actually generated them
+    (recovering that split is exactly what a model *can't* do, since `z` is hidden --
+    this is a diagnostic only). `show_curves=False` skips both truth-curve lines;
+    `color_by_branch=False` additionally drops the branch color split and plots all
+    points black -- e.g. when overlaying a fitted model's own predictive mean on the
+    same axes, where the blue/orange split (with no curve to anchor it to) can read as
+    two different fits rather than one hidden-mode dataset. `show_train=False` plots
+    the held-out test points (and their own hidden mode, `z_test`) instead of the
+    training points the fit actually saw."""
     if show_curves:
         x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
         y_shared_full = jnp.concatenate(
@@ -277,12 +280,16 @@ def plot_multimodal_case(
         ax.plot(x_sorted, y_shared_sorted, color="C0", linewidth=1.5)
         ax.plot(x_sorted, y_alt_sorted, color="C1", linewidth=1.5)
 
+    x_points, y_points, z_points = (
+        (data.x_train, data.y_train, data.z_train)
+        if show_train
+        else (data.x_test, data.y_test, data.z_test)
+    )
     if color_by_branch:
-        z_train = data.z_train
-        ax.scatter(data.x_train[~z_train], data.y_train[~z_train], color="C0", s=8, zorder=3)
-        ax.scatter(data.x_train[z_train], data.y_train[z_train], color="C1", s=8, zorder=3)
+        ax.scatter(x_points[~z_points], y_points[~z_points], color="C0", s=8, zorder=3)
+        ax.scatter(x_points[z_points], y_points[z_points], color="C1", s=8, zorder=3)
     else:
-        ax.scatter(data.x_train, data.y_train, color="black", s=8, zorder=3)
+        ax.scatter(x_points, y_points, color="black", s=8, zorder=3)
     ax.set_title(f"$\\ell$={data.ell:.2f}  $\\alpha$={data.alpha:.2f}", fontsize=9)
 
 

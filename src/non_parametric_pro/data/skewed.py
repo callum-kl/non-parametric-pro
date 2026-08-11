@@ -1,10 +1,17 @@
-"""Synthetic skewed-noise regression instances.
+"""Synthetic lognormal-noise regression instances.
 
-Observation noise is drawn from a (mean-centred, std-matched) Gamma distribution
+Observation noise is drawn from a (mean-centred, std-matched) Lognormal distribution
 instead of Gaussian, applied over the whole domain -- not confined to a region, like
 `heavy_tailed.py`'s/`huber.py`'s final forms (skewness isn't spatially correlated with
 `x` any more than heavy tails or contamination are). The latent function is a single,
 ordinary stationary-GP draw.
+
+Lognormal noise is a genuinely common real-world failure mode of the Gaussian-noise
+assumption, not just an abstract asymmetric shape: multiplicative/proportional
+measurement error (sensor readings, biological concentrations, financial magnitudes,
+reaction times, ...), where the noise scales with the signal rather than adding
+independently of it -- "the noise is exp(Gaussian)", not "Gaussian with a skew grafted
+on".
 
 This is the fourth "shape of the noise distribution" axis in this package, alongside
 `heteroskedastic.py` (variance/2nd moment), `heavy_tailed.py` (kurtosis/4th moment), and
@@ -15,10 +22,25 @@ mixture-of-Gaussians predictive (`nlpd_pro`) can approximate an asymmetric shape
 than a single-Gaussian predictive, purely from having enough particles to place
 asymmetric mass around the mean.
 
-`noise_skewness` is the swept severity variable: near 0 recovers approximately Gaussian
-noise, and larger values are more asymmetric -- consistent with the "larger swept value
+This previously used a Gamma distribution instead, inverted so its exact population
+skewness was directly settable -- but that formula only reaches large values by driving
+the Gamma's shape parameter well below 1, and a shape-<1 Gamma's density *diverges* at
+its lower bound: almost all mass collapses onto a near-degenerate spike at the
+(recentred) mode, with the asymmetry visible only in a thin, rare tail -- so "more
+skewed" by that metric actually meant "fewer and fewer points look skewed at all". A
+Lognormal's density is 0 at its lower bound and genuinely unimodal throughout (no
+divergence at any shape), so a moderate `noise_skewness` here produces a body that's
+visibly, broadly asymmetric across most of the sample instead of a spike plus
+occasional outliers.
+
+`noise_skewness` is now the Lognormal's own shape parameter (`sigma`, where
+``log(noise) ~ Normal(0, sigma^2)`` before recentring/rescaling) rather than the exact
+population skewness -- near 0 still recovers approximately Gaussian noise, and larger
+values are still more asymmetric (population skewness is ``(exp(sigma^2) + 2) *
+sqrt(exp(sigma^2) - 1)``, monotonic in `sigma`), consistent with the "larger swept value
 = worse" convention used by `amplitude_frac`/`mix_prob`/`roughness_factor`/`gap_frac`/
-`contamination_prob` elsewhere in this package.
+`contamination_prob` elsewhere in this package -- it just isn't literally that formula's
+output anymore.
 """
 
 from typing import NamedTuple
@@ -43,7 +65,7 @@ class SkewedCase(NamedTuple):
     y_test: jax.Array
     y_truth_test: jax.Array
     noise_std: float
-    noise_skewness: float
+    noise_skewness: float  # Lognormal shape sigma, not the exact population skewness -- see module docstring
     skew_sign: float  # +1.0 (right-skewed, long tail above) or -1.0 (left-skewed, below)
     ell: float
     alpha: float
@@ -57,7 +79,7 @@ def make_skewed_instance(
     x_min: float = -2.0,
     x_max: float = 2.0,
     noise_std_frac: float = 0.1,
-    noise_skewness: float = 2.0,
+    noise_skewness: float = 0.6,
     ell_range: tuple[float, float] = (0.15, 0.5),
     alpha_range: tuple[float, float] = (0.5, 2.0),
 ) -> SkewedCase:
@@ -67,13 +89,13 @@ def make_skewed_instance(
     randomised per instance, is drawn once for the latent function -- an ordinary,
     symmetric stationary process; only the *noise* is skewed.
 
-    Noise is drawn from a Gamma distribution with shape ``k = 4 / noise_skewness^2`` (a
-    Gamma's skewness is exactly ``2/sqrt(k)``, so this inverts that relationship to make
-    `noise_skewness` directly settable) and scale chosen so its std matches
-    ``noise_std_frac * sqrt(alpha)``, then re-centred to zero mean -- so only the shape
-    differs from Gaussian noise at the same scale, never the scale itself. The sign of
-    the skew (right- vs left-skewed) is randomised per instance, so different keys give
-    genuinely different-looking asymmetry, not always the same direction.
+    Noise is drawn from a Lognormal distribution with shape `noise_skewness` (i.e.
+    ``log(raw) ~ Normal(0, noise_skewness^2)``) and rescaled so its std matches
+    ``noise_std_frac * sqrt(alpha)``, then re-centred to zero mean -- so, as with the
+    old Gamma-based version, only the *shape* differs from Gaussian noise at the same
+    scale, never the scale itself. The sign of the skew (right- vs left-skewed) is
+    randomised per instance, so different keys give genuinely different-looking
+    asymmetry, not always the same direction.
 
     `noise_std_frac` is a fraction of the draw's own signal std rather than an absolute
     unit, for the same reason `heteroskedastic.py` normalises its noise levels this way.
@@ -92,12 +114,14 @@ def make_skewed_instance(
 
     noise_std = noise_std_frac * signal_std
 
-    gamma_shape = 4.0 / (noise_skewness**2)
-    gamma_scale = noise_std / jnp.sqrt(gamma_shape)
-    # jr.gamma is the standard Gamma(a, scale=1); scale by gamma_scale for Gamma(a,
-    # scale=gamma_scale), then re-centre (its mean is gamma_shape * gamma_scale) to
-    # zero -- matching noise_std, mean-zero, only the shape differs from Gaussian.
-    magnitude = jr.gamma(noise_key, gamma_shape, (n,)) * gamma_scale - gamma_shape * gamma_scale
+    # raw ~ Lognormal(0, noise_skewness^2): log(raw) ~ Normal(0, noise_skewness^2), so
+    # raw's own mean/std have closed forms in terms of noise_skewness alone -- rescale
+    # by those (never an empirical std) to match noise_std exactly, then recentre to
+    # zero mean, mirroring the old Gamma code's analytic (not empirical) standardising.
+    raw = jnp.exp(noise_skewness * jr.normal(noise_key, (n,)))
+    raw_mean = jnp.exp(0.5 * noise_skewness**2)
+    raw_std = raw_mean * jnp.sqrt(jnp.exp(noise_skewness**2) - 1.0)
+    magnitude = (raw - raw_mean) * (noise_std / raw_std)
     sign = jnp.where(jr.bernoulli(sign_key, 0.5), 1.0, -1.0)
     noise = sign * magnitude
 
@@ -150,7 +174,7 @@ def plot_skewed_case(
         ax.scatter(data.x_train, data.y_train, color="black", s=8, zorder=3)
     ax.set_title(
         f"$\\ell$={data.ell:.2f}  $\\alpha$={data.alpha:.2f}  "
-        f"skew={data.skew_sign * data.noise_skewness:+.1f}",
+        f"$\\sigma$={data.skew_sign * data.noise_skewness:+.2f}",
         fontsize=9,
     )
 
