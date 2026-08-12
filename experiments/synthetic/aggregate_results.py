@@ -66,6 +66,15 @@ def collect():
                 source = metrics["source"]
                 param_names[source] = metrics["param_name"]
                 records[source][metrics["param_value"]][metrics["algorithm"]] = {
+                    # `param_name` is duplicated here (alongside the source-level
+                    # `param_names` dict) because a source can have been swept over
+                    # more than one distinguishing parameter across its history (e.g.
+                    # an old `amplitude_frac` sweep and a newer `n` sweep both sitting
+                    # under `results/heteroskedastic/`) -- `param_names[source]` can
+                    # only hold one name (whichever `param_dir` sorts last), so
+                    # `save_csv` needs each row's *own* name to label it correctly
+                    # rather than mislabelling every row with that single name.
+                    "param_name": metrics["param_name"],
                     "nlpd_mean": metrics["nlpd_mean"],
                     "nlpd_std": metrics["nlpd_std"],
                     "nlpds": metrics.get("nlpds"),
@@ -117,13 +126,15 @@ def save_csv(records, param_names, path: Path):
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for source in sorted(records):
-            param_name = param_names[source]
             for param_value in sorted(records[source]):
                 for algorithm, entry in sorted(records[source][param_value].items()):
                     writer.writerow(
                         {
                             "source": source,
-                            "param_name": param_name,
+                            # Each row's own param_name (see `collect`), not the
+                            # source-level `param_names[source]` -- a source can have
+                            # rows from more than one swept parameter.
+                            "param_name": entry["param_name"],
                             "param_value": param_value,
                             "algorithm": algorithm,
                             "nlpd_mean": entry["nlpd_mean"],

@@ -1,23 +1,19 @@
-"""Plot `pro_gp` vs `standard_gp` mean NLPD +/- 95% CI, one subplot per dataset, from
-`results/summary.csv` (written by `aggregate_results.py`'s `save_csv`).
+"""Plot `pro_gp` vs `standard_gp` mean NLPD +/- 95% CI against dataset size `n`, one
+subplot per dataset, from `results/summary.csv` (written by `aggregate_results.py`'s
+`save_csv`).
 
 A 2x2 error-bar panel -- same grid shape and dataset order (multimodal,
 heteroskedastic, block_outliers, well_specified) as `example_grid.py`'s `_SOURCES` --
-with one subplot per source. `well_specified` (`n`) and `block_outliers`
-(`outlier_offset_frac`) each sweep a real parameter with more than one `param_value` in
-`summary.csv`, so each algorithm gets its own dodged, line-connected error bar across
-the tested values (`SWEEP_XLABELS`/`SWEEP_LOG2_SOURCES` control each one's x-axis label
-and whether it's log2-scaled -- `n` doubles each step so log2 spaces it evenly,
-`outlier_offset_frac` doesn't so it stays linear). `heteroskedastic`/`multimodal`
-currently only have one `param_value` each, so there's no sweep to put on the x-axis --
-instead, `pro_gp`/`standard_gp` themselves are the two x positions, each with its own
-error bar and no connecting line (a line only makes sense along a real swept axis, which
-two bare categories aren't). Their x-tick text is hidden (redundant with the shared
-legend) -- only a genuine sweep's x-axis keeps tick labels. A subplot automatically
-falls back to the categorical view whenever it has only one `param_value` per algorithm,
-and to the sweep view otherwise -- so a future multi-point sweep for e.g.
-`heteroskedastic` would render like the other two without any further code changes
-beyond adding it to `SWEEP_XLABELS`.
+with one subplot per source. `summary.csv` holds each dataset's own
+misspecification-severity sweep too (e.g. `outlier_offset_frac` for block_outliers,
+`noise_skewness` for skewed), alongside its `n` sweep -- `load_summary` keeps only rows
+where `param_name == "n"`, so a source with no `n` sweep yet in the CSV simply doesn't
+appear rather than plotting the wrong x-axis. Each algorithm gets its own dodged,
+line-connected error bar across the tested `n` values, log2-scaled (`n` doubles each
+step) so the ticks stay evenly spaced. A source with only one `n` value falls back to
+`pro_gp`/`standard_gp` as the two x positions instead (`_plot_categorical`), with no
+connecting line and no x-tick text (redundant with the shared legend) -- e.g. if a
+dataset's `n` sweep hasn't finished running yet.
 
 Colors/style match `example_grid.py`'s convention (GP green / PRO blue, no spines, faint
 grid, a shared bottom legend) so figures share one visual language. Thin divider lines
@@ -56,17 +52,6 @@ SOURCE_TITLES = {
     "well_specified": "Well-specified",
 }
 
-# x-axis label for sources with a real sweep (more than one `param_value`); a source
-# with only one `param_value` doesn't need an entry (it renders via the categorical
-# view instead -- see `_plot_categorical`).
-SWEEP_XLABELS = {
-    "well_specified": "dataset size",
-    "block_outliers": "outlier offset (x signal std)",
-}
-# `n` doubles each step, so log2 spacing keeps the ticks evenly spaced;
-# `outlier_offset_frac`'s steps aren't multiplicative, so it stays linear.
-SWEEP_LOG2_SOURCES = {"well_specified"}
-
 ALGORITHMS = ("pro_gp", "standard_gp")
 ALGORITHM_LABELS = {"pro_gp": "PrO-GP", "standard_gp": "Standard GP"}
 # Same GP green / PRO blue as example_grid.py's GP_COLOR/PRO_COLOR -- kept as literal
@@ -74,7 +59,7 @@ ALGORITHM_LABELS = {"pro_gp": "PrO-GP", "standard_gp": "Standard GP"}
 # stack (synthetic.fit_gp/fit_pro) that this CSV-only script has no other need for.
 ALGORITHM_COLORS = {"pro_gp": "#3a76c4", "standard_gp": "#3f8f5f"}
 
-WELL_SPECIFIED_N_MIN = 100  # drop the n=50 row -- "n increasing from 100 to 800"
+N_MIN = 100  # drop n=50 rows -- "n increasing from 100 to 800", applied to every source
 DODGE_FRAC = 0.03  # multiplicative x-offset between the two algorithms' error bars
 
 DIVIDER_COLOR = "#cccac0"
@@ -96,19 +81,22 @@ plt.rcParams.update({
 
 
 def load_summary(path: Path = SUMMARY_CSV):
-    """{source: {algorithm: [(param_value, nlpd_mean, nlpd_ci95), ...]}}, each
-    algorithm's list sorted by `param_value`."""
+    """{source: {algorithm: [(n, nlpd_mean, nlpd_ci95), ...]}}, each algorithm's list
+    sorted by `n`. Only rows whose own `param_name` is `"n"` are kept -- `summary.csv`
+    also holds each dataset's own misspecification-severity sweep (`amplitude_frac`,
+    `outlier_offset_frac`, `noise_skewness`, ...), which isn't what this plot shows."""
     records: dict[str, dict[str, list[tuple[float, float, float]]]] = defaultdict(
         lambda: defaultdict(list)
     )
     with path.open() as f:
         for row in csv.DictReader(f):
-            source = row["source"]
-            param_value = float(row["param_value"])
-            if source == "well_specified" and param_value < WELL_SPECIFIED_N_MIN:
+            if row["param_name"] != "n":
                 continue
-            records[source][row["algorithm"]].append(
-                (param_value, float(row["nlpd_mean"]), float(row["nlpd_ci95"]))
+            n = float(row["param_value"])
+            if n < N_MIN:
+                continue
+            records[row["source"]][row["algorithm"]].append(
+                (n, float(row["nlpd_mean"]), float(row["nlpd_ci95"]))
             )
 
     for by_algorithm in records.values():
@@ -118,13 +106,10 @@ def load_summary(path: Path = SUMMARY_CSV):
     return records
 
 
-def _plot_sweep(
-    ax, by_algorithm: dict[str, list[tuple[float, float, float]]], all_values, *, xlabel, use_log2,
-):
-    """Per-algorithm line+error-bar series across a real swept `param_value` -- dodged
-    apart so nearby points' error bars stay legible, with the actual swept values as
-    ticks. `use_log2` only makes sense for a multiplicatively-spaced sweep (e.g. `n`
-    doubling); a linearly-spaced one (e.g. an offset fraction) stays on a linear axis."""
+def _plot_sweep(ax, by_algorithm: dict[str, list[tuple[float, float, float]]], all_values):
+    """Per-algorithm line+error-bar series across the swept `n` values -- dodged apart
+    so nearby points' error bars stay legible, log2-scaled (`n` doubles each step) so
+    the ticks stay evenly spaced, with the actual tested values as ticks."""
     for algorithm in ALGORITHMS:
         points = by_algorithm.get(algorithm)
         if not points:
@@ -139,15 +124,14 @@ def _plot_sweep(
             markersize=6, linewidth=1.5, elinewidth=1.5, capsize=4, capthick=1.5,
         )
 
-    ax.set_xlabel(xlabel)
+    ax.set_xlabel("dataset size")
     # `set_xscale` must come *before* `set_xticks` -- changing the scale resets the
     # tick locator, which would silently discard explicit ticks set beforehand (and
     # fall back to log2's own default locator, e.g. 64/128/256 instead of the actual
     # swept values).
-    if use_log2:
-        ax.set_xscale("log", base=2)
-        ax.xaxis.set_major_formatter(mticker.ScalarFormatter())
-        ax.xaxis.set_minor_formatter(mticker.NullFormatter())
+    ax.set_xscale("log", base=2)
+    ax.xaxis.set_major_formatter(mticker.ScalarFormatter())
+    ax.xaxis.set_minor_formatter(mticker.NullFormatter())
     ax.set_xticks(all_values)
 
 
@@ -176,11 +160,7 @@ def _plot_source(ax, source: str, by_algorithm: dict[str, list[tuple[float, floa
     is_sweep = len(all_values) > 1
 
     if is_sweep:
-        _plot_sweep(
-            ax, by_algorithm, all_values,
-            xlabel=SWEEP_XLABELS.get(source, "param value"),
-            use_log2=source in SWEEP_LOG2_SOURCES,
-        )
+        _plot_sweep(ax, by_algorithm, all_values)
     else:
         _plot_categorical(ax, by_algorithm)
 

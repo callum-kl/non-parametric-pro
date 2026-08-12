@@ -62,7 +62,7 @@ FIGURES_DIR = Path(__file__).resolve().parent / "figures"
 GP_COLOR = "#3f8f5f"
 PRO_COLOR = "#3a76c4"
 GP_CMAP = LinearSegmentedColormap.from_list("gp_density", ["#e8f4ec", GP_COLOR])
-PRO_DRAW_ALPHA = 0.5
+PRO_DRAW_ALPHA = 0.7
 NUM_PRO_DRAWS = 10
 
 plt.rcParams.update({

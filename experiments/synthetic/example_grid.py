@@ -53,7 +53,7 @@ GP_COLOR = "#3f8f5f"
 PRO_COLOR = "#3a76c4"
 GP_CMAP = LinearSegmentedColormap.from_list("gp_density", ["#e8f4ec", GP_COLOR])
 PRO_CMAP = LinearSegmentedColormap.from_list("pro_density", ["#e6eef8", PRO_COLOR])
-PRO_ALPHA = 0.5
+PRO_ALPHA = 0.7
 
 plt.rcParams.update({
     "font.size": 12,
@@ -228,7 +228,7 @@ def plot_examples(
 # panel -- is the point.
 LEGEND_HANDLES = [
     Patch(color=GP_COLOR, label="Standard GP"),
-    Patch(color=PRO_COLOR, label="PRO GP"),
+    Patch(color=PRO_COLOR, label="PrO-GP"),
     Line2D([0], [0], marker="o", color="black", linestyle="None", markersize=6, label="Test data"),
     Line2D(
         [0], [0], marker="x", color="maroon", linestyle="None",
