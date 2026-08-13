@@ -133,6 +133,7 @@ def main(cfg: DictConfig) -> None:
         objective_fn=regularised_score,
         rng_key=cv_key,
         inducing_basis=inducing_basis,
+        adapt_target=cfg.adapt_target,
         sigma_optimizer=ox.adam(cfg.sigma_lr),
         kernel_optimizer=ox.adam(cfg.kernel_lr),
         progress_bar=True,

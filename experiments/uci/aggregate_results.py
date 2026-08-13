@@ -31,6 +31,10 @@ METHOD_METRICS = {
         "gp_metrics.json",
         {"vgp_nlpd": "nlpd", "vgp_crps": "crps", "gp_sigma": "sigma"},
     ),
+    "ppgpr": (
+        "gp_metrics.json",
+        {"ppgpr_nlpd": "nlpd", "ppgpr_crps": "crps", "gp_sigma": "sigma"},
+    ),
     "pro_gp": (
         "pro_metrics.json",
         {"pro_nlpd": "nlpd", "pro_crps": "crps", "pro_sigma": "sigma"},
@@ -127,18 +131,19 @@ def summarise(records):
 def print_table(summary):
     datasets = sorted(summary)
     methods = sorted({m for ds in summary.values() for m in ds})
+    row_label_width = max(20, max((len(m) for m in methods), default=0) + 1)
 
     for metric in SUMMARY_METRICS:
         print(f"\n{'─'*72}")
         print(f"  {metric.upper()}")
         print(f"{'─'*72}")
-        col_width = max(16, max((len(m) for m in methods), default=0) + 1)
-        header = f"{'dataset':<20}" + "".join(f"{m:>{col_width}}" for m in methods)
+        col_width = max(16, max((len(ds) for ds in datasets), default=0) + 1)
+        header = f"{'model':<{row_label_width}}" + "".join(f"{ds:>{col_width}}" for ds in datasets)
         print(header)
         print("─" * len(header))
-        for ds in datasets:
-            row = f"{ds:<20}"
-            for method in methods:
+        for method in methods:
+            row = f"{method:<{row_label_width}}"
+            for ds in datasets:
                 entry = summary[ds].get(method, {}).get(metric)
                 if entry is None:
                     row += f"{'—':>{col_width}}"

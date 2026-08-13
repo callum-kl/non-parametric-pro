@@ -97,11 +97,12 @@ def main(cfg: DictConfig) -> None:
         jitter=cfg.jitter,
     )
     objective = lambda p, d: -predictive_log_likelihood(p, d, beta=cfg.beta_reg)  # noqa: E731
+    optim = ox.chain(ox.clip_by_global_norm(cfg.grad_clip_norm), ox.adam(cfg.kernel_lr))
     opt_vf, _ = gpx.fit(
         model=variational_family,
         objective=objective,
         train_data=data,
-        optim=ox.adam(cfg.kernel_lr),
+        optim=optim,
         num_iters=cfg.gp_num_iters,
         verbose=True,
         batch_size=cfg.ppgpr_batch_size,

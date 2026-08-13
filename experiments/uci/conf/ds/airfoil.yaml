@@ -2,5 +2,9 @@ dataset: airfoil
 num_inducing: 200
 vgp_batch_size: 512
 inducing: true
-num_particles: 20
+sigma_adapt_steps: 300
+kernel_adapt_steps: 50
+sigma_lr: 0.1
+kernel_lr: 0.01
+num_folds: 1
 seed: 1

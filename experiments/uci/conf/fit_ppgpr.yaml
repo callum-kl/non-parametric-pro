@@ -6,17 +6,15 @@ split: 1
 seed: 0
 name: null
 
-gp_num_iters: 15000
+gp_num_iters: 5000
 kernel_lr: 0.1
+grad_clip_norm: 1.0
 lengthscale_min: 1.0e-3
 lengthscale_max: 1.0e3
 ppgpr_batch_size: 512
 num_inducing: 300
-beta_reg: 1.0  # weight on KL(q(u)||p(u)); beta_reg=1 recovers the objective in Jankowiak et al. 2020
-jitter: 1.0e-6  # Kzz diagonal jitter; bump (e.g. 1e-4) on datasets with duplicate/near-constant
-                # feature columns (e.g. sml) -- some inducing points end up close enough that
-                # Kzz is ill-conditioned even with lengthscale bounded, same failure mode
-                # documented in fit_exact_gp.py for the training Gram matrix
+beta_reg: 0.05
+jitter: 1.0e-5
 
 results_root: ${script_dir:}/results
 

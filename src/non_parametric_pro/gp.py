@@ -133,9 +133,33 @@ def predictive_log_likelihood(
         - 0.5 * (y.squeeze() - pred_mean) ** 2 / total_var
     )                                                         # (N,)
 
+    # ---- KL(q(u) || p(u)), with S jittered like every other covariance here -----
+    # `variational_family.prior_kl()` computes this via a Cholesky of
+    # `variational_sqrt @ variational_sqrt.T` with no jitter, unlike Kzz above. At
+    # small beta the KL term barely penalises S drifting toward a near-singular
+    # spectrum -- its smallest eigenvalue can sit within float64 epsilon of zero
+    # for hundreds of steps -- so a single optimiser step's rounding error
+    # eventually tips that Cholesky factorisation into an indefinite matrix and
+    # NaNs the whole loss. Recomputing the KL by hand, jittering S the same way
+    # Kzz already is, removes that failure mode at the source.
+    S  = variational_sqrt @ variational_sqrt.T
+    Ls = jnp.linalg.cholesky(S + jitter * jnp.eye(S.shape[0]))
+
+    log_det_Kzz = 2.0 * jnp.sum(jnp.log(jnp.diag(Lz)))
+    log_det_S   = 2.0 * jnp.sum(jnp.log(jnp.diag(Ls)))
+
+    Lz_inv_Ls  = solve_triangular(Lz, Ls, lower=True)         # (M, M)
+    trace_term = jnp.sum(Lz_inv_Ls ** 2)
+
+    diff        = variational_mean - muz                      # (M, 1)
+    Lz_inv_diff = solve_triangular(Lz, diff, lower=True)
+    mahalanobis = jnp.sum(Lz_inv_diff ** 2)
+
+    m  = inducing_inputs.shape[0]
+    kl = 0.5 * (log_det_Kzz - log_det_S - m + trace_term + mahalanobis)
+
     # Scale for mini-batching: multiply by N / batch_size
     N_total = variational_family.posterior.likelihood.num_datapoints
-    kl = variational_family.prior_kl()
 
     return jnp.sum(log_lik) * N_total / n - beta * kl
 

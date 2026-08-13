@@ -61,10 +61,14 @@ def gp_state_dir(cfg: DictConfig) -> Path:
     whichever ``fit_vgp.py collapsed=...`` value was actually run -- see that script's
     ``state_dir`` for the exact same subdirectory names.
     ``cfg.vgp_name`` mirrors ``fit_vgp.py``'s own ``name`` override, for loading a
-    specifically-named run rather than the bare variant directory.
+    specifically-named run rather than the bare variant directory. ``cfg.gp_name``
+    is the same idea for the non-inducing case, mirroring ``fit_exact_gp.py``'s own
+    ``name`` override -- e.g. ``gp_name=loo`` loads ``exact_gp_loo`` (as saved by
+    ``fit_exact_gp.py objective=loocv name=loo``) instead of the bare ``exact_gp``.
     """
     if not cfg.inducing:
-        return Path(cfg.results_root) / cfg.dataset / f"split_{cfg.split}" / "exact_gp"
+        subdir = f"exact_gp_{cfg.gp_name}" if cfg.gp_name else "exact_gp"
+        return Path(cfg.results_root) / cfg.dataset / f"split_{cfg.split}" / subdir
 
     if cfg.vgp_variant not in _VGP_VARIANT_SUBDIRS:
         msg = (

@@ -7,7 +7,7 @@ that determine `basis`, on a user-defined schedule.
 """
 
 from collections.abc import Callable
-from typing import NamedTuple
+from typing import Literal, NamedTuple
 
 import equinox as eqx
 import gpjax as gpx
@@ -139,6 +139,7 @@ def base(
     inducing_basis: InducingBasis | None = None,
     x_val: jax.Array | None = None,
     y_val: jax.Array | None = None,
+    adapt_target: Literal["train", "val"] | None = None,
 ) -> tuple[Callable, Callable, Callable]:
     """
     Build the (init, update, final) triple for sigma/basis adaptation.
@@ -159,14 +160,22 @@ def base(
         ``K_xz L_zz^{-T}`` and ``residual_std`` is
         ``sqrt(diag(K_xx) - diag(basis @ basis^T))``.
     x_val, y_val
-        If given, ``sigma``'s objective is evaluated on this held-out set
-        instead of the training set (see ``_objective_parameters``). Kernel
-        hyperparameter adaptation (``basis``) always uses the training set
-        regardless -- ``val_basis``/``val_residual_std`` are still tracked in
-        the adaptation state so a freshly-updated kernel's validation basis
-        is available to the *next* sigma step.
+        Held-out set used for adaptation when `adapt_target="val"` (or, with
+        `adapt_target` left at its default, for `sigma` only -- see below).
+        `val_basis`/`val_residual_std` are tracked in the adaptation state
+        regardless of `adapt_target`, so a freshly-updated kernel's
+        validation basis is always available to the next `sigma` step.
+    adapt_target
+        Which dataset both `sigma` and the kernel hyperparameters (`basis`)
+        are fit against. `"val"` requires `x_val`/`y_val`. `None` (default)
+        reproduces this function's original, asymmetric behaviour: `sigma`
+        uses `x_val`/`y_val` if given, else the training set; the kernel
+        always uses the training set regardless of `x_val`/`y_val`.
 
     """
+    if adapt_target == "val" and (x_val is None or y_val is None):
+        msg = "adapt_target='val' requires both x_val and y_val to be given."
+        raise ValueError(msg)
 
     def basis_fn(
         kernel: gpx.kernels.AbstractKernel,
@@ -211,12 +220,13 @@ def base(
         vb: jax.Array | None,
         vr: jax.Array | None,
     ) -> ProParameters:
-        """Swap to validation y/basis if available, else use training parameters.
+        """Swap to validation y/basis if `adapt_target` calls for it, else training.
 
-        Only used by ``sigma_loss`` -- ``kernel_loss`` always fits on the
-        training set (see its docstring/call site).
+        With `adapt_target=None`, reproduces the original `sigma`-only default:
+        validation if `x_val` was given, training otherwise.
         """
-        if x_val is None:
+        use_val = adapt_target == "val" or (adapt_target is None and x_val is not None)
+        if not use_val:
             return base_parameters
         return base_parameters._replace(y=y_val, basis=vb, residual_std=vr)
 
@@ -236,7 +246,13 @@ def base(
         base_parameters: ProParameters,
     ) -> jax.Array:
         new_basis, new_residual_std = basis_fn(kernel)
-        obj_params = base_parameters._replace(basis=new_basis, residual_std=new_residual_std)
+        if adapt_target == "val":
+            val_basis, val_residual_std = val_basis_fn(kernel, new_basis)
+            obj_params = base_parameters._replace(
+                y=y_val, basis=val_basis, residual_std=val_residual_std
+            )
+        else:
+            obj_params = base_parameters._replace(basis=new_basis, residual_std=new_residual_std)
         return -objective_fn(position, obj_params)
 
     def init(
@@ -351,6 +367,7 @@ def parameter_adaptation(  # noqa: PLR0913
     inducing_basis: InducingBasis | None = None,
     x_val: jax.Array | None = None,
     y_val: jax.Array | None = None,
+    adapt_target: Literal["train", "val"] | None = None,
     sigma_optimizer: optax.GradientTransformation | None = None,
     kernel_optimizer: optax.GradientTransformation | None = None,
     jitter: float = 1e-6,
@@ -368,6 +385,12 @@ def parameter_adaptation(  # noqa: PLR0913
     `[warmup_steps, num_steps - 1]` independently of one another (see
     `build_schedule`); pass 0 to disable a given parameter's adaptation
     entirely.
+
+    `adapt_target` selects which dataset `sigma` and the kernel are both fit
+    against -- `"train"`, `"val"` (requires `x_val`/`y_val`), or `None`
+    (default) for the original per-parameter default: `sigma` on `x_val`/
+    `y_val` if given, the kernel always on the training set. See `base`'s
+    docstring for the full behaviour.
 
     The returned `AdaptationAlgorithm.run` yields
     `(AdaptationResults(state, parameters), info)` -- `parameters` is a
@@ -394,6 +417,7 @@ def parameter_adaptation(  # noqa: PLR0913
         inducing_basis=inducing_basis,
         x_val=x_val,
         y_val=y_val,
+        adapt_target=adapt_target,
     )
 
     def one_step(carry, xs):
@@ -530,6 +554,7 @@ def cross_validated_parameter_adaptation(  # noqa: PLR0913
     objective_fn: Callable,
     rng_key: PRNGKey,
     inducing_basis: InducingBasis | None = None,
+    adapt_target: Literal["train", "val"] | None = None,
     sigma_optimizer: optax.GradientTransformation | None = None,
     kernel_optimizer: optax.GradientTransformation | None = None,
     jitter: float = 1e-6,
@@ -540,9 +565,9 @@ def cross_validated_parameter_adaptation(  # noqa: PLR0913
 
     Classic k-fold: ``(x_full, y_full)`` is partitioned into ``num_folds`` disjoint
     chunks (see :func:`_kfold_splits`); fold ``i`` trains on every other chunk and
-    validates on chunk ``i`` (``x_val``/``y_val`` feed the ``sigma`` objective exactly
-    as in a single :func:`parameter_adaptation` call; kernel hyperparameters are always
-    fit on the fold's training chunk -- see :func:`parameter_adaptation`). Every point
+    validates on chunk ``i`` (``x_val``/``y_val`` feed each fold's :func:`parameter_adaptation`
+    call exactly as in a single call -- see ``adapt_target`` there for which of ``sigma``/the
+    kernel hyperparameters that held-out chunk actually gets used for). Every point
     is validated on exactly once across all folds. ``num_folds=1`` is a special case (a
     true 1-fold partition is undefined, since there'd be nothing left to train on) that
     instead does a single random ``val_fraction``-sized hold-out split.
@@ -574,6 +599,11 @@ def cross_validated_parameter_adaptation(  # noqa: PLR0913
     rng_key
         Split once to produce the fold partition, then once per fold for that fold's
         initial position and adaptation run.
+    adapt_target
+        Forwarded to each fold's :func:`parameter_adaptation` call; see its docstring.
+        Note that with the default ``None`` (``sigma`` on the fold's held-out chunk,
+        kernel always on the fold's training chunk), passing ``adapt_target="train"``
+        here changes ``sigma``'s fold behaviour too, not just the kernel's.
     Remaining parameters are forwarded to each fold's :func:`parameter_adaptation` call
     unchanged; see its docstring.
 
@@ -611,6 +641,7 @@ def cross_validated_parameter_adaptation(  # noqa: PLR0913
             inducing_basis=inducing_basis,
             x_val=x_val,
             y_val=y_val,
+            adapt_target=adapt_target,
             sigma_optimizer=sigma_optimizer,
             kernel_optimizer=kernel_optimizer,
             jitter=jitter,

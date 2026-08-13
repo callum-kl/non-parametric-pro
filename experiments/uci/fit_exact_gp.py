@@ -34,6 +34,16 @@ def state_dir(cfg: DictConfig) -> Path:
     return Path(cfg.results_root) / cfg.dataset / f"split_{cfg.split}" / subdir
 
 
+def _objective_fn(name: str):
+    """`cfg.objective` -> gpjax objective callable, negated for minimisation."""
+    if name == "mll":
+        return lambda p, d: -gpx.objectives.conjugate_mll(p, d)
+    if name == "loocv":
+        return lambda p, d: -gpx.objectives.conjugate_loocv(p, d)
+    msg = f"Unknown objective={name!r}; expected 'mll' or 'loocv'."
+    raise ValueError(msg)
+
+
 @hydra.main(version_base=None, config_path="conf", config_name="fit_exact_gp")
 def main(cfg: DictConfig) -> None:
     log.info("Fitting exact GP: dataset=%s split=%d", cfg.dataset, cfg.split)
@@ -58,6 +68,7 @@ def main(cfg: DictConfig) -> None:
     data = gpx.Dataset(X=x_train, y=y_train)
     key = jr.PRNGKey(cfg.seed)
     restart_keys = jr.split(key, cfg.num_restarts)
+    objective_fn = _objective_fn(cfg.objective)
 
     best_posterior = None
     best_loss = jnp.inf
@@ -82,20 +93,21 @@ def main(cfg: DictConfig) -> None:
 
         candidate, history = gpx.fit_scipy(
             model=posterior,
-            objective=lambda p, d: -gpx.objectives.conjugate_mll(p, d),
+            objective=objective_fn,
             train_data=data,
             verbose=(cfg.num_restarts == 1),
         )
         final_loss = float(history[-1])
         log.info(
-            "Restart %d/%d: final negative MLL=%.4f", i + 1, cfg.num_restarts, final_loss
+            "Restart %d/%d: final negative %s=%.4f",
+            i + 1, cfg.num_restarts, cfg.objective, final_loss,
         )
         if final_loss < best_loss:
             best_loss = final_loss
             best_posterior = candidate
 
     opt_posterior = best_posterior
-    log.info("Best restart: negative MLL=%.4f", best_loss)
+    log.info("Best restart: negative %s=%.4f", cfg.objective, best_loss)
 
     opt_kernel = opt_posterior.prior.kernel
     opt_sigma = opt_posterior.likelihood.obs_stddev
@@ -112,6 +124,7 @@ def main(cfg: DictConfig) -> None:
         "gp_nlpd": float(nlpd_gp(y_test, mean, std)),
         "gp_crps": float(crps_gp(y_test, mean, std)),
         "gp_sigma": float(np.array(px.unwrap(opt_sigma)).reshape(())),
+        "objective": cfg.objective,
     }
     log.info("GP  NLPD=%.4f  CRPS=%.4f", metrics["gp_nlpd"], metrics["gp_crps"])
 
