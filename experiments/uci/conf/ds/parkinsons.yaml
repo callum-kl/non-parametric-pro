@@ -1,4 +1,5 @@
-dataset: wine
+dataset: parkinsons
+vgp_batch_size: 512
 vgp_variant: collapsed
 collapsed: true
 inducing: true

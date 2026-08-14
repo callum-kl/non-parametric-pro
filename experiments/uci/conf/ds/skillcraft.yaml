@@ -1,8 +1,8 @@
 # N=3338, D=19
 dataset: skillcraft
 vgp_batch_size: 512
-vgp_variant: noncollapsed
-collapsed: false
+vgp_variant: collapsed
+collapsed: true
 inducing: true
 algorithm: sgld
 num_folds: 1

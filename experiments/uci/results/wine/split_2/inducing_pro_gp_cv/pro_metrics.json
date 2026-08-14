@@ -1,0 +1,13 @@
+{
+  "dataset": "wine",
+  "split": 2,
+  "inducing": true,
+  "num_folds": 1,
+  "gp_sigma": 0.40028352401193756,
+  "pro_sigma": 0.11531294327408237,
+  "pro_sigma_per_fold": [
+    0.11531294327408237
+  ],
+  "pro_nlpd": 0.4719323153002705,
+  "pro_crps": 0.24667373874747495
+}
