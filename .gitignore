@@ -165,7 +165,7 @@ _version.py
 # data
 /data/
 experiments/uci/multirun/
-experiments/uci/results/
+# experiments/uci/results/
 experiments/uci/.hydra_logs/*
 experiments/synthetic/multirun/
 experiments/synthetic/.hydra_logs/*

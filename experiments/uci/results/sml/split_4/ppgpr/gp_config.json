@@ -1,0 +1,17 @@
+{
+  "split": 4,
+  "seed": 0,
+  "name": null,
+  "gp_num_iters": 5000,
+  "kernel_lr": 0.1,
+  "grad_clip_norm": 1.0,
+  "lengthscale_min": 0.001,
+  "lengthscale_max": 1000.0,
+  "ppgpr_batch_size": 512,
+  "num_inducing": 300,
+  "beta_reg": 0.05,
+  "jitter": 1e-05,
+  "results_root": "${script_dir:}/results",
+  "dataset": "sml",
+  "collapsed": false
+}

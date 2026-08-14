@@ -2,6 +2,7 @@
 dataset: skillcraft
 vgp_batch_size: 512
 vgp_variant: noncollapsed
+collapsed: false
 inducing: true
 algorithm: sgld
 num_folds: 1
