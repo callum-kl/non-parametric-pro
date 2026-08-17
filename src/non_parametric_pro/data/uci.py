@@ -1,5 +1,7 @@
 """Download and load the standardized UCI regression datasets (ported from Julia)."""
 
+import csv
+import io
 import os
 import re
 import shutil
@@ -7,6 +9,7 @@ import tarfile
 import tempfile
 import urllib.parse
 import urllib.request
+import zipfile
 from pathlib import Path
 from typing import NamedTuple
 
@@ -14,7 +17,9 @@ import numpy as np
 
 UCI_REGRESSION_DATASET_SIZES: dict[str, tuple[int, int]] = {
     "3droad": (434_874, 3),
+    "abalone": (4_177, 10),
     "airfoil": (1_503, 5),
+    "airquality": (6_941, 11),
     "autompg": (392, 7),
     "autos": (159, 25),
     "bike": (17_379, 17),
@@ -47,6 +52,7 @@ UCI_REGRESSION_DATASET_SIZES: dict[str, tuple[int, int]] = {
     "song": (515_345, 90),
     "stock": (536, 11),
     "tamielectric": (45_781, 3),
+    "whitewine": (4_898, 11),
     "wine": (1_599, 11),
     "yacht": (308, 6),
 }
@@ -198,6 +204,146 @@ def download_uci_regression_datasets(
         shutil.copytree(source_dir, directory)
 
     return directory
+
+
+def _write_uci_regression_dataset(
+    name: str,
+    x: np.ndarray,
+    y: np.ndarray,
+    *,
+    directory: Path | None = None,
+    seed: int = 0,
+) -> Path:
+    """
+    Write ``x``/``y`` out as a ``data.csv.gz`` / ``test_mask.csv.gz`` pair, in the same layout
+    ``load_uci_regression_dataset`` expects from the ``treforevans/uci_datasets`` corpus --
+    for datasets that aren't part of that corpus and so need their own preprocessing.
+
+    The mask is built from one seeded shuffle split into ``NUM_RAW_UCI_SPLITS`` contiguous
+    folds, so each pair of raw columns (what ``load_uci_regression_dataset`` merges into one
+    of its 5 splits) is disjoint -- matching the corpus's own ~20%-test-per-split convention.
+    """
+    directory = directory if directory is not None else package_data_dir("uci_datasets")
+    n = x.shape[0]
+    rng = np.random.default_rng(seed)
+    folds = np.array_split(rng.permutation(n), NUM_RAW_UCI_SPLITS)
+    mask = np.zeros((n, NUM_RAW_UCI_SPLITS), dtype=np.int64)
+    for i, fold in enumerate(folds):
+        mask[fold, i] = 1
+
+    dataset_dir = directory / name
+    dataset_dir.mkdir(parents=True, exist_ok=True)
+    data = np.hstack([x, y.reshape(-1, 1)])
+    np.savetxt(dataset_dir / "data.csv.gz", data, delimiter=",")
+    np.savetxt(dataset_dir / "test_mask.csv.gz", mask, delimiter=",", fmt="%d")
+    return dataset_dir
+
+
+def download_wine_quality_white(
+    *,
+    directory: Path | None = None,
+    force: bool = False,
+    source_url: str = "https://archive.ics.uci.edu/static/public/186/wine+quality.zip",
+) -> Path:
+    """
+    Download and preprocess the UCI white-wine-quality dataset (``"whitewine"``).
+
+    Unlike its red-wine sibling (``"wine"``, part of the ``treforevans/uci_datasets``
+    corpus), this is fetched directly from the UCI ML Repository (whose archive bundles
+    both colours in one zip) and reshaped into the same ``data.csv.gz`` / ``test_mask.csv.gz``
+    layout, so ``load_uci_regression_dataset("whitewine")`` works identically to any
+    corpus dataset. 11 physicochemical features predicting ``quality``.
+    """
+    directory = directory if directory is not None else package_data_dir("uci_datasets")
+    dataset_dir = directory / "whitewine"
+    if dataset_dir.is_dir() and not force:
+        return dataset_dir
+
+    _require_http_url(source_url)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        archive = Path(tmpdir) / "wine-quality.zip"
+        urllib.request.urlretrieve(source_url, archive)  # noqa: S310
+        with zipfile.ZipFile(archive) as zf, zf.open("winequality-white.csv") as f:
+            rows = list(csv.reader(io.TextIOWrapper(f, encoding="utf-8"), delimiter=";"))
+
+    data = np.array(rows[1:], dtype=np.float64)  # rows[0] is the header
+    x, y = data[:, :-1], data[:, -1]
+    return _write_uci_regression_dataset("whitewine", x, y, directory=directory)
+
+
+def download_abalone(
+    *,
+    directory: Path | None = None,
+    force: bool = False,
+    source_url: str = "https://archive.ics.uci.edu/static/public/1/abalone.zip",
+) -> Path:
+    """
+    Download and preprocess the UCI abalone dataset (``"abalone"``).
+
+    The raw categorical ``Sex`` column (``M``/``F``/``I``) is one-hot encoded into 3 binary
+    columns, giving 10 numeric input features (3 sex indicators + 7 physical measurements)
+    predicting ``Rings`` (a proxy for age).
+    """
+    directory = directory if directory is not None else package_data_dir("uci_datasets")
+    dataset_dir = directory / "abalone"
+    if dataset_dir.is_dir() and not force:
+        return dataset_dir
+
+    _require_http_url(source_url)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        archive = Path(tmpdir) / "abalone.zip"
+        urllib.request.urlretrieve(source_url, archive)  # noqa: S310
+        with zipfile.ZipFile(archive) as zf, zf.open("abalone.data") as f:
+            rows = list(csv.reader(io.TextIOWrapper(f, encoding="utf-8")))
+
+    sex = np.array([r[0] for r in rows])
+    numeric = np.array([r[1:] for r in rows], dtype=np.float64)
+    sex_onehot = np.stack([sex == cat for cat in ("M", "F", "I")], axis=1).astype(np.float64)
+    x = np.hstack([sex_onehot, numeric[:, :-1]])
+    y = numeric[:, -1]
+    return _write_uci_regression_dataset("abalone", x, y, directory=directory)
+
+
+def download_air_quality(
+    *,
+    directory: Path | None = None,
+    force: bool = False,
+    source_url: str = "https://archive.ics.uci.edu/static/public/360/air+quality.zip",
+) -> Path:
+    """
+    Download and preprocess the UCI air-quality dataset (``"airquality"``).
+
+    Predicts the reference ``CO(GT)`` sensor reading from the device's other readings.
+    ``Date``/``Time`` are dropped (not simple numeric features), as is ``NMHC(GT)`` (missing
+    in most rows); rows still containing the dataset's ``-200`` missing-value sentinel in any
+    remaining column are dropped, as are the trailing fully-blank rows the raw CSV ships with.
+    """
+    directory = directory if directory is not None else package_data_dir("uci_datasets")
+    dataset_dir = directory / "airquality"
+    if dataset_dir.is_dir() and not force:
+        return dataset_dir
+
+    _require_http_url(source_url)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        archive = Path(tmpdir) / "air-quality.zip"
+        urllib.request.urlretrieve(source_url, archive)  # noqa: S310
+        with zipfile.ZipFile(archive) as zf, zf.open("AirQualityUCI.csv") as f:
+            reader = csv.reader(io.TextIOWrapper(f, encoding="utf-8"), delimiter=";")
+            header = next(reader)
+            rows = [r for r in reader if r and r[0].strip()]
+
+    drop_cols = {"Date", "Time", "NMHC(GT)", ""}
+    keep = [i for i, col_name in enumerate(header) if col_name not in drop_cols]
+    keep_names = [header[i] for i in keep]
+    data = np.array(
+        [[float(r[i].replace(",", ".")) for i in keep] for r in rows], dtype=np.float64
+    )
+    data = data[~(data == -200).any(axis=1)]
+
+    target_idx = keep_names.index("CO(GT)")
+    feature_idx = [i for i in range(data.shape[1]) if i != target_idx]
+    x, y = data[:, feature_idx], data[:, target_idx]
+    return _write_uci_regression_dataset("airquality", x, y, directory=directory)
 
 
 def load_uci_regression_dataset(

@@ -100,7 +100,12 @@ def main(cfg: DictConfig) -> None:
     log.info("N_train=%d  N_test=%d", x_train.shape[0], x_test.shape[0])
 
     # --- PRO setup ---------------------------------------------------------------
-    sigma = gpx.parameters.SigmoidBounded(sigma_val, low=cfg.sigma_min, high=sigma_val + 0.01)
+    if cfg.sigma_init is None:
+        sigma = gpx.parameters.SigmoidBounded(sigma_val, low=cfg.sigma_min, high=sigma_val + 0.01)
+    else:
+        sigma = gpx.parameters.SigmoidBounded(
+            cfg.sigma_init, low=cfg.sigma_min, high=cfg.sigma_max
+        )
     pro_params = ProParameters(
         y=y_train,
         basis=None,

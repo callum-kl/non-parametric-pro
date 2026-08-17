@@ -1,0 +1,13 @@
+{
+  "dataset": "whitewine",
+  "split": 4,
+  "inducing": true,
+  "num_folds": 1,
+  "gp_sigma": 0.779829788077234,
+  "pro_sigma": 0.5993675091451172,
+  "pro_sigma_per_fold": [
+    0.5993675091451173
+  ],
+  "pro_nlpd": 1.1068791221775842,
+  "pro_crps": 0.41279822936240096
+}

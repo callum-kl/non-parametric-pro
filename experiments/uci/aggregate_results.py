@@ -51,6 +51,14 @@ METHOD_METRICS = {
         "pro_metrics.json",
         {"pro_nlpd": "nlpd", "pro_crps": "crps", "pro_sigma": "sigma"},
     ),
+    "pro_gp_alpha_cv": (
+        "pro_metrics.json",
+        {"pro_nlpd": "nlpd", "pro_crps": "crps", "pro_sigma": "sigma"},
+    ),
+    "inducing_pro_gp_alpha_cv": (
+        "pro_metrics.json",
+        {"pro_nlpd": "nlpd", "pro_crps": "crps", "pro_sigma": "sigma"},
+    ),
 }
 
 SUMMARY_METRICS = ("nlpd", "crps", "sigma")
@@ -110,19 +118,20 @@ def collect():
     return records
 
 
-def _sample_std(v: list[float]) -> float:
-    """Sample std (ddof=1); 0.0 for a single value rather than np.std's NaN."""
-    return float(np.std(v, ddof=1)) if len(v) > 1 else 0.0
+def _standard_error(v: list[float]) -> float:
+    """Standard error of the mean (sample std, ddof=1, over sqrt(n)); 0.0 for a single
+    value rather than np.std's NaN."""
+    return float(np.std(v, ddof=1) / np.sqrt(len(v))) if len(v) > 1 else 0.0
 
 
 def summarise(records):
-    # {dataset: {method: {metric: (mean, std)}}}
+    # {dataset: {method: {metric: (mean, se)}}}
     summary = {}
     for dataset, methods in records.items():
         summary[dataset] = {}
         for method, metrics in methods.items():
             summary[dataset][method] = {
-                k: (float(np.mean(v)), _sample_std(v))
+                k: (float(np.mean(v)), _standard_error(v))
                 for k, v in metrics.items()
             }
     return summary
@@ -148,8 +157,8 @@ def print_table(summary):
                 if entry is None:
                     row += f"{'—':>{col_width}}"
                 else:
-                    mean, std = entry
-                    row += f"{f'{mean:.4f}±{std:.4f}':>{col_width}}"
+                    mean, se = entry
+                    row += f"{f'{mean:.4f}±{se:.4f}':>{col_width}}"
             print(row)
 
 
@@ -163,7 +172,7 @@ def save_csv(summary, path: Path):
         f"{method}_{metric}_{stat}"
         for method in methods
         for metric in SUMMARY_METRICS
-        for stat in ("mean", "std")
+        for stat in ("mean", "se")
     ]
 
     with path.open("w", newline="") as f:
@@ -175,11 +184,11 @@ def save_csv(summary, path: Path):
                 for metric in SUMMARY_METRICS:
                     entry = summary[ds].get(method, {}).get(metric)
                     mean_key = f"{method}_{metric}_mean"
-                    std_key = f"{method}_{metric}_std"
+                    se_key = f"{method}_{metric}_se"
                     if entry is not None:
-                        row[mean_key], row[std_key] = entry
+                        row[mean_key], row[se_key] = entry
                     else:
-                        row[mean_key] = row[std_key] = ""
+                        row[mean_key] = row[se_key] = ""
             writer.writerow(row)
 
     print(f"Saved to {path}")

@@ -16,6 +16,8 @@ results_root: ${script_dir:}/results
 num_particles: 50
 alpha: 1.0
 sigma_min: 0.1
+sigma_max: 100.0
+sigma_init: null  # if set, used as the initial sigma instead of the loaded GP state's sigma
 
 algorithm: ula  # "ula" (exact, full-batch) | "sgld" (minibatched -- non_parametric_pro.sgld)
 sgld_batch_size: 512  # only used when algorithm=sgld; must be < N_train for the dataset
@@ -36,10 +38,6 @@ sigma_adapt_steps: 900
 kernel_adapt_steps: 0
 sigma_lr: 0.1
 kernel_lr: 0.01
-
-# Which fold data sigma/kernel adaptation is fit against -- "train", "val", or null
-# (default: sigma on the fold's held-out chunk, kernel always on the fold's training
-# chunk -- see non_parametric_pro.parameter_adaptation.base's docstring)
 adapt_target: null
 
 burn_fraction: 0.9

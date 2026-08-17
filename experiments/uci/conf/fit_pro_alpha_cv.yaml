@@ -1,0 +1,43 @@
+defaults:
+  - _self_
+  - ds@_global_: yacht  # override with: "ds@_global_=<name>"
+
+split: 1
+seed: 0
+inducing: false  # true → reads VGP state (kernel + inducing points); false → reads exact GP state (kernel)
+vgp_variant: collapsed  # "collapsed" | "noncollapsed" -- only used when inducing=true
+vgp_name: null  # optional suffix matching fit_vgp.py's own `name` override, if that run used one
+gp_name: null  # optional suffix matching fit_exact_gp.py's own `name` override, if that run used one
+               # (e.g. gp_name=loo -> reads exact_gp_loo); only used when inducing=false
+name: null  # optional suffix for the results dir, e.g. name=untuned -> pro_gp_alpha_cv_untuned
+
+results_root: ${script_dir:}/results
+
+num_particles: 50
+step_size: 0.0001
+
+sigma: 0.2
+sigma_min: 0.1
+sigma_lr: 0.1
+
+algorithm: ula
+sgld_batch_size: 512
+
+alpha_grid: [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
+val_fraction: 0.3
+adapt_target: null
+
+num_adapt_steps: 15000
+warmup_steps: 10000
+sigma_adapt_steps: 500
+
+num_sample_steps: 3000
+thin: 50
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: ${script_dir:}/.hydra_logs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: ${script_dir:}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}

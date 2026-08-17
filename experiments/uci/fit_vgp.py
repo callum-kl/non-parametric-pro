@@ -68,16 +68,6 @@ def main(cfg: DictConfig) -> None:
     log.info("N_train=%d  N_test=%d  D=%d", x_train.shape[0], x_test.shape[0], D)
 
     # --- Sparse GP fit -------------------------------------------------------
-    # Lengthscale is bounded, not just positive -- see fit_exact_gp.py for why
-    # (duplicated/near-constant feature columns can otherwise drive an ARD
-    # dimension's lengthscale to a numerically pathological extreme).
-    # variance is fixed to 1 (not learned) -- same convention as every exploratory
-    # notebook in this repo (data is already standardised, so sigma/lengthscale alone
-    # are sufficient). Leaving it trainable lets Adam/natural-gradient optimisation
-    # drift into a degenerate variance-vs-lengthscale trade-off (observed on skillcraft:
-    # variance inflated to ~71 with several ARD lengthscales pinned at lengthscale_max)
-    # that badly rescales the kernel and destabilises downstream PRO/SGLD sampling,
-    # which was tuned assuming variance=1.
     data = gpx.Dataset(X=x_train, y=y_train)
     lengthscale = gpx.parameters.SigmoidBounded(
         jnp.sqrt(D) * jnp.ones((D,)), low=cfg.lengthscale_min, high=cfg.lengthscale_max

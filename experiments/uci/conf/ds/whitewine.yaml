@@ -1,0 +1,7 @@
+# N=4898, D=11
+dataset: whitewine
+vgp_variant: collapsed
+collapsed: true
+inducing: true
+algorithm: sgld
+num_folds: 1
