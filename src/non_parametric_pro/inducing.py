@@ -274,11 +274,12 @@ def compute_inducing_basis(
         residual_std = jnp.sqrt(jnp.maximum(k_diag - q_diag, 0.0)).reshape(-1, 1)
         return basis, residual_std
 
+    x_2d = x.reshape(-1, 1) if x.ndim == 1 else x
     k_zz = inducing_basis.inducing_cov(kernel)
     k_zx = inducing_basis.cross_cov(kernel, x)
     l_z = jnp.linalg.cholesky(k_zz + jitter * jnp.eye(k_zz.shape[0]))
     basis = solve_triangular(l_z, k_zx, lower=True).T  # (N, M)
     q_diag = jnp.sum(basis**2, axis=1)
-    k_diag = jnp.diag(kernel.gram(x).as_matrix())
+    k_diag = jax.vmap(kernel, in_axes=(0, 0))(x_2d, x_2d)
     residual_std = jnp.sqrt(jnp.maximum(k_diag - q_diag, 0.0)).reshape(-1, 1)
     return basis, residual_std

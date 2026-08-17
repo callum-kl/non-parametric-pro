@@ -1,1 +1,8 @@
 dataset: pol
+vgp_batch_size: 512
+vgp_variant: collapsed
+collapsed: true
+inducing: true
+algorithm: sgld
+num_folds: 1
+num_particles: 20
