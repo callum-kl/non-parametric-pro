@@ -6,15 +6,15 @@ split: 1
 seed: 0
 name: null
 
-gp_num_iters: 5000
+gp_num_iters: 10000
 kernel_lr: 0.1
 grad_clip_norm: 1.0
 lengthscale_min: 1.0e-3
 lengthscale_max: 1.0e3
 ppgpr_batch_size: 512
-num_inducing: 300
+num_inducing: 200
 beta_reg: 0.05
-jitter: 1.0e-5
+jitter: 1.0e-6
 
 results_root: ${script_dir:}/results
 

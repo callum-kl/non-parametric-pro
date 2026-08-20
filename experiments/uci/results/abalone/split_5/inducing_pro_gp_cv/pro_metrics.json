@@ -1,0 +1,13 @@
+{
+  "dataset": "abalone",
+  "split": 5,
+  "inducing": true,
+  "num_folds": 1,
+  "gp_sigma": 1.4142135624312613,
+  "pro_sigma": 0.14073933678017084,
+  "pro_sigma_per_fold": [
+    0.14073933678017084
+  ],
+  "pro_nlpd": 1.4801072584861048,
+  "pro_crps": 0.5694185977275271
+}
