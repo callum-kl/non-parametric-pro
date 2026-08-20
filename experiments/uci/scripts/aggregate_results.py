@@ -61,7 +61,7 @@ METHOD_METRICS = {
     ),
 }
 
-SUMMARY_METRICS = ("nlpd", "crps", "sigma")
+SUMMARY_METRICS = ("nlpd", "sigma")
 
 # Longest base name first, so e.g. "pro_gp_cv_untuned" resolves against the "pro_gp_cv"
 # base rather than the shorter "pro_gp" prefix it also happens to start with.
