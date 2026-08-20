@@ -9,7 +9,5 @@
   "num_restarts": 1,
   "restart_jitter_std": 0.75,
   "results_root": "${script_dir:}/results",
-  "dataset": "housing",
-  "num_adapt_steps": 10000,
-  "num_sample_steps": 40000
+  "dataset": "housing"
 }

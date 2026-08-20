@@ -9,7 +9,5 @@
   "num_restarts": 1,
   "restart_jitter_std": 0.75,
   "results_root": "${script_dir:}/results",
-  "dataset": "machine",
-  "num_inducing": 10,
-  "num_particles": 50
+  "dataset": "machine"
 }
