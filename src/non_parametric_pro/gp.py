@@ -13,29 +13,6 @@ from gpjax.objectives import _val
 from jax import vmap
 from jax.scipy.linalg import solve_triangular
 
-from non_parametric_pro.inducing import PointInducingBasis, compute_inducing_basis
-
-
-def _full_gp_basis(
-    posterior: gpx.gps.AbstractPosterior,
-    x_train: jnp.ndarray,
-    jitter: float = 1e-6,
-) -> jnp.ndarray:
-    """Cholesky basis of the training Gram matrix under the fitted kernel."""
-    kernel = posterior.prior.kernel
-    k_train = kernel.gram(x_train).as_matrix()
-    return jnp.linalg.cholesky(k_train + jitter * jnp.eye(k_train.shape[0]))
-
-
-def _sparse_gp_basis(
-    variational_family: gpx.variational_families.CollapsedVariationalGaussian,
-    x_train: jnp.ndarray,
-    jitter: float = 1e-6,
-) -> tuple[jnp.ndarray, jnp.ndarray]:
-    """Basis and residual std for the fitted sparse GP, via ``PointInducingBasis``."""
-    kernel = variational_family.posterior.prior.kernel
-    z = _val(variational_family.inducing_inputs)
-    return compute_inducing_basis(PointInducingBasis(z), kernel, x_train, jitter)
 
 def predictive_log_likelihood(
     variational_family,
@@ -64,11 +41,6 @@ def predictive_log_likelihood(
     expectation over :math:`q(u)`, so Jensen's inequality makes this an upper
     bound on the ELBO (PLL :math:`\geq` ELBO).
 
-    This function is designed for :class:`gpjax.variational_families.VariationalGaussian`
-    (non-collapsed).  For the collapsed family the inducing distribution is
-    integrated out analytically, making the per-point marginal variances of the
-    collapsed posterior the natural plug-in.
-
     Parameters
     ----------
     variational_family
@@ -89,9 +61,9 @@ def predictive_log_likelihood(
     x, y, n = data.X, data.y, data.n
 
     # ---- unpack variational family -----------------------------------------
-    variational_mean = _val(variational_family.variational_mean)        # (M, 1)
-    variational_sqrt = _val(variational_family.variational_root_covariance)  # (M, M)
-    inducing_inputs  = _val(variational_family.inducing_inputs)         # (M, D)
+    variational_mean = _val(variational_family.variational_mean)
+    variational_sqrt = _val(variational_family.variational_root_covariance)
+    inducing_inputs  = _val(variational_family.inducing_inputs)
 
     mean_fn = variational_family.posterior.prior.mean_function
     kernel  = variational_family.posterior.prior.kernel
@@ -101,64 +73,53 @@ def predictive_log_likelihood(
     # ---- kernel matrices ----------------------------------------------------
     Kzz = kernel.gram(inducing_inputs).as_matrix()
     Kzz = Kzz + jitter * jnp.eye(Kzz.shape[0])
-    Lz  = jnp.linalg.cholesky(Kzz)                   # (M, M)
+    Lz  = jnp.linalg.cholesky(Kzz)
 
-    Kzx      = kernel.cross_covariance(inducing_inputs, x)  # (M, N)
-    Kxx_diag = vmap(kernel, in_axes=(0, 0))(x, x)          # (N,)
+    Kzx      = kernel.cross_covariance(inducing_inputs, x)
+    Kxx_diag = vmap(kernel, in_axes=(0, 0))(x, x)
 
-    muz  = mean_fn(inducing_inputs)   # (M, 1)
-    mux  = mean_fn(x)                 # (N, 1)
+    muz  = mean_fn(inducing_inputs)
+    mux  = mean_fn(x)
 
     # ---- predictive mean: μ(x) = μx + Kxz Kzz⁻¹ (mz − μz) ----------------
-    Lz_inv_Kzx  = solve_triangular(Lz, Kzx, lower=True)               # (M, N)
-    Kzz_inv_Kzx = solve_triangular(Lz.T, Lz_inv_Kzx, lower=False)     # (M, N)
+    Lz_inv_Kzx  = solve_triangular(Lz, Kzx, lower=True)
+    Kzz_inv_Kzx = solve_triangular(Lz.T, Lz_inv_Kzx, lower=False)
 
-    pred_mean = (mux + Kzz_inv_Kzx.T @ (variational_mean - muz)).squeeze()  # (N,)
+    pred_mean = (mux + Kzz_inv_Kzx.T @ (variational_mean - muz)).squeeze()
 
     # ---- predictive variance (diagonal only) --------------------------------
-    # var(f_i) = K_ii
-    #          − ||Lz⁻¹ Kz_i||²          (prior uncertainty removed by inducing)
-    #          + ||sqrt^T Kzz⁻¹ Kz_i||²  (variance added back from q(u))
-    A        = variational_sqrt.T @ Kzz_inv_Kzx              # (M, N)
+
+    A = variational_sqrt.T @ Kzz_inv_Kzx
     pred_var = (
         Kxx_diag
         - jnp.sum(Lz_inv_Kzx ** 2, axis=0)
         + jnp.sum(A ** 2, axis=0)
-    )                                                         # (N,)
+    )
 
     # ---- per-point log N(y_i; μ_i, σ² + v_i) -------------------------------
-    total_var = noise + pred_var                              # (N,)
+    total_var = noise + pred_var
     log_lik = (
         -0.5 * jnp.log(2.0 * jnp.pi * total_var)
         - 0.5 * (y.squeeze() - pred_mean) ** 2 / total_var
-    )                                                         # (N,)
+    ) 
 
-    # ---- KL(q(u) || p(u)), with S jittered like every other covariance here -----
-    # `variational_family.prior_kl()` computes this via a Cholesky of
-    # `variational_sqrt @ variational_sqrt.T` with no jitter, unlike Kzz above. At
-    # small beta the KL term barely penalises S drifting toward a near-singular
-    # spectrum -- its smallest eigenvalue can sit within float64 epsilon of zero
-    # for hundreds of steps -- so a single optimiser step's rounding error
-    # eventually tips that Cholesky factorisation into an indefinite matrix and
-    # NaNs the whole loss. Recomputing the KL by hand, jittering S the same way
-    # Kzz already is, removes that failure mode at the source.
+    # ---- KL(q(u) || p(u)) -----
     S  = variational_sqrt @ variational_sqrt.T
     Ls = jnp.linalg.cholesky(S + jitter * jnp.eye(S.shape[0]))
 
     log_det_Kzz = 2.0 * jnp.sum(jnp.log(jnp.diag(Lz)))
     log_det_S   = 2.0 * jnp.sum(jnp.log(jnp.diag(Ls)))
 
-    Lz_inv_Ls  = solve_triangular(Lz, Ls, lower=True)         # (M, M)
+    Lz_inv_Ls  = solve_triangular(Lz, Ls, lower=True)
     trace_term = jnp.sum(Lz_inv_Ls ** 2)
 
-    diff        = variational_mean - muz                      # (M, 1)
+    diff        = variational_mean - muz
     Lz_inv_diff = solve_triangular(Lz, diff, lower=True)
     mahalanobis = jnp.sum(Lz_inv_diff ** 2)
 
     m  = inducing_inputs.shape[0]
     kl = 0.5 * (log_det_Kzz - log_det_S - m + trace_term + mahalanobis)
 
-    # Scale for mini-batching: multiply by N / batch_size
     N_total = variational_family.posterior.likelihood.num_datapoints
 
     return jnp.sum(log_lik) * N_total / n - beta * kl

@@ -1,11 +1,3 @@
-"""
-Adaptation of `sigma` and the kernel hyperparameters behind `basis`.
-
-Runs a fixed warmup with no parameter adaptation, then alternates between a
-gradient step on `sigma` and a gradient step on a gpjax kernel's hyperparameters
-that determine `basis`, on a user-defined schedule.
-"""
-
 from collections.abc import Callable
 from typing import Literal, NamedTuple
 
@@ -27,20 +19,9 @@ from non_parametric_pro.density import ProParameters
 from non_parametric_pro.inducing import InducingBasis, compute_inducing_basis
 from non_parametric_pro.util import TrainValSplit, train_val_split
 
-# Schedule stage labels, dispatched via jax.lax.switch.
 _WARMUP, _ADAPT_NU, _ADAPT_BASIS, _ADAPT_BOTH = 0, 1, 2, 3
 
-
 class ParameterAdaptationState(NamedTuple):
-    """
-    Carry for the sigma/basis adaptation loop.
-
-    `sigma` is expected to be a `paramax.AbstractUnwrappable` (e.g.
-    `gpjax.parameters.NonNegativeReal`), optimised in its unconstrained
-    space; `sigma_opt_state` carries optax state for that unconstrained
-    representation.
-    """
-
     sigma: paramax.AbstractUnwrappable
     sigma_opt_state: optax.OptState
     kernel: gpx.kernels.AbstractKernel
@@ -52,17 +33,6 @@ class ParameterAdaptationState(NamedTuple):
 
 
 class ParameterAdaptationInfo(NamedTuple):
-    """
-    Per-step diagnostics, stacked by `lax.scan` over the whole run.
-
-    `sampler_info` is whatever `algorithm`'s kernel returns as transition
-    info (e.g. `ULAInfo`). `sigma`/`kernel` are the adaptation state *after*
-    that step, stacked with a leading `num_steps` axis on every leaf -- both
-    are `paramax`-wrapped (`sigma` as a `NonNegativeReal`-like type, `kernel`
-    as the gpjax kernel), so read them with `paramax.unwrap(...)` (and, for
-    `kernel`, `jax.tree.map(lambda x: x[i], ...)` first to pick a step).
-    """
-
     sampler_info: ArrayLikeTree
     sigma: paramax.AbstractUnwrappable
     kernel: gpx.kernels.AbstractKernel
@@ -73,7 +43,6 @@ def merge_parameters(
     new: NamedTuple,
     transforms: dict[str, Callable] | None = None,
 ) -> NamedTuple:
-    """Override `base`'s fields with `new`'s, for fields present on both."""
     transforms = transforms or {}
     updates = {
         f: transforms.get(f, lambda v: v)(v)
@@ -84,11 +53,6 @@ def merge_parameters(
 
 
 def _evenly_spaced_steps(warmup_steps: int, num_steps: int, count: int) -> jax.Array:
-    """`count` step indices evenly spaced across `[warmup_steps, num_steps - 1]`.
-
-    `count <= 0` (or a post-warmup range that's empty, i.e. `warmup_steps >=
-    num_steps`) yields no steps at all -- the caller's parameter is never adapted.
-    """
     if count <= 0 or warmup_steps >= num_steps:
         return jnp.array([], dtype=jnp.int32)
     positions = jnp.linspace(warmup_steps, num_steps - 1, count)
@@ -102,17 +66,6 @@ def build_schedule(
     sigma_adapt_steps: int,
     kernel_adapt_steps: int,
 ) -> jax.Array:
-    """
-    Stage 0 (no-op) during warmup; afterwards adapt sigma/kernel independently.
-
-    `sigma` is adapted at `sigma_adapt_steps` steps evenly spaced across
-    `[warmup_steps, num_steps - 1]`, and the kernel likewise at
-    `kernel_adapt_steps` evenly spaced steps -- independently, not
-    alternating, so the two schedules generally land on different steps. Pass
-    0 for either to disable that parameter's adaptation entirely. If both
-    schedules land on the same step, both run that step (see
-    `_ADAPT_BOTH`/`both_update`).
-    """
     idx = jnp.arange(num_steps)
     sigma_steps = _evenly_spaced_steps(warmup_steps, num_steps, sigma_adapt_steps)
     kernel_steps = _evenly_spaced_steps(warmup_steps, num_steps, kernel_adapt_steps)
@@ -143,35 +96,6 @@ def base(
 ) -> tuple[Callable, Callable, Callable]:
     """
     Build the (init, update, final) triple for sigma/basis adaptation.
-
-    Parameters
-    ----------
-    x_train
-        Training inputs used to recompute `basis` whenever the kernel
-        hyperparameters change.
-    jitter
-        Diagonal jitter added before the training Gram matrix's Cholesky.
-    sigma_optimizer, kernel_optimizer
-        Optax optimisers for the two adapted quantities.
-    inducing_basis
-        An :class:`InducingBasis` instance (e.g. ``PointInducingBasis(z)``).
-        If ``None`` (default), a full GP Cholesky basis is used and
-        ``residual_std`` is ``None``. If given, the basis is
-        ``K_xz L_zz^{-T}`` and ``residual_std`` is
-        ``sqrt(diag(K_xx) - diag(basis @ basis^T))``.
-    x_val, y_val
-        Held-out set used for adaptation when `adapt_target="val"` (or, with
-        `adapt_target` left at its default, for `sigma` only -- see below).
-        `val_basis`/`val_residual_std` are tracked in the adaptation state
-        regardless of `adapt_target`, so a freshly-updated kernel's
-        validation basis is always available to the next `sigma` step.
-    adapt_target
-        Which dataset both `sigma` and the kernel hyperparameters (`basis`)
-        are fit against. `"val"` requires `x_val`/`y_val`. `None` (default)
-        reproduces this function's original, asymmetric behaviour: `sigma`
-        uses `x_val`/`y_val` if given, else the training set; the kernel
-        always uses the training set regardless of `x_val`/`y_val`.
-
     """
     if adapt_target == "val" and (x_val is None or y_val is None):
         msg = "adapt_target='val' requires both x_val and y_val to be given."
@@ -196,13 +120,6 @@ def base(
     ) -> tuple[jax.Array | None, jax.Array | None]:
         """
         Prediction basis at validation points; (None, None) if no x_val.
-
-        ``train_basis`` must be this same ``kernel``'s ``basis_fn(kernel)`` result --
-        for the full-GP case that *is* the training Cholesky ``L``, so this reuses it
-        directly instead of re-factorising the training Gram matrix from scratch (an
-        entire redundant ``O(N^3)`` Cholesky, since every caller here already has
-        ``train_basis`` on hand from its own ``basis_fn`` call). Unused in the inducing
-        case, which factorises the much cheaper ``(M, M)`` ``K_zz`` instead.
         """
         if x_val is None:
             return None, None
@@ -375,32 +292,6 @@ def parameter_adaptation(  # noqa: PLR0913
 ) -> AdaptationAlgorithm:
     """
     Adapt `sigma` and the kernel hyperparameters behind `basis`.
-
-    `algorithm` is a module exposing `build_kernel(logdensity_fn)` and
-    `init(position, parameters, logdensity_fn)` (e.g. `non_parametric_pro.ula`),
-    matching how `blackjax.adaptation.window_adaptation` consumes `blackjax.mala`.
-
-    `sigma_adapt_steps`/`kernel_adapt_steps` are the *number* of adaptation
-    steps to run for each parameter, evenly spaced across
-    `[warmup_steps, num_steps - 1]` independently of one another (see
-    `build_schedule`); pass 0 to disable a given parameter's adaptation
-    entirely.
-
-    `adapt_target` selects which dataset `sigma` and the kernel are both fit
-    against -- `"train"`, `"val"` (requires `x_val`/`y_val`), or `None`
-    (default) for the original per-parameter default: `sigma` on `x_val`/
-    `y_val` if given, the kernel always on the training set. See `base`'s
-    docstring for the full behaviour.
-
-    The returned `AdaptationAlgorithm.run` yields
-    `(AdaptationResults(state, parameters), info)` -- `parameters` is a
-    `ProParameters` with `sigma`/`basis` set from the final step, ready to feed
-    straight into a sampler. `info` is a `ParameterAdaptationInfo` stacked
-    over every step (via `lax.scan`), so `info.sigma`/`info.kernel` are full
-    `num_steps`-length traces -- `info.kernel` is not part of `ProParameters`
-    since the density never reads it directly, but is needed for downstream
-    uses like predicting at new inputs; index `jax.tree.map(lambda x: x[-1],
-    info.kernel)` to recover the final optimised kernel on its own.
     """
     if sigma_optimizer is None:
         sigma_optimizer = optax.adam(1e-2)
@@ -431,11 +322,6 @@ def parameter_adaptation(  # noqa: PLR0913
             adaptation_state, stage, new_state.position, parameters
         )
 
-        # If this step changed sigma/basis, new_state's cached logdensity/grad
-        # (computed above under the *old* parameters) are stale relative to
-        # new_adaptation_state -- they'd otherwise drive the Langevin drift
-        # on the *next* kernel call under the wrong parameters. Refresh only
-        # fires on actual adaptation steps, not every step.
         new_parameters = merge_parameters(base_parameters, new_adaptation_state)
         new_state = jax.lax.cond(
             stage == _WARMUP,
@@ -482,9 +368,6 @@ def parameter_adaptation(  # noqa: PLR0913
 
 class CrossValidationResult(NamedTuple):
     """Cross-validated sigma/kernel hyperparameters from :func:`cross_validated_parameter_adaptation`.
-
-    ``sigma`` is the minimum across folds; ``kernel`` is the fold mean (see that
-    function's docstring for why the two use different aggregations).
     """
 
     sigma: jax.Array 
@@ -503,14 +386,6 @@ def _kfold_splits(
 ):
     """
     Disjoint train/validation partitions for classic k-fold cross-validation.
-
-    ``num_folds >= 2``: permutes ``range(n)`` and splits it into ``num_folds``
-    (as-equal-as-possible) disjoint chunks; fold ``i``'s validation set is chunk ``i``
-    and its training set is every other chunk. Every point is validated on exactly once.
-
-    ``num_folds == 1``: classic k-fold is undefined at k=1 (there's no "other chunk" to
-    train on), so this falls back to a single random ``val_fraction``-sized hold-out via
-    :func:`non_parametric_pro.util.train_val_split` instead.
     """
     if num_folds == 1:
         return [train_val_split(key, x_full, y_full, val_fraction=val_fraction)]
@@ -562,56 +437,6 @@ def cross_validated_parameter_adaptation(  # noqa: PLR0913
 ) -> CrossValidationResult:
     """
     Cross-validated wrapper around :func:`parameter_adaptation`.
-
-    Classic k-fold: ``(x_full, y_full)`` is partitioned into ``num_folds`` disjoint
-    chunks (see :func:`_kfold_splits`); fold ``i`` trains on every other chunk and
-    validates on chunk ``i`` (``x_val``/``y_val`` feed each fold's :func:`parameter_adaptation`
-    call exactly as in a single call -- see ``adapt_target`` there for which of ``sigma``/the
-    kernel hyperparameters that held-out chunk actually gets used for). Every point
-    is validated on exactly once across all folds. ``num_folds=1`` is a special case (a
-    true 1-fold partition is undefined, since there'd be nothing left to train on) that
-    instead does a single random ``val_fraction``-sized hold-out split.
-
-    Every fold starts from the same ``initial_kernel``/``base_parameters.sigma`` and runs
-    its own ``warmup_steps`` + adaptation schedule independently -- folds do not warm-start
-    from one another.
-
-    The returned ``kernel`` is the fold mean, and ``sigma`` is the fold minimum -- both
-    computed in each hyperparameter's natural (unwrapped/constrained) space -- e.g. the
-    lengthscale/variance/sigma values themselves -- not their internal unconstrained
-    optimiser coordinates. Aggregating unconstrained coordinates and then unwrapping
-    would generally give a different answer, since the reparameterisations this codebase
-    uses (``SigmoidBounded``/``PositiveReal``/etc.) are nonlinear.
-
-    Parameters
-    ----------
-    x_full, y_full
-        The full dataset to partition into folds.
-    num_folds
-        Number of disjoint folds (``>= 2`` for classic k-fold); ``1`` for a single
-        ``val_fraction``-sized random hold-out instead.
-    val_fraction
-        Only used when ``num_folds == 1``; ignored (fold sizes are ``n / num_folds``)
-        otherwise.
-    num_particles
-        Number of ULA/MALA particles per fold (``initial_position`` is drawn fresh,
-        shape ``(basis_dim, num_particles)``, for each fold).
-    rng_key
-        Split once to produce the fold partition, then once per fold for that fold's
-        initial position and adaptation run.
-    adapt_target
-        Forwarded to each fold's :func:`parameter_adaptation` call; see its docstring.
-        Note that with the default ``None`` (``sigma`` on the fold's held-out chunk,
-        kernel always on the fold's training chunk), passing ``adapt_target="train"``
-        here changes ``sigma``'s fold behaviour too, not just the kernel's.
-    Remaining parameters are forwarded to each fold's :func:`parameter_adaptation` call
-    unchanged; see its docstring.
-
-    Returns
-    -------
-    A :class:`CrossValidationResult` with the fold-minimum ``sigma`` and fold-mean
-    ``kernel``, plus the raw per-fold values (``fold_sigma``, ``fold_kernel``) for
-    inspecting variability across folds.
     """
     split_key, run_key = jr.split(rng_key)
     splits = _kfold_splits(
@@ -671,11 +496,11 @@ def cross_validated_parameter_adaptation(  # noqa: PLR0913
     fold_sigma = jnp.stack(fold_sigmas)
     fold_kernel = jax.tree.map(lambda *leaves: jnp.stack(leaves), *fold_kernels)
 
-    min_sigma = jnp.mean(fold_sigma, axis=0)
+    mean_sigma = jnp.mean(fold_sigma, axis=0)
     mean_kernel = jax.tree.map(lambda leaf: jnp.mean(leaf, axis=0), fold_kernel)
 
     return CrossValidationResult(
-        sigma=min_sigma,
+        sigma=mean_sigma,
         kernel=mean_kernel,
         fold_sigma=fold_sigma,
         fold_kernel=fold_kernel,
