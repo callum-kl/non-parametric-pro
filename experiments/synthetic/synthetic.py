@@ -22,7 +22,7 @@ from fastprogress.fastprogress import progress_bar
 from omegaconf import DictConfig, OmegaConf
 
 from non_parametric_pro import ula
-from non_parametric_pro.data.block_outliers import (
+from non_parametric_pro.data.synthetic.block_outliers import (
     BLOCK_OUTLIERS_KWARGS,
     block_outlier_region_mask,
     make_block_outlier_instance,
@@ -39,31 +39,31 @@ from non_parametric_pro.data.heavy_tailed import (
     make_heavy_tailed_instance,
     plot_heavy_tailed_case,
 )
-from non_parametric_pro.data.heteroskedastic import (
+from non_parametric_pro.data.synthetic.heteroskedastic import (
     HETEROSKEDASTIC_KWARGS,
     heteroskedastic_region_mask,
     make_heteroskedastic_instance,
     plot_heteroskedastic_case,
 )
 from non_parametric_pro.data.huber import HUBER_KWARGS, make_huber_instance, plot_huber_case
-from non_parametric_pro.data.interpolation_gap import (
+from archive.interpolation_gap import (
     INTERPOLATION_GAP_KWARGS,
     interpolation_gap_mask,
     make_interpolation_instance,
     plot_interpolation_case,
 )
-from non_parametric_pro.data.linear_mismatch import (
+from archive.linear_mismatch import (
     LINEAR_MISMATCH_KWARGS,
     make_linear_mismatch_instance,
     plot_linear_mismatch_case,
 )
-from non_parametric_pro.data.multimodal import (
+from non_parametric_pro.data.synthetic.multimodal import (
     MULTIMODAL_KWARGS,
     make_multimodal_instance,
     multimodal_region_mask,
     plot_multimodal_case,
 )
-from non_parametric_pro.data.regime_switch import (
+from archive.regime_switch import (
     REGIME_SWITCH_KWARGS,
     make_regime_switch_instance,
     plot_regime_switch_case,
@@ -75,7 +75,7 @@ from non_parametric_pro.data.saturation import (
     plot_saturation_case,
 )
 from non_parametric_pro.data.skewed import SKEWED_KWARGS, make_skewed_instance, plot_skewed_case
-from non_parametric_pro.data.well_specified import (
+from non_parametric_pro.data.synthetic.well_specified import (
     WELL_SPECIFIED_KWARGS,
     build_kernel,
     make_well_specified_instance,

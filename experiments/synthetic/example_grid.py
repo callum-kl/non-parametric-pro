@@ -17,16 +17,16 @@ from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
-from non_parametric_pro.data.block_outliers import (
+from non_parametric_pro.data.synthetic.block_outliers import (
     make_block_outlier_instance,
     plot_block_outlier_case,
 )
-from non_parametric_pro.data.heteroskedastic import (
+from non_parametric_pro.data.synthetic.heteroskedastic import (
     make_heteroskedastic_instance,
     plot_heteroskedastic_case,
 )
-from non_parametric_pro.data.multimodal import make_multimodal_instance, plot_multimodal_case
-from non_parametric_pro.data.well_specified import (
+from non_parametric_pro.data.synthetic.multimodal import make_multimodal_instance, plot_multimodal_case
+from non_parametric_pro.data.synthetic.well_specified import (
     make_well_specified_instance,
     plot_well_specified_case,
 )

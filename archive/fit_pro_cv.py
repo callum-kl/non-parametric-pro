@@ -26,7 +26,7 @@ from non_parametric_pro import ula
 from non_parametric_pro.parameter_adaptation import (
     cross_validated_parameter_adaptation,
 )
-from non_parametric_pro.data.uci import load_uci_regression_dataset
+from non_parametric_pro.data.uci.uci import load_uci_regression_dataset
 from non_parametric_pro.density import ProParameters, pro_logdensity_fn, regularised_score
 from non_parametric_pro.inducing import compute_inducing_basis
 from non_parametric_pro.sgld import parametric_sgld, sgld

@@ -1,4 +1,3 @@
-"""Download and load the standardized UCI regression datasets (ported from Julia)."""
 
 import csv
 import io
@@ -75,12 +74,11 @@ UCI_REGRESSION_DATASET_ALIASES: dict[str, str] = {
 
 
 NUM_RAW_UCI_SPLITS = 10
-NUM_UCI_SPLITS = 5  # each merges a consecutive pair of the 10 raw masks -> larger test sets
+NUM_UCI_SPLITS = 5
 MIN_DATA_COLUMNS = 2
 
 
 class UCIRegressionDataset(NamedTuple):
-    """One standardized UCI regression train/test split."""
 
     x_train: np.ndarray
     y_train: np.ndarray
@@ -91,18 +89,11 @@ class UCIRegressionDataset(NamedTuple):
 
 
 def package_data_dir(*parts: str) -> Path:
-    """Return a path under the repository's top-level ``data/`` directory."""
     repo_root = Path(__file__).resolve().parents[3]
     return repo_root.joinpath("data", *parts)
 
 
 def uci_regression_datasets(*, include_aliases: bool = False) -> list[str]:
-    """
-    Return the available standardized UCI regression dataset names.
-
-    The values are the directory names used by ``uci_datasets``; aliases such
-    as ``"electric"`` can be included with ``include_aliases=True``.
-    """
     names = sorted(UCI_REGRESSION_DATASET_SIZES)
     if not include_aliases:
         return names
@@ -122,11 +113,6 @@ def download_kin40k(
     force: bool = False,
     source_url: str = "https://github.com/trungngv/fgp/archive/refs/heads/master.tar.gz",
 ) -> Path:
-    """
-    Download the kin40k dataset from the fgp repository.
-
-    Returns its local directory.
-    """
     directory = directory if directory is not None else package_data_dir("kin40k")
     if directory.is_dir() and not force:
         return directory
@@ -140,7 +126,7 @@ def download_kin40k(
         extract_dir = tmp_path / "extract"
         extract_dir.mkdir()
 
-        urllib.request.urlretrieve(source_url, archive)  # noqa: S310
+        urllib.request.urlretrieve(source_url, archive)
         with tarfile.open(archive) as tar:
             tar.extractall(extract_dir, filter="data")
 
@@ -166,13 +152,6 @@ def download_uci_regression_datasets(
     force: bool = False,
     source_url: str = "https://github.com/treforevans/uci_datasets/archive/refs/heads/master.tar.gz",
 ) -> Path:
-    """
-    Download the standardized UCI regression datasets from ``treforevans/uci_datasets``.
-
-    The corpus contains 10 fixed train/test masks per dataset, stored as
-    gzipped CSV files. Returns the local directory containing the dataset
-    folders.
-    """
     directory = directory if directory is not None else package_data_dir("uci_datasets")
     if directory.is_dir() and not force:
         return directory
@@ -186,7 +165,7 @@ def download_uci_regression_datasets(
         extract_dir = tmp_path / "extract"
         extract_dir.mkdir()
 
-        urllib.request.urlretrieve(source_url, archive)  # noqa: S310
+        urllib.request.urlretrieve(source_url, archive)
         with tarfile.open(archive) as tar:
             tar.extractall(extract_dir, filter="data")
 
@@ -214,15 +193,6 @@ def _write_uci_regression_dataset(
     directory: Path | None = None,
     seed: int = 0,
 ) -> Path:
-    """
-    Write ``x``/``y`` out as a ``data.csv.gz`` / ``test_mask.csv.gz`` pair, in the same layout
-    ``load_uci_regression_dataset`` expects from the ``treforevans/uci_datasets`` corpus --
-    for datasets that aren't part of that corpus and so need their own preprocessing.
-
-    The mask is built from one seeded shuffle split into ``NUM_RAW_UCI_SPLITS`` contiguous
-    folds, so each pair of raw columns (what ``load_uci_regression_dataset`` merges into one
-    of its 5 splits) is disjoint -- matching the corpus's own ~20%-test-per-split convention.
-    """
     directory = directory if directory is not None else package_data_dir("uci_datasets")
     n = x.shape[0]
     rng = np.random.default_rng(seed)
@@ -245,15 +215,6 @@ def download_wine_quality_white(
     force: bool = False,
     source_url: str = "https://archive.ics.uci.edu/static/public/186/wine+quality.zip",
 ) -> Path:
-    """
-    Download and preprocess the UCI white-wine-quality dataset (``"whitewine"``).
-
-    Unlike its red-wine sibling (``"wine"``, part of the ``treforevans/uci_datasets``
-    corpus), this is fetched directly from the UCI ML Repository (whose archive bundles
-    both colours in one zip) and reshaped into the same ``data.csv.gz`` / ``test_mask.csv.gz``
-    layout, so ``load_uci_regression_dataset("whitewine")`` works identically to any
-    corpus dataset. 11 physicochemical features predicting ``quality``.
-    """
     directory = directory if directory is not None else package_data_dir("uci_datasets")
     dataset_dir = directory / "whitewine"
     if dataset_dir.is_dir() and not force:
@@ -262,11 +223,11 @@ def download_wine_quality_white(
     _require_http_url(source_url)
     with tempfile.TemporaryDirectory() as tmpdir:
         archive = Path(tmpdir) / "wine-quality.zip"
-        urllib.request.urlretrieve(source_url, archive)  # noqa: S310
+        urllib.request.urlretrieve(source_url, archive)
         with zipfile.ZipFile(archive) as zf, zf.open("winequality-white.csv") as f:
             rows = list(csv.reader(io.TextIOWrapper(f, encoding="utf-8"), delimiter=";"))
 
-    data = np.array(rows[1:], dtype=np.float64)  # rows[0] is the header
+    data = np.array(rows[1:], dtype=np.float64)
     x, y = data[:, :-1], data[:, -1]
     return _write_uci_regression_dataset("whitewine", x, y, directory=directory)
 
@@ -277,13 +238,6 @@ def download_abalone(
     force: bool = False,
     source_url: str = "https://archive.ics.uci.edu/static/public/1/abalone.zip",
 ) -> Path:
-    """
-    Download and preprocess the UCI abalone dataset (``"abalone"``).
-
-    The raw categorical ``Sex`` column (``M``/``F``/``I``) is one-hot encoded into 3 binary
-    columns, giving 10 numeric input features (3 sex indicators + 7 physical measurements)
-    predicting ``Rings`` (a proxy for age).
-    """
     directory = directory if directory is not None else package_data_dir("uci_datasets")
     dataset_dir = directory / "abalone"
     if dataset_dir.is_dir() and not force:
@@ -292,7 +246,7 @@ def download_abalone(
     _require_http_url(source_url)
     with tempfile.TemporaryDirectory() as tmpdir:
         archive = Path(tmpdir) / "abalone.zip"
-        urllib.request.urlretrieve(source_url, archive)  # noqa: S310
+        urllib.request.urlretrieve(source_url, archive)
         with zipfile.ZipFile(archive) as zf, zf.open("abalone.data") as f:
             rows = list(csv.reader(io.TextIOWrapper(f, encoding="utf-8")))
 
@@ -310,14 +264,6 @@ def download_air_quality(
     force: bool = False,
     source_url: str = "https://archive.ics.uci.edu/static/public/360/air+quality.zip",
 ) -> Path:
-    """
-    Download and preprocess the UCI air-quality dataset (``"airquality"``).
-
-    Predicts the reference ``CO(GT)`` sensor reading from the device's other readings.
-    ``Date``/``Time`` are dropped (not simple numeric features), as is ``NMHC(GT)`` (missing
-    in most rows); rows still containing the dataset's ``-200`` missing-value sentinel in any
-    remaining column are dropped, as are the trailing fully-blank rows the raw CSV ships with.
-    """
     directory = directory if directory is not None else package_data_dir("uci_datasets")
     dataset_dir = directory / "airquality"
     if dataset_dir.is_dir() and not force:
@@ -326,7 +272,7 @@ def download_air_quality(
     _require_http_url(source_url)
     with tempfile.TemporaryDirectory() as tmpdir:
         archive = Path(tmpdir) / "air-quality.zip"
-        urllib.request.urlretrieve(source_url, archive)  # noqa: S310
+        urllib.request.urlretrieve(source_url, archive)
         with zipfile.ZipFile(archive) as zf, zf.open("AirQualityUCI.csv") as f:
             reader = csv.reader(io.TextIOWrapper(f, encoding="utf-8"), delimiter=";")
             header = next(reader)
@@ -352,17 +298,6 @@ def load_uci_regression_dataset(
     split: int = 1,
     directory: Path | None = None,
 ) -> UCIRegressionDataset:
-    """
-    Load one standardized UCI regression train/test split.
-
-    ``split`` is one-based and must be in ``1..5``. Each of these 5 splits
-    merges a consecutive pair of the 10 raw ``uci_datasets`` mask columns —
-    split 1 unions raw masks 1+2, split 2 unions raw masks 3+4, and so on —
-    so the test set is the union of both raw test masks (~20% of the data)
-    and the train set is everything else. This halves the number of splits
-    but doubles the test-set size, reducing the split-to-split metric
-    variance that the raw 10-way 90/10 masks are prone to on small datasets.
-    """
     if not 1 <= split <= NUM_UCI_SPLITS:
         msg = f"split must be in 1..{NUM_UCI_SPLITS} (merged pairs of the 10 raw splits)."
         raise ValueError(msg)
@@ -413,7 +348,7 @@ def load_uci_regression_dataset(
     test_mask = masks[:, raw_col_a].astype(bool) | masks[:, raw_col_b].astype(bool)
     train_mask = ~test_mask
     x = data[:, :-1]
-    y = data[:, -1:]  # keep 2-D, matching gpjax's Dataset shape convention
+    y = data[:, -1:]
 
     return UCIRegressionDataset(
         x_train=x[train_mask],

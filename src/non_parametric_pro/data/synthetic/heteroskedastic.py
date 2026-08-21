@@ -1,12 +1,3 @@
-"""
-Synthetic heteroskedastic regression instances with randomised noise structure.
-
-The latent function is one draw from a GP prior (via gpjax); the observation noise
-std then varies with `x` according to a *randomly parameterised* profile -- a fixed
-number of "noisy regions", each with its own location/width/amplitude/shape -- so that
-different keys give genuinely different heteroskedasticity patterns, not just
-different noisy draws of one fixed pattern.
-"""
 
 from typing import NamedTuple
 
@@ -23,22 +14,14 @@ _NUM_SHAPES = 3
 
 
 class NoiseRegions(NamedTuple):
-    """
-    Randomly drawn parameters for `num_regions` local noise-elevation regions --
-    see `sample_noise_regions`/`heteroskedastic_noise_std`.
-    """
 
-    centers: jax.Array  # (num_regions,)
-    widths: jax.Array  # (num_regions,)
-    amplitudes: jax.Array  # (num_regions,)
-    shapes: jax.Array  # (num_regions,) int in {0, 1, 2}
+    centers: jax.Array
+    widths: jax.Array
+    amplitudes: jax.Array
+    shapes: jax.Array
 
 
 class HeteroskedasticCase(NamedTuple):
-    """
-    A synthetic regression instance with randomised input-dependent observation
-    noise, built from a GP-prior latent function.
-    """
 
     x_train: jax.Array
     y_train: jax.Array
@@ -54,7 +37,7 @@ class HeteroskedasticCase(NamedTuple):
     regions: NoiseRegions
 
 
-def sample_noise_regions(  # noqa: PLR0913
+def sample_noise_regions(
     key: PRNGKey,
     *,
     x_min: float = -1.0,
@@ -64,15 +47,6 @@ def sample_noise_regions(  # noqa: PLR0913
     amplitude: float = 0.3,
     num_regions: int = 3,
 ) -> NoiseRegions:
-    """
-    Randomly draw `num_regions` noise-elevation regions.
-
-    Each region gets an independent shape family (Gaussian bump / boxcar / linear
-    ramp): that's what gives "different types" of heteroskedasticity rather than one
-    fixed functional form repeated at random places. `amplitude` is fixed (not
-    sampled) across regions and draws -- it's meant to be swept directly as an
-    experiment variable rather than adding its own randomised range on top.
-    """
     center_key, width_key, shape_key = jr.split(key, 3)
 
     centers = jr.uniform(center_key, (num_regions,), minval=x_min, maxval=x_max)
@@ -84,7 +58,6 @@ def sample_noise_regions(  # noqa: PLR0913
 
 
 def _region_bump(x: jax.Array, center: float, width: float, shape: int) -> jax.Array:
-    """Evaluate one region's noise bump at `x`, roughly unit height at the center."""
     gaussian = jnp.exp(-0.5 * ((x - center) / width) ** 2)
     boxcar = (jnp.abs(x - center) <= width).astype(x.dtype)
     ramp = jnp.clip(1.0 - jnp.abs(x - center) / width, 0.0, 1.0)
@@ -95,13 +68,6 @@ def _region_bump(x: jax.Array, center: float, width: float, shape: int) -> jax.A
 
 
 def heteroskedastic_noise_std(x: jax.Array, regions: NoiseRegions, *, noise_floor: float) -> jax.Array:
-    """
-    Evaluate the noise standard deviation implied by `regions` at each point in `x`.
-
-    Regions combine additively in *variance* (independent noise sources add in
-    variance, not std), not via e.g. a max/clip across regions -- so overlapping
-    regions compound smoothly instead of needing an ad hoc tie-break.
-    """
 
     def one_region(center, width, amplitude, shape):
         return (amplitude * _region_bump(x, center, width, shape)) ** 2
@@ -114,17 +80,6 @@ def heteroskedastic_noise_std(x: jax.Array, regions: NoiseRegions, *, noise_floo
 
 
 def heteroskedastic_region_mask(x: jax.Array, regions: NoiseRegions) -> jax.Array:
-    """Boolean mask, True where `x` falls within any noise region's span
-    (``|x - center| <= width``).
-
-    This is the same span each region's bump tapers to exactly zero at for the
-    boxcar/ramp shapes, and roughly one std for the Gaussian bump -- a single
-    consistent membership rule across shapes, with no extra threshold to tune.
-    Used to split held-out points into "heteroskedastic-region" vs
-    "background" subsets for region-conditional evaluation (e.g. checking
-    whether a method pays a tax in well-specified regions in exchange for
-    doing better in misspecified ones).
-    """
 
     def in_one_region(center, width):
         return jnp.abs(x - center) <= width
@@ -133,7 +88,7 @@ def heteroskedastic_region_mask(x: jax.Array, regions: NoiseRegions) -> jax.Arra
     return jnp.any(in_any_region, axis=0)
 
 
-def make_heteroskedastic_instance(  # noqa: PLR0913
+def make_heteroskedastic_instance(
     key: PRNGKey,
     *,
     n: int = 300,
@@ -148,26 +103,6 @@ def make_heteroskedastic_instance(  # noqa: PLR0913
     alpha_range: tuple[float, float] = (0.5, 2.0),
     num_regions: int = 3,
 ) -> HeteroskedasticCase:
-    """
-    Draw a synthetic heteroskedastic regression instance.
-
-    The latent function is one draw from a mean-zero RBF-kernel GP prior (via gpjax),
-    with lengthscale (`ell`) and variance (`alpha`) themselves randomised per
-    instance -- so different keys give genuinely different-looking latent functions,
-    not just different noise on the same curve. Train/test are a random split of one
-    pool of `n` points (rather than separate grids), so both see the same noise
-    structure by construction.
-
-    The noise floor (background std everywhere) and the regions' additional elevation
-    amplitude are both specified as *fractions of the draw's own signal std*
-    (`sqrt(alpha)`) rather than absolute units: since `alpha` itself varies per draw,
-    fixed absolute noise levels would make some draws look barely noisy and others look
-    like pure noise purely because of which `alpha` got sampled, rather than because of
-    the heteroskedasticity pattern itself. `noise_std_frac`/`amplitude_frac` are each a
-    single fixed value (not a sampled range), for the same reason every other dataset in
-    this package fixes `noise_std_frac`: so it can be swept directly as an experiment
-    variable without an extra layer of per-instance randomness obscuring the trend.
-    """
     x_key, ell_key, alpha_key, latent_key, region_key, split_key, noise_key = jr.split(key, 7)
 
     ell = jr.uniform(ell_key, (), minval=ell_range[0], maxval=ell_range[1])
@@ -194,8 +129,6 @@ def make_heteroskedastic_instance(  # noqa: PLR0913
     sigma = heteroskedastic_noise_std(x[:, 0], regions, noise_floor=noise_floor)
     y_obs = y_truth + sigma * jr.normal(noise_key, y_truth.shape)
 
-    # `train_val_split` only splits one (x, y) pair -- reuse its train/val indices to
-    # split y_truth/y_obs/sigma consistently rather than calling it three times.
     split = train_val_split(split_key, x, y_truth, val_fraction=test_fraction)
     train_idx, test_idx = split.train_idx, split.val_idx
 
@@ -219,14 +152,6 @@ def plot_heteroskedastic_case(
     ax, data: HeteroskedasticCase, *,
     show_curve: bool = True, show_noise_bands: bool = True, show_train: bool = True,
 ) -> None:
-    """Plot one HeteroskedasticCase: true curve, +-1sigma/+-2sigma noise bands (both
-    evaluated on the full, sorted train+test pool for a smooth curve), and the noisy
-    observed points. `show_curve=False`/`show_noise_bands=False` skip the truth-curve
-    line / true-variance bands respectively -- e.g. when overlaying a fitted model's own
-    predictive band on the same axes, where the true curve/bands would otherwise
-    clutter/compete with it. `show_train=False` plots the held-out test points instead
-    of the training points the fit actually saw -- e.g. for comparing a fitted model's
-    predictive band against genuinely held-out data."""
     x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
     y_truth_full = jnp.concatenate([data.y_truth_train[:, 0], data.y_truth_test[:, 0]])
     order = jnp.argsort(x_full)
@@ -254,9 +179,6 @@ def plot_heteroskedastic_case(
     )
 
 
-# Allowed keys a `ds` config (experiments/synthetic/conf/ds/*.yaml) can set on top of
-# `source` itself; only these are forwarded to `make_heteroskedastic_instance`, so a
-# config can override any subset without a code change in synthetic.py.
 HETEROSKEDASTIC_KWARGS = (
     "n", "test_fraction", "x_min", "x_max", "noise_std_frac",
     "amplitude_frac", "min_width", "max_width",

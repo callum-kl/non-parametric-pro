@@ -17,7 +17,7 @@ import paramax as px
 from omegaconf import DictConfig, OmegaConf
 from sklearn.preprocessing import StandardScaler
 
-from non_parametric_pro.data.uci import load_uci_regression_dataset
+from non_parametric_pro.data.uci.uci import load_uci_regression_dataset
 from non_parametric_pro.gp import predictive_log_likelihood
 from non_parametric_pro.inducing import kmeans_inducing_points
 from non_parametric_pro.util import crps_gp, nlpd_gp
