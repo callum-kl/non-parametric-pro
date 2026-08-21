@@ -22,12 +22,9 @@ from non_parametric_pro.util import crps_gp, nlpd_gp
 
 log = logging.getLogger(__name__)
 
-# Anchors results_root/hydra.run.dir/hydra.sweep.dir to this script's own directory
-# (experiments/uci/), regardless of the caller's current working directory.
 OmegaConf.register_new_resolver(
     "script_dir", lambda: str(Path(__file__).resolve().parents[1]), replace=True
 )
-
 
 def state_dir(cfg: DictConfig) -> Path:
     subdir = f"exact_gp_{cfg.name}" if cfg.name else "exact_gp"

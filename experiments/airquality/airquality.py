@@ -1,9 +1,5 @@
 import os
 
-# Must be set before `import jax` (and before any transitive jax import, e.g. via
-# gpjax) -- jax.config.update("jax_enable_x64", True) here isn't enough, since under
-# a joblib/multiprocessing worker process it doesn't reliably take effect before
-# jax's backend initializes, silently leaving that worker on float32.
 os.environ.setdefault("JAX_ENABLE_X64", "1")
 
 import jax.numpy as jnp
@@ -20,7 +16,6 @@ from non_parametric_pro import ula
 from non_parametric_pro.density import ProParameters, pro_logdensity_fn, pro_score_fn
 from non_parametric_pro.ula import parametric_ula
 from non_parametric_pro.util import posterior_function_draws
-from non_parametric_pro.data.synthetic import make_contaminated_data, make_mixture_data
 from non_parametric_pro.gp import _full_gp_basis
 from non_parametric_pro.parameter_adaptation import parameter_adaptation
 from archive.kampala_airquality import load_kampala_airquality_records, kampala_forecasting_split, kampala_site_ids

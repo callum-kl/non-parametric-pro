@@ -1,27 +1,10 @@
-"""Fit a PPGPR sparse variational GP on a UCI split and save its hyperparameters.
-
-PPGPR (Jankowiak et al. 2020, "Parametric Gaussian Process Regressors") trains the
-same sparse-variational predictive family as `fit_vgp.py`'s non-collapsed path
-(`gpx.variational_families.VariationalGaussian`), but on the predictive log
-likelihood objective (`non_parametric_pro.gp.predictive_log_likelihood`) instead of
-the ELBO -- see that function's docstring for why this gives better-calibrated
-predictive variances than plain SVGP (the ELBO's Jensen bound makes the latent
-function variance enter as a separate KL-like penalty rather than as part of the same
-Gaussian's variance as the observation noise, so SVGP tends to push almost all
-predictive uncertainty into observation noise; PPGPR's data-fit term scores against
-`sigma_obs^2 + sigma_f(x)^2` directly, so it can't do that).
-"""
+"""Fit a PPGPR sparse variational GP on a UCI split and save its hyperparameters."""
 
 import json
 import logging
 import os
 from pathlib import Path
 
-# Must be set before `import jax` (and before any transitive jax import, e.g. via
-# gpjax) -- jax.config.update("jax_enable_x64", True) here isn't enough, since under
-# `-m hydra/launcher=joblib` the fit runs in a joblib worker process that doesn't
-# reliably replay this module's own top-level statements before jax's backend
-# initializes, silently leaving that worker on float32.
 os.environ.setdefault("JAX_ENABLE_X64", "1")
 
 import gpjax as gpx
@@ -41,8 +24,6 @@ from non_parametric_pro.util import crps_gp, nlpd_gp
 
 log = logging.getLogger(__name__)
 
-# Anchors results_root/hydra.run.dir/hydra.sweep.dir to this script's own directory
-# (experiments/uci/), regardless of the caller's current working directory.
 OmegaConf.register_new_resolver(
     "script_dir", lambda: str(Path(__file__).resolve().parents[1]), replace=True
 )
@@ -75,10 +56,6 @@ def main(cfg: DictConfig) -> None:
     log.info("N_train=%d  N_test=%d  D=%d", x_train.shape[0], x_test.shape[0], D)
 
     # --- PPGPR fit -------------------------------------------------------------
-    # Lengthscale bounded, variance fixed to 1 -- same setup/rationale as
-    # fit_exact_gp.py/fit_vgp.py (data is already standardised, so sigma/lengthscale
-    # alone are sufficient, and a trainable variance risks the same degenerate
-    # variance-vs-lengthscale trade-off documented in fit_vgp.py).
     data = gpx.Dataset(X=x_train, y=y_train)
     lengthscale = gpx.parameters.SigmoidBounded(
         jnp.sqrt(D) * jnp.ones((D,)), low=cfg.lengthscale_min, high=cfg.lengthscale_max
@@ -113,7 +90,6 @@ def main(cfg: DictConfig) -> None:
     z_opt = np.array(px.unwrap(opt_vf.inducing_inputs))
 
     # --- Evaluate ------------------------------------------------------------
-    # Non-collapsed family: predictive only depends on q(u), never on train_data.
     posterior_ = opt_vf.posterior
     latent = opt_vf.predict(x_test)
     predictive = posterior_.likelihood(latent)

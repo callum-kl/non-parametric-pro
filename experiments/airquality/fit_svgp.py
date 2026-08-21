@@ -3,11 +3,6 @@
 Ports ``sparse_approximations/sparse_gp.py`` from
 https://github.com/claramst/gps-kampala-airquality (see
 ``non_parametric_pro.data.kampala_airquality`` for what is/isn't reproduced exactly).
-
-Fits one site per invocation (mirroring how ``experiments/uci/fit_exact_gp.py`` fits one
-dataset+split per invocation); sweep all sites with hydra multirun, e.g.:
-
-    python fit_svgp.py -m mode=forecasting site_index="range(0,66)"
 """
 
 import json
@@ -15,11 +10,6 @@ import logging
 import os
 from pathlib import Path
 
-# Must be set before `import jax` (and before any transitive jax import, e.g. via
-# gpjax) -- jax.config.update("jax_enable_x64", True) here isn't enough, since under
-# `-m hydra/launcher=joblib` the fit runs in a joblib worker process that doesn't
-# reliably replay this module's own top-level statements before jax's backend
-# initializes, silently leaving that worker on float32.
 os.environ.setdefault("JAX_ENABLE_X64", "1")
 
 import gpjax as gpx
@@ -110,9 +100,6 @@ def main(cfg: DictConfig) -> None:
     )
 
     # --- Evaluate ----------------------------------------------------------------
-    # Predict from the variational family itself (cost depends only on num_inducing, not
-    # N) -- NOT opt_variational_family.posterior.predict(x_test, train_data=...), which
-    # would run exact (O(N^3)) GP inference on the full training set instead.
     latent = opt_variational_family.predict(x_test)
     predictive = opt_variational_family.posterior.likelihood(latent)
     mean, std = predictive.mean, jnp.sqrt(predictive.variance)

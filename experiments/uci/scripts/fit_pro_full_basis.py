@@ -1,23 +1,3 @@
-"""
-PRO GP sampling with the basis built from *all* training points up front (dimension
-``N`` for the exact-GP case, ``M`` for the inducing case) -- not just a train fold's
-worth, unlike ``fit_pro_cv.py``/``fit_pro_alpha_cv.py``. That basis, and the particles
-sampled against it, are shared across the whole run: only *which rows'* likelihood
-terms get used changes between phases, never the basis or particle dimensionality.
-
-1. Split the training set into train/val (``non_parametric_pro.util.train_val_split``).
-2. Run ``parameter_adaptation`` to optimise sigma only (kernel fixed, loaded from GP
-   state) -- the sampler's likelihood uses only the train fold's rows, and sigma is
-   scored against the val fold's rows, both as row-selections of the *same* full basis
-   (see ``_row_selectable_basis`` below for how the exact-GP case gets this property).
-3. One final run reusing that adaptation's basis and final particle *position* (not its
-   cached state, which is stale under a different likelihood scope) on the full training
-   set's likelihood, via ``run_inference_algorithm_with_burn_in`` -- a real burn-in this
-   time, since the likelihood scope just widened from the train fold to everything.
-
-Only a single train/val split is used (no ``num_folds > 1`` support).
-"""
-
 import json
 import logging
 import os
@@ -67,23 +47,6 @@ def pro_out_dir(cfg: DictConfig) -> Path:
 
 
 def _row_selectable_basis(cfg: DictConfig, inducing_basis, x_train) -> InducingBasis:
-    """An ``InducingBasis`` that ``parameter_adaptation`` can evaluate at any row subset
-    of ``x_train`` and get back exactly that subset's rows of the *shared* full basis.
-
-    For the real inducing case this is just ``inducing_basis`` unchanged -- each row of
-    an (N, M) inducing basis only depends on its own point and the M fixed inducing
-    locations, so evaluating it at a subset already equals row-slicing the full basis.
-
-    For the exact-GP case there's no ``inducing_basis`` to reuse, but the same property
-    can be manufactured: treat the *entire* training set as a (degenerate, exact -- no
-    Nystrom approximation, since M=N) set of inducing points. For ``L`` the training
-    Cholesky and ``A`` a row subset, ``compute_inducing_basis(PointInducingBasis(x_train),
-    kernel, x_train[A])`` works out to ``solve_triangular(L, K_full[:, A]).T``, which
-    equals ``L[A, :]`` -- exactly the row-slice ``basis_full[A]`` -- since ``K_full[:, A]
-    = L @ L[A, :].T`` by definition of ``L``. That's the same formula
-    ``non_parametric_pro.util.prediction_basis`` already uses for genuinely new (test)
-    points, so this is just that formula applied to points already inside ``x_train``.
-    """
     return inducing_basis if cfg.inducing else PointInducingBasis(z=x_train)
 
 
@@ -140,9 +103,6 @@ def main(cfg: DictConfig) -> None:
     basis_dim = basis_full.shape[1]
     row_selectable_basis = _row_selectable_basis(cfg, inducing_basis, x_train)
 
-    # --- Sigma adaptation: train fold's likelihood fits the particles, val fold scores
-    # sigma -- both as row-selections of the one shared full basis (see
-    # `_row_selectable_basis`), so the particle dimensionality never changes.
     log.info("Splitting train/val (val_fraction=%.2f) and adapting sigma...", cfg.val_fraction)
     key, split_key, pos_key, adapt_key = jr.split(key, 4)
     split = train_val_split(split_key, x_train, y_train, val_fraction=cfg.val_fraction)
@@ -176,9 +136,6 @@ def main(cfg: DictConfig) -> None:
     adapted_sigma_val = float(np.array(px.unwrap(adaptation_results.parameters.sigma)))
     log.info("Adapted sigma=%.4f", adapted_sigma_val)
 
-    # `adaptation_results.parameters` (a ProParameters) has no `kernel` field to read the
-    # adapted kernel back from -- only `adaptation_info.kernel`, the full per-step trace,
-    # does (see cross_validated_parameter_adaptation's own use of this same pattern).
     if cfg.kernel_adapt_steps > 0:
         adapted_kernel = px.unwrap(jax.tree.map(lambda x: x[-1], adaptation_info.kernel))
         log.info("Kernel was adapted (kernel_adapt_steps=%d) -- recomputing full basis...", cfg.kernel_adapt_steps)

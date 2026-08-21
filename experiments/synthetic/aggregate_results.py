@@ -1,26 +1,6 @@
 """Aggregate per-run metrics across synthetic datasets, their distinguishing parameter
 values, and algorithms; print a summary table per dataset, plus a paired per-instance
 NLPD-difference table against a baseline algorithm.
-
-Reads `results/<source>/<param_name>_<param_value>/<algorithm>/metrics.json`, as written
-by `synthetic.py`'s `out_dir`/`main`. Unlike the uci `aggregate_results.py` (which
-averages metrics across several per-split result files), each `metrics.json` here already
-holds a mean/std (and the full per-instance NLPD list) computed by `evaluate()` over
-`num_instances` draws, so this script just collects and tabulates.
-
-The paired-diff table exists because comparing two algorithms' independent means is
-noisier than it needs to be: `evaluate()` derives each instance's key from `seed` alone
-(not from `algorithm`), so two runs sharing the same source/param_value/seed/
-num_instances see the *identical* sequence of drawn instances. That lets us compute
-nlpd[algorithm][i] - nlpd[baseline][i] per instance and average the difference directly,
-which cancels out instance-to-instance difficulty instead of letting it show up as noise
-in both means independently.
-
-When `metrics.json` also has `region_nlpds` (per-instance mean NLPD split into
-"region" -- inside a noise-elevation region -- vs "background" -- outside all of them,
-see `synthetic.py`'s `heteroskedastic_region_mask`), this also reports region-conditional
-summaries and paired diffs -- e.g. to check whether a method pays a "tax" in the
-well-specified background region in exchange for doing better in the misspecified one.
 """
 
 import json
@@ -33,19 +13,11 @@ import numpy as np
 RESULTS_ROOT = Path(__file__).parent / "results"
 
 BASELINE_ALGORITHM = "standard_gp"
-Z_95 = 1.96  # normal-approximation critical value for a ~95% CI
+Z_95 = 1.96
 REGION_LABELS = ("region", "background")
 
 
 def collect():
-    """Return (records, param_names):
-    - records: {source: {param_value: {algorithm: {metric_dict}}}}, where metric_dict
-      has nlpd_mean/nlpd_std always, and nlpds/region_nlpds/seed/num_instances when the
-      underlying metrics.json has them (older runs predating per-instance/region saving
-      won't).
-    - param_names: {source: param_name} -- the distinguishing-parameter field name each
-      source's `conf/ds/*.yaml` declares (e.g. `num_regions` for heteroskedastic).
-    """
     records: dict[str, dict[object, dict[str, dict]]] = defaultdict(lambda: defaultdict(dict))
     param_names: dict[str, str] = {}
 
@@ -147,19 +119,10 @@ def save_csv(records, param_names, path: Path):
 
 
 def _sample_std(values: list[float]) -> float:
-    """Sample std (ddof=1); 0.0 for a single value rather than np.std's NaN."""
     return float(np.std(values, ddof=1)) if len(values) > 1 else 0.0
 
 
 def _nlpd_ci95(entry: dict) -> float | None:
-    """95% CI half-width (1.96*SEM) for `entry["nlpd_mean"]`, or None if it can't be
-    computed (missing num_instances -- shouldn't happen for runs from this script, but
-    metrics.json is hand-edited-recoverable so stay defensive).
-
-    Uses the sample std of the raw per-instance `nlpds` when available (consistent with
-    `compute_paired_diffs`); falls back to the population std already stored in
-    `nlpd_std` for older metrics.json files predating per-instance saving.
-    """
     num_instances = entry.get("num_instances")
     if not num_instances:
         return None
@@ -168,12 +131,6 @@ def _nlpd_ci95(entry: dict) -> float | None:
 
 
 def _paired_stats(entry_values: list[float], base_values: list[float]) -> dict | None:
-    """Paired per-instance diff (entry - base): mean/SEM/CI95/n.
-
-    Skips any pair where either side is NaN (e.g. an instance that had zero test points
-    on one side of a region split) rather than propagating NaN through the whole
-    aggregate. None if no valid pairs remain.
-    """
     diffs = [
         a - b
         for a, b in zip(entry_values, base_values, strict=True)
@@ -187,13 +144,6 @@ def _paired_stats(entry_values: list[float], base_values: list[float]) -> dict |
 
 
 def compute_paired_diffs(records, baseline=BASELINE_ALGORITHM):
-    """{source: {param_value: {algorithm: {"diff_mean", "diff_sem", "diff_ci95", "n"}}}}.
-
-    diff = algorithm's nlpd - baseline's nlpd, paired per instance (positive means worse
-    than baseline). Only computed when both runs recorded `nlpds` and share the same
-    seed/num_instances -- otherwise `nlpds[i]` in one run isn't guaranteed to be the same
-    drawn instance as `nlpds[i]` in the other, and the pairing would be meaningless.
-    """
     diffs: dict[str, dict[object, dict[str, dict[str, float]]]] = defaultdict(
         lambda: defaultdict(dict)
     )
@@ -220,11 +170,6 @@ def compute_paired_diffs(records, baseline=BASELINE_ALGORITHM):
 
 
 def compute_paired_region_diffs(records, region: str, baseline=BASELINE_ALGORITHM):
-    """Same as `compute_paired_diffs`, but on `region_nlpds[region]` instead of the
-    overall `nlpds` -- e.g. `region="background"` checks whether a method pays a tax in
-    the well-specified region even as it wins (via `region="region"`) in the
-    misspecified one.
-    """
     diffs: dict[str, dict[object, dict[str, dict[str, float]]]] = defaultdict(
         lambda: defaultdict(dict)
     )
@@ -284,10 +229,6 @@ def print_diff_tables(diffs, param_names, baseline=BASELINE_ALGORITHM, label="Δ
 
 
 def save_diff_csv(diffs_by_region: dict[str, dict], param_names, path: Path, baseline=BASELINE_ALGORITHM):
-    """`diffs_by_region`: {region_label: diffs}, e.g. {"overall": ..., "region": ...,
-    "background": ...} -- written into one CSV with a `region` column rather than one
-    file per region, so downstream analysis can filter/compare across regions directly.
-    """
     import csv
 
     fieldnames = [
@@ -322,10 +263,6 @@ def save_diff_csv(diffs_by_region: dict[str, dict], param_names, path: Path, bas
 
 
 def region_summary(records):
-    """{region: {source: {param_value: {algorithm: {"mean", "ci95", "n"}}}}} for the
-    two `region_nlpds` splits, NaN-safe (instances with zero test points on one side of
-    the split are excluded from that side's stats rather than counted as zero).
-    """
     summary: dict[str, dict] = {
         label: defaultdict(lambda: defaultdict(dict)) for label in REGION_LABELS
     }

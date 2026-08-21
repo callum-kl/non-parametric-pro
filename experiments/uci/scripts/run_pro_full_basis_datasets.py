@@ -1,17 +1,6 @@
 """Run fit_pro_full_basis.py across a fixed list of datasets, in sequence.
 
 Datasets default to: autompg, concrete, forest, housing, machine, servo, solar, stock.
-
---val-fraction/--alpha/--num-particles/--name are optional overrides for fit_pro_full_basis.py's
-cfg.val_fraction/cfg.alpha/cfg.num_particles/cfg.name -- if not given, no override is passed
-and fit_pro_full_basis.yaml's own defaults apply.
-
-Usage:
-    python run_pro_full_basis_datasets.py
-    python run_pro_full_basis_datasets.py --val-fraction 0.3 --alpha 1.0 --num-particles 100
-    python run_pro_full_basis_datasets.py --name untuned
-    python run_pro_full_basis_datasets.py --splits 1,2,3 --n-jobs 4
-    python run_pro_full_basis_datasets.py --datasets autompg,concrete
 """
 
 import argparse

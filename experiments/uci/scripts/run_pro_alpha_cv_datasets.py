@@ -1,17 +1,6 @@
 """Run fit_pro_alpha_cv.py across a fixed list of datasets, in sequence.
 
 Datasets default to: whitewine, wine, airquality, abalone, airfoil.
-
---val-fraction/--c-grid/--num-particles/--name are optional overrides for
-fit_pro_alpha_cv.py's cfg.val_fraction/cfg.c_grid/cfg.num_particles/cfg.name -- if not
-given, no override is passed and fit_pro_alpha_cv.yaml's own defaults apply.
-
-Usage:
-    python run_pro_alpha_cv_datasets.py
-    python run_pro_alpha_cv_datasets.py --val-fraction 0.3 --c-grid 10,25,50,100 --num-particles 100
-    python run_pro_alpha_cv_datasets.py --name untuned
-    python run_pro_alpha_cv_datasets.py --splits 1,2,3 --n-jobs 4
-    python run_pro_alpha_cv_datasets.py --datasets whitewine,wine
 """
 
 import argparse

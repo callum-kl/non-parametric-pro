@@ -1,17 +1,3 @@
-"""Combine `example_grid.png` and `summary_panel.png` side by side into one image --
-`example_grid.py`'s qualitative fit comparison on the left, `plot_summary.py`'s
-quantitative NLPD comparison on the right. Both already cover the same four datasets in
-the same order (see each script's own `_SOURCES`/`SOURCES`), so reading them side by
-side ties a panel's visual behavior directly to its NLPD numbers.
-
-Rescales both source images to a common height -- preserving each's own aspect ratio,
-since example_grid.png's 2x2 grid of dense fit overlays and summary_panel.png's 2x2
-grid of sparse error bars aren't the same shape -- rather than assuming they already
-match or stretching one to fit the other.
-
-    python experiments/synthetic/combine_grid_summary.py
-"""
-
 from pathlib import Path
 
 from PIL import Image
@@ -23,9 +9,6 @@ BACKGROUND = (255, 255, 255, 255)
 
 
 def combine_side_by_side(left_path: Path, right_path: Path, *, gap_px: int = GAP_PX) -> Image.Image:
-    """Paste `left_path`'s image and `right_path`'s image side by side, each rescaled
-    to the taller of the two source heights (preserving its own aspect ratio) so
-    neither one gets stretched/squashed to match the other."""
     left = Image.open(left_path).convert("RGBA")
     right = Image.open(right_path).convert("RGBA")
 

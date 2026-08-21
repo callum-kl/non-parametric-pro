@@ -1,17 +1,3 @@
-"""One example instance each of multimodal, heteroskedastic, block_outliers, and
-well_specified, with a standard GP and a PRO GP fit to each and their predictive mean
-+- std bands overlaid on the data, laid out as a 2x2 grid.
-
-Mirrors `synthetic.py`'s `mode=panel`/`mode=instance`: one shared `--seed` splits into
-`--num-instances` candidate draws per source (same `jr.split(PRNGKey(seed),
-num_instances)` convention), and each panel picks one by index -- default index set
-per-source in `_SOURCES` below, overridable from the CLI without touching the file, so
-you can eyeball a panel and dial in whichever draw looks best:
-
-    python experiments/synthetic/example_grid.py
-    python experiments/synthetic/example_grid.py --well-specified-index 7
-"""
-
 import argparse
 import os
 from pathlib import Path
@@ -171,8 +157,6 @@ def _overlay_pro_density(ax, x_test, result: FitResult, *, cmap, alpha=1.0, **de
     sigma_eff_sorted = result.sigma_eff[order]  # (N_x,)
 
     def density_fn(y_grid):
-        # Same sigma_eff each particle is scored with in nlpd_pro, just evaluated on a
-        # dense y grid instead of at the observed y_test.
         z = (y_grid[None, :, None] - particle_predictions_sorted[:, None, :]) / sigma_eff_sorted[:, None, None]
         normal_pdf = jnp.exp(-0.5 * z**2) / (sigma_eff_sorted[:, None, None] * jnp.sqrt(2 * jnp.pi))
         return jnp.mean(normal_pdf, axis=2)
@@ -186,14 +170,7 @@ def _overlay_pro_density(ax, x_test, result: FitResult, *, cmap, alpha=1.0, **de
 def plot_example_panel(ax, spec: SourceSpec, instance_key) -> None:
     """Draw one dataset's fit-overlay panel (data + GP/PRO density bands) into `ax`."""
     data = spec.make_instance(instance_key, **spec.kwargs)
-
-    # `plot_case` draws the dataset's own data/truth (using "C0"/"C1"/"black" --
-    # see each source's own module); GP_COLOR/PRO_COLOR are picked to not clash.
     spec.plot_case(ax, data, **spec.plot_kwargs)
-
-    # well_specified's fit is meant to match the data's own generative kernel family
-    # (see non_parametric_pro/data/well_specified.py); every other source has no such
-    # field, so this falls back to the standard fixed-RBF fit.
     kernel_type = getattr(data, "kernel_type", "rbf")
 
     gp_result = fit_gp(data, kernel_type=kernel_type)
@@ -211,9 +188,6 @@ def plot_example_panel(ax, spec: SourceSpec, instance_key) -> None:
 def plot_examples(
     axes, seed: int, num_instances: int, index_overrides: dict[str, int] | None = None,
 ) -> None:
-    """Draw all `_SOURCES` panels into `axes` -- any flat sequence of (at least)
-    `len(_SOURCES)` axes, e.g. `plt.subplots(2, 2).flat` (this module's own `main`) or
-    one row of a larger externally-built grid (see `combine_grid_summary_columns.py`)."""
     index_overrides = index_overrides or {}
     keys = jr.split(jr.PRNGKey(seed), num_instances)
     for ax, spec in zip(axes, _SOURCES, strict=True):
@@ -221,11 +195,6 @@ def plot_examples(
         plot_example_panel(ax, spec, keys[index])
 
 
-# contourf isn't a labeled artist `ax.get_legend_handles_labels()` picks up, so this is
-# built from explicit proxies instead of collected from an axes. "Test data"/"Outliers"
-# only apply to (block_outliers's) black dots/maroon X's, but a shared legend
-# describing the whole figure's visual vocabulary -- not just what's in every single
-# panel -- is the point.
 LEGEND_HANDLES = [
     Patch(color=GP_COLOR, label="Standard GP"),
     Patch(color=PRO_COLOR, label="PrO-GP"),

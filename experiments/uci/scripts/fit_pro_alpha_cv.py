@@ -1,29 +1,3 @@
-"""
-PRO GP sampling following ``fit_pro_full_basis.py``'s design (full basis built once from
-all training points; ``parameter_adaptation``-based train/val split; warm-started final
-burn-in run on the full training set) -- except alpha is cross-validated, over a grid of
-``c`` values rather than a fixed value, where ``alpha = c * sqrt(n)`` and ``n`` is the
-size of the training set.
-
-For each ``c`` in ``c_grid``:
-
-1. Draw a fresh train/val split (``non_parametric_pro.util.train_val_split``).
-2. Run ``parameter_adaptation`` at ``alpha = c * sqrt(n)`` to optimise sigma (and, if
-   ``kernel_adapt_steps > 0``, the kernel) -- the sampler's likelihood uses only the
-   train fold's rows, both fitted and scored as row-selections of one shared full basis
-   (see ``_row_selectable_basis``, reused unchanged from ``fit_pro_full_basis.py``), so
-   the particle dimensionality never changes between candidates or the final run.
-3. Score that adaptation's own fold-restricted particles by NLPD on the val fold -- no
-   separate sampling run, just ``parameter_adaptation``'s own ending state.
-
-The ``c`` with the lowest val NLPD is picked, and only its adaptation is carried forward:
-warm-started (from that adaptation's own final particle position, not a fresh draw) into
-one final ``run_inference_algorithm_with_burn_in`` on the *full* training set -- mirroring
-``fit_pro_full_basis.py``'s final step exactly -- before evaluating on the test set.
-
-Only a single train/val split is used per candidate (no ``num_folds > 1`` support).
-"""
-
 import json
 import logging
 import math
@@ -137,9 +111,9 @@ def main(cfg: DictConfig) -> None:
     basis_dim = basis_full.shape[1]
     row_selectable_basis = _row_selectable_basis(cfg, inducing_basis, x_train)
 
-    # --- Cross-validate c (alpha = c * sqrt(n)) --------------------------------
+    # --- Cross-validate c (alpha = c / sqrt(n)) --------------------------------
     c_val_nlpd = []
-    c_results = []  # (adaptation_results, adapted_kernel) per candidate
+    c_results = []
     for c in cfg.c_grid:
         alpha = float(c) / math.sqrt(n)
         key, split_key, pos_key, adapt_key = jr.split(key, 4)
@@ -201,8 +175,6 @@ def main(cfg: DictConfig) -> None:
         "Best c=%.4g (alpha=%.4g, val NLPD=%.4f)", best_c, best_alpha, c_val_nlpd[best_idx]
     )
 
-    # `adaptation_results.parameters` (a ProParameters) has no `kernel` field, hence the
-    # separately-tracked `adapted_kernel` above (see fit_pro_full_basis.py's own comment).
     if cfg.kernel_adapt_steps > 0:
         log.info("Kernel was adapted (kernel_adapt_steps=%d) -- recomputing full basis...", cfg.kernel_adapt_steps)
         if cfg.inducing:
@@ -211,9 +183,6 @@ def main(cfg: DictConfig) -> None:
             basis_full = cholesky_basis(adapted_kernel, x_train)
             residual_std_full = None
 
-    # --- Final run: same full basis, particles warm-started from the winning c's
-    # adaptation -- but now against the *full* training set's likelihood (train + val
-    # combined), so a real burn-in is warranted since the likelihood scope just widened.
     log.info(
         "Running final sampling on full training set (steps=%d, algorithm=%s)...",
         cfg.num_sample_steps, cfg.algorithm,

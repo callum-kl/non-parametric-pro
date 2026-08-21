@@ -5,11 +5,6 @@ import logging
 import os
 from pathlib import Path
 
-# Must be set before `import jax` (and before any transitive jax import, e.g. via
-# gpjax) -- jax.config.update("jax_enable_x64", True) here isn't enough, since under
-# `-m hydra/launcher=joblib` the fit runs in a joblib worker process that doesn't
-# reliably replay this module's own top-level statements before jax's backend
-# initializes, silently leaving that worker on float32.
 os.environ.setdefault("JAX_ENABLE_X64", "1")
 
 import gpjax as gpx
@@ -29,17 +24,12 @@ from non_parametric_pro.util import crps_gp, nlpd_gp
 
 log = logging.getLogger(__name__)
 
-# Anchors results_root/hydra.run.dir/hydra.sweep.dir to this script's own directory
-# (experiments/uci/), regardless of the caller's current working directory.
 OmegaConf.register_new_resolver(
     "script_dir", lambda: str(Path(__file__).resolve().parents[1]), replace=True
 )
 
 
 def state_dir(cfg: DictConfig) -> Path:
-    # natural_gradients is just a different optimiser for the same non-collapsed model,
-    # so it shares "vgp_noncollapsed" with the plain-Adam path rather than getting its own
-    # directory -- whichever you last ran is what's saved there.
     variant = "vgp" if cfg.collapsed else "vgp_noncollapsed"
     if cfg.name:
         variant = f"{variant}_{cfg.name}"
@@ -80,12 +70,6 @@ def main(cfg: DictConfig) -> None:
     key, km_key = jr.split(key)
     z_init = kmeans_inducing_points(km_key, x_train, cfg.num_inducing).z
 
-    # Collapsed analytically marginalises q(u) (Titsias/SGPR-style bound) -- tighter and
-    # generally easier to optimise for a Gaussian likelihood. Non-collapsed learns q(u)'s
-    # full (M, M) covariance factor via gradient descent -- more general (extends to
-    # non-Gaussian likelihoods), but a harder optimisation problem; plain Adam on it in
-    # particular tends to underperform badly relative to the collapsed bound unless given
-    # far more iterations, hence the natural-gradient option below.
     if cfg.collapsed:
         variational_family = gpx.variational_families.CollapsedVariationalGaussian(
             posterior=posterior,
@@ -99,10 +83,6 @@ def main(cfg: DictConfig) -> None:
             verbose=True,
         )
     elif cfg.natural_gradients:
-        # Alternates a natural-gradient ascent step on q(u) with an Adam step on the
-        # kernel/likelihood hyperparameters and inducing inputs -- see
-        # `non_parametric_pro.gp.natural_gradient_svgp_fit`'s docstring for why plain
-        # Adam struggles on q(u)'s covariance specifically.
         key, fit_key = jr.split(key)
         opt_vf, _ = natural_gradient_svgp_fit(
             posterior,
@@ -136,10 +116,6 @@ def main(cfg: DictConfig) -> None:
     z_opt = np.array(px.unwrap(opt_vf.inducing_inputs))
 
     # --- Evaluate ------------------------------------------------------------
-    # Collapsed and non-collapsed variational families have genuinely different predict()
-    # signatures: collapsed needs train_data to compute its predictive (cheaply -- O(M^2 N)
-    # via the (M, N) Kzx, not the O(N^3) exact-posterior cost); non-collapsed only depends
-    # on q(u), never on N.
     posterior_ = opt_vf.posterior
     latent = opt_vf.predict(x_test, train_data=data) if cfg.collapsed else opt_vf.predict(x_test)
     predictive = posterior_.likelihood(latent)

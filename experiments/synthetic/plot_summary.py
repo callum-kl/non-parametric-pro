@@ -1,29 +1,3 @@
-"""Plot `pro_gp` vs `standard_gp` mean NLPD +/- 95% CI against dataset size `n`, one
-subplot per dataset, from `results/summary.csv` (written by `aggregate_results.py`'s
-`save_csv`).
-
-A 2x2 error-bar panel -- same grid shape and dataset order (multimodal,
-heteroskedastic, block_outliers, well_specified) as `example_grid.py`'s `_SOURCES` --
-with one subplot per source. `summary.csv` holds each dataset's own
-misspecification-severity sweep too (e.g. `outlier_offset_frac` for block_outliers,
-`noise_skewness` for skewed), alongside its `n` sweep -- `load_summary` keeps only rows
-where `param_name == "n"`, so a source with no `n` sweep yet in the CSV simply doesn't
-appear rather than plotting the wrong x-axis. Each algorithm gets its own dodged,
-line-connected error bar across the tested `n` values, log2-scaled (`n` doubles each
-step) so the ticks stay evenly spaced. A source with only one `n` value falls back to
-`pro_gp`/`standard_gp` as the two x positions instead (`_plot_categorical`), with no
-connecting line and no x-tick text (redundant with the shared legend) -- e.g. if a
-dataset's `n` sweep hasn't finished running yet.
-
-Colors/style match `example_grid.py`'s convention (GP green / PRO blue, no spines, faint
-grid, a shared bottom legend) so figures share one visual language. Thin divider lines
-between the four panels (`_add_grid_dividers`) substitute for the spines this style
-otherwise removes, since without them the four panels bleed into each other.
-
-`nlpd_ci95` in the CSV is already a 95% CI half-width (1.96 * SEM, see
-`aggregate_results.py`'s `_nlpd_ci95`), so it's used directly as `yerr`.
-"""
-
 from collections import defaultdict
 from pathlib import Path
 
@@ -41,11 +15,8 @@ RESULTS_ROOT = Path(__file__).parent / "results"
 FIGURES_DIR = Path(__file__).parent / "figures"
 SUMMARY_CSV = RESULTS_ROOT / "summary.csv"
 
-# Same order as example_grid.py's `_SOURCES`, laid out row-major over a 2x2 grid (i.e.
-# `axes.flat`) so a given dataset lands in the same cell in both figures.
 SOURCES = ("block_outliers", "heteroskedastic", "multimodal", "well_specified")
 SOURCE_TITLES = {
-    # Exact strings from example_grid.py's SourceSpec.title, for consistency.
     "multimodal": "Multimodal",
     "heteroskedastic": "Heteroskedastic",
     "block_outliers": "Block outliers",
@@ -54,19 +25,13 @@ SOURCE_TITLES = {
 
 ALGORITHMS = ("pro_gp", "standard_gp")
 ALGORITHM_LABELS = {"pro_gp": "PrO-GP", "standard_gp": "Standard GP"}
-# Same GP green / PRO blue as example_grid.py's GP_COLOR/PRO_COLOR -- kept as literal
-# duplicates rather than an import, since example_grid.py pulls in the whole fitting
-# stack (synthetic.fit_gp/fit_pro) that this CSV-only script has no other need for.
 ALGORITHM_COLORS = {"pro_gp": "#3a76c4", "standard_gp": "#3f8f5f"}
 
-N_MIN = 100  # drop n=50 rows -- "n increasing from 100 to 800", applied to every source
-DODGE_FRAC = 0.03  # multiplicative x-offset between the two algorithms' error bars
+N_MIN = 100
+DODGE_FRAC = 0.03
 
 DIVIDER_COLOR = "#cccac0"
 
-# Paper-figure formatting, matching example_grid.py: no spines, a faint grid for scale
-# reference instead. Unlike example_grid.py's qualitative density overlays, this plot is
-# meant to be read quantitatively, so (unlike there) ticks/tick-labels stay on.
 plt.rcParams.update({
     "font.size": 12,
     "axes.spines.top": False,
@@ -125,10 +90,6 @@ def _plot_sweep(ax, by_algorithm: dict[str, list[tuple[float, float, float]]], a
         )
 
     ax.set_xlabel("dataset size")
-    # `set_xscale` must come *before* `set_xticks` -- changing the scale resets the
-    # tick locator, which would silently discard explicit ticks set beforehand (and
-    # fall back to log2's own default locator, e.g. 64/128/256 instead of the actual
-    # swept values).
     ax.set_xscale("log", base=2)
     ax.xaxis.set_major_formatter(mticker.ScalarFormatter())
     ax.xaxis.set_minor_formatter(mticker.NullFormatter())
@@ -136,10 +97,6 @@ def _plot_sweep(ax, by_algorithm: dict[str, list[tuple[float, float, float]]], a
 
 
 def _plot_categorical(ax, by_algorithm: dict[str, list[tuple[float, float, float]]]):
-    """`pro_gp` vs `standard_gp` as the two x positions (one tested `param_value`, so
-    there's no sweep to put on the x-axis instead) -- no connecting line (nothing sits
-    "between" two bare categories), and no x-tick text (redundant with the shared
-    legend, which is what actually identifies each color here)."""
     xs = list(range(len(ALGORITHMS)))
     for x, algorithm in zip(xs, ALGORITHMS, strict=True):
         (_, mean, ci95), = by_algorithm[algorithm]
@@ -164,18 +121,13 @@ def _plot_source(ax, source: str, by_algorithm: dict[str, list[tuple[float, floa
     else:
         _plot_categorical(ax, by_algorithm)
 
-    # Less-dense y ticks (e.g. -0.5, 0, 0.5, 1.0 rather than every 0.25) -- a fixed
-    # step rather than a fixed tick list, so it still reads cleanly whatever the
-    # data's own range turns out to be.
     ax.yaxis.set_major_locator(mticker.MultipleLocator(base=0.5))
 
     ax.set_title(SOURCE_TITLES[source], fontsize=13)
 
 
 def _add_grid_dividers(fig, axes) -> None:
-    """Thin lines through the midpoints between the 2x2 grid's rows/columns -- the
-    "no spines" style otherwise leaves nothing separating the four panels."""
-    fig.canvas.draw()  # finalise the tight_layout()-adjusted positions before reading them
+    fig.canvas.draw()
     pos = [[ax.get_position() for ax in row] for row in axes]
 
     v_x = (pos[0][0].x1 + pos[0][1].x0) / 2
@@ -190,10 +142,6 @@ def _add_grid_dividers(fig, axes) -> None:
 
 
 def plot_summary_row(axes, records, sources=SOURCES) -> None:
-    """Draw each `sources` dataset's NLPD error-bar panel into `axes` -- any flat
-    sequence of (at least) `len(sources)` axes, e.g. `plt.subplots(2, 2).flat` (this
-    module's own `plot_summary`) or one row of a larger externally-built grid (see
-    `combine_grid_summary_columns.py`)."""
     for ax, source in zip(axes, sources, strict=True):
         _plot_source(ax, source, records.get(source, {}))
 

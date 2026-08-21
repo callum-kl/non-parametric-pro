@@ -13,8 +13,6 @@ METRICS = ("rmse", "nlpd", "crps")
 
 
 def collect():
-    # records: {mode: {method: {metric: [values across sites]}}}
-    # per_site: {mode: {method: {site_id: metrics_dict}}}
     records: dict[str, dict[str, dict[str, list[float]]]] = defaultdict(
         lambda: defaultdict(lambda: defaultdict(list))
     )
@@ -47,7 +45,6 @@ def collect():
 
 
 def summarise(records):
-    # {mode: {method: {metric: {mean, min, max, n_sites}}}}
     summary = {}
     for mode, methods in records.items():
         summary[mode] = {}

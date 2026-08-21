@@ -107,11 +107,6 @@ OmegaConf.register_new_resolver(
 FIGURES_DIR = Path(__file__).resolve().parent / "figures"
 
 
-# `source` -> `(ax, data) -> None` plotting function, used by `make_dataset_panel`/
-# `run_dataset_instance`. Each plot function lives next to its dataset's generator (in
-# `non_parametric_pro.data.<source>`), since it's tied to that dataset's specific case
-# fields (noise regions vs. two candidate functions + hidden mode, etc.) -- there's no
-# shared generic plot the way there's a generic `_instance_fn` below.
 _PLOT_CASE_FNS = {
     "block_outliers": plot_block_outlier_case,
     "heteroskedastic": plot_heteroskedastic_case,
@@ -178,17 +173,6 @@ def run_dataset_instance(
     fig.savefig(FIGURES_DIR / filename, dpi=150)
 
 class FitResult(NamedTuple):
-    """A fitted model's test-set predictive summary: `mean`/`std` for plotting a
-    (moment-matched) predictive band, `nlpd_per_point` for scoring (what `evaluate`
-    actually uses). The remaining fields are `fit_pro`-only (`None` for `fit_gp`) --
-    ways to see the actual mixture predictive that `mean`/`std` moment-match away:
-    `function_draws` (shape `(N_test, num_draws)`) are smooth, coherent posterior
-    function trajectories (see `non_parametric_pro.util.posterior_function_draws`);
-    `particle_predictions` (shape `(N_test, J_total)`, one column per retained
-    particle) and `sigma_eff` (shape `(N_test,)`) are the raw ingredients of the exact
-    mixture density `p(y|x) = mean_j N(y; particle_predictions[:, j], sigma_eff)` --
-    e.g. for rendering it directly as a density heatmap rather than sampling it."""
-
     mean: jnp.ndarray
     std: jnp.ndarray
     nlpd_per_point: jnp.ndarray
@@ -203,9 +187,6 @@ def fit_gp(data, key=None, *, kernel_lengthscale=0.3, kernel_type="rbf") -> FitR
     x_test, y_test = data.x_test, data.y_test
     gp_data = gpx.Dataset(X=x_train, y=y_train)
 
-    # `kernel_type` defaults to "rbf" (matching every dataset except well_specified,
-    # which is the one place fitting deliberately matches the data's own generative
-    # kernel family -- see `_fit_gp_fn`, which pulls it from `data.kernel_type`).
     kernel = build_kernel(kernel_type, lengthscale=kernel_lengthscale)
     prior = gpx.gps.Prior(mean_function=gpx.mean_functions.Zero(), kernel=kernel)
     likelihood = gpx.likelihoods.Gaussian(num_datapoints=x_train.shape[0])
@@ -217,9 +198,6 @@ def fit_gp(data, key=None, *, kernel_lengthscale=0.3, kernel_type="rbf") -> FitR
         train_data=gp_data,
         verbose=False
     )
-
-    opt_kernel = opt_posterior.prior.kernel
-    opt_sigma = opt_posterior.likelihood.obs_stddev
 
     latent = opt_posterior.predict(x_test, train_data=gp_data)
     predictive = opt_posterior.likelihood(latent)
@@ -291,7 +269,6 @@ def fit_pro(  # noqa: PLR0913
     adapted_kernel = cv_result.kernel
     adapted_sigma_val = float(np.array(cv_result.sigma).reshape(()))
 
-    # recompute basis on full training set, using adapted kernel
     key, pos_key = jr.split(key)
     basis = cholesky_basis(adapted_kernel, x_train)
     basis_dim = x_train.shape[0]
@@ -301,7 +278,6 @@ def fit_pro(  # noqa: PLR0913
         sigma=adapted_sigma_val,
     )
 
-    # rerun sampling on full training set
     key, sample_key = jr.split(key)
     algorithm = parametric_ula(pro_logdensity_fn, pro_params)
     _, (states, _) = run_inference_algorithm_with_burn_in(
@@ -313,7 +289,6 @@ def fit_pro(  # noqa: PLR0913
         progress_bar=False,
     )
 
-    # evaluate on test data
     particles = states.position[::thin]
     test_basis, test_cov = prediction_basis(
         adapted_kernel, x_train, x_test, pro_params
@@ -322,11 +297,6 @@ def fit_pro(  # noqa: PLR0913
         y_test, test_basis, test_cov, particles, parameters=pro_params, return_per_point=True
     )
 
-    # Same mixture-of-Gaussians predictive `nlpd_pro` scores internally (see its
-    # docstring): mean/variance of a uniform mixture over retained particles, each
-    # itself Gaussian with std sigma_eff = sqrt(sigma^2 + residual_std^2), where
-    # residual_std is the sparse-approximation gap `sqrt(k(x*,x*) - ||B*||^2)` (zero
-    # for this full-GP path, since prediction_basis was called without inducing_basis).
     sigma_val = px.unwrap(pro_params.sigma)
     residual_std = jnp.sqrt(
         jnp.maximum(jnp.diag(test_cov) - jnp.sum(test_basis**2, axis=1), 0.0)
@@ -350,17 +320,6 @@ def fit_pro(  # noqa: PLR0913
 
 
 def evaluate(get_instance, fit_function, key, num_instances, *, region_mask_fn=None):
-    """Fit/evaluate `num_instances` draws, returning (mean, std, nlpds, region_nlpds).
-
-    `fit_function` now returns *per-test-point* NLPD (not a scalar); the overall
-    mean/std/nlpds are unchanged in meaning (mean over all test points per instance).
-    If `region_mask_fn(data) -> bool array` (matching `data.x_test`'s order) is given,
-    also split each instance's per-point NLPD into a "region" mean and a "background"
-    (non-region) mean -- e.g. to check whether a method pays a tax in well-specified
-    regions in exchange for doing better in misspecified ones. An instance with zero
-    test points on one side of the split contributes NaN for that side there, rather
-    than skewing the mean with a fabricated value.
-    """
     keys = jr.split(key, num_instances)
 
     nlpds = []
@@ -452,9 +411,6 @@ def _get_region_mask_fn(cfg: DictConfig):
 
 
 def _fit_gp_fn(cfg: DictConfig):
-    # `data.kernel_type` only exists on WellSpecifiedCase -- every other dataset fits a
-    # fixed generic RBF regardless of (or *because* it doesn't match) how the data was
-    # generated, which is the whole point of those datasets being misspecified.
     return lambda data, key=None: fit_gp(
         data,
         key=key,
@@ -514,15 +470,6 @@ def _get_fit_algorithm(cfg: DictConfig):
 
 
 def debug_instance(cfg: DictConfig) -> None:
-    """Re-run a single instance from an `evaluate` run by index, reproducing exactly
-    the same draw and fit `evaluate` used -- for isolating an outlier NLPD spotted in
-    a saved metrics.json (`nlpds[i]`) without re-running the whole sweep.
-
-    Pass the *same* seed/source/algorithm/param overrides the original run used (they
-    round-trip through the saved `config.json`) plus `mode=instance instance_index=i`;
-    `jr.split(key, num_instances)` is deterministic, so `keys[i]` -- and everything
-    downstream of it -- reproduces bit-for-bit.
-    """
     get_instance = _get_instance_fn(cfg)
     fit_algorithm = _get_fit_algorithm(cfg)
     plot_case_fn = _get_plot_case_fn(cfg)
@@ -549,9 +496,6 @@ def debug_instance(cfg: DictConfig) -> None:
 
 
 def out_dir(cfg: DictConfig, param_value) -> Path:
-    """Results land under results_root/<source>/<param_name>_<param_value>/<algorithm>,
-    keyed by each dataset's own declared `param_name` (e.g. `num_regions` for
-    heteroskedastic) rather than a name hardcoded here, since it differs per dataset."""
     return (
         Path(cfg.results_root)
         / cfg.source
@@ -606,10 +550,6 @@ def main(cfg: DictConfig) -> None:
         "nlpds": nlpds,
     }
     if region_nlpds is not None:
-        # Per-instance mean NLPD split by `_get_region_mask_fn`'s mask: "region" =
-        # inside a noise-elevation region (misspecified for a homoscedastic-noise
-        # model), "background" = outside all of them (well-specified). NaN entries
-        # mean that instance had zero test points on that side of the split.
         metrics["region_nlpds"] = region_nlpds
 
     results_dir = out_dir(cfg, param_value)

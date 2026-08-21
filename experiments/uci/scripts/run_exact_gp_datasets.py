@@ -3,20 +3,6 @@
 For each dataset, reproduces this hydra multirun invocation:
 
     fit_exact_gp.py [objective=<objective>] [name=loo]   (exact_gp / exact_gp_loo)
-
-`name=loo` is added automatically for `--objective loocv`, matching results dirs are
-keyed off `cfg.name` not `cfg.objective` -- without it, a loocv run would land in the
-same `exact_gp` dir as an `mll` run and overwrite it (see run_variants.py's own
-`objective=loocv name=loo` pairing).
-
-Datasets default to the small ones this repo fits exact GPs on directly (no inducing
-points needed): autompg, concrete, forest, housing, machine, servo, solar, stock.
-
-Usage:
-    python experiments/uci/run_exact_gp_datasets.py
-    python experiments/uci/run_exact_gp_datasets.py --objective loocv
-    python experiments/uci/run_exact_gp_datasets.py --splits 1,2,3 --n-jobs 4
-    python experiments/uci/run_exact_gp_datasets.py --datasets autompg,concrete
 """
 
 import argparse

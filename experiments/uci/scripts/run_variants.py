@@ -1,18 +1,4 @@
-"""Run the 6 exact-GP/PRO-CV variant combinations for one dataset, in sequence.
-
-Reproduces these 6 hydra multirun invocations (results dirs in parens):
-
-    fit_exact_gp.py                                              (exact_gp)
-    fit_exact_gp.py objective=loocv name=loo                     (exact_gp_loo)
-    fit_pro_cv.py                                                (pro_gp_cv)
-    fit_pro_cv.py kernel_adapt_steps=150 name=adapted             (pro_gp_cv_adapted)
-    fit_pro_cv.py gp_name=loo name=loo                            (pro_gp_cv_loo)
-    fit_pro_cv.py kernel_adapt_steps=150 gp_name=loo name=loo_adapted  (pro_gp_cv_loo_adapted)
-
-Usage:
-    python experiments/uci/run_variants.py autompg
-    python experiments/uci/run_variants.py autompg --splits 1,2,3 --n-jobs 4
-"""
+"""Run the 6 exact-GP/PRO-CV variant combinations for one dataset, in sequence."""
 
 import argparse
 import subprocess

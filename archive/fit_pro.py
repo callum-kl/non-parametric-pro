@@ -1,155 +1,95 @@
-"""PRO GP sampling, seeded from an exact GP or VGP depending on cfg.inducing."""
+"""
+PRO GP sampling, fitting a fresh kernel from scratch via cross-validation.
+
+Same overall structure as ``fit_pro_cv.py`` (cross-validated adaptation via
+``cross_validated_parameter_adaptation``), but ``initial_kernel`` is a brand-new RBF with
+a default-initialised lengthscale rather than the kernel loaded from ``fit_vgp.py``/
+``fit_exact_gp.py`` state -- only that state's ``sigma``/inducing points/scalers are
+reused, not its fitted kernel.
+"""
 
 import json
 import logging
 import os
 from pathlib import Path
 
-# Must be set before `import jax` (and before any transitive jax import, e.g. via
-# gpjax) -- jax.config.update("jax_enable_x64", True) here isn't enough, since under
-# `-m hydra/launcher=joblib` the fit runs in a joblib worker process that doesn't
-# reliably replay this module's own top-level statements before jax's backend
-# initializes, silently leaving that worker on float32.
 os.environ.setdefault("JAX_ENABLE_X64", "1")
 
 import gpjax as gpx
 import hydra
-import jax
 import jax.numpy as jnp
 import jax.random as jr
 import numpy as np
 import optax as ox
 import paramax as px
 from omegaconf import DictConfig, OmegaConf
-from sklearn.preprocessing import StandardScaler
 
 from non_parametric_pro import ula
-from non_parametric_pro.parameter_adaptation import parameter_adaptation
+from non_parametric_pro.parameter_adaptation import (
+    cross_validated_parameter_adaptation,
+)
 from non_parametric_pro.data.uci import load_uci_regression_dataset
 from non_parametric_pro.density import ProParameters, pro_logdensity_fn, regularised_score
-from non_parametric_pro.inducing import PointInducingBasis, compute_inducing_basis
+from non_parametric_pro.inducing import compute_inducing_basis
+from non_parametric_pro.sgld import parametric_sgld, sgld
 from non_parametric_pro.ula import parametric_ula
-from non_parametric_pro.util import crps_pro, nlpd_pro, prediction_basis, run_inference_algorithm_with_burn_in
+from non_parametric_pro.util import crps_pro, nlpd_pro, prediction_basis, run_inference_algorithm_with_burn_in, cholesky_basis
+
+from util import load_gp_state
 
 log = logging.getLogger(__name__)
 
-# Anchors results_root/hydra.run.dir/hydra.sweep.dir to this script's own directory
-# (experiments/uci/), regardless of the caller's current working directory.
 OmegaConf.register_new_resolver(
-    "script_dir", lambda: str(Path(__file__).resolve().parent), replace=True
+    "script_dir", lambda: str(Path(__file__).resolve().parents[1]), replace=True
 )
 
-
-_VGP_VARIANT_SUBDIRS = {
-    "collapsed": "vgp",
-    "noncollapsed": "vgp_noncollapsed",
-}
-
-
-def gp_state_dir(cfg: DictConfig) -> Path:
-    """
-    Locate the state saved by ``fit_vgp.py`` (``cfg.inducing=True``) or
-    ``fit_exact_gp.py`` (``cfg.inducing=False``).
-
-    ``cfg.vgp_variant`` picks which of ``fit_vgp.py``'s training methods to load --
-    ``"collapsed"`` (``CollapsedVariationalGaussian`` + ``fit_scipy``, the default) or
-    ``"noncollapsed"`` (``VariationalGaussian``, fit with either plain Adam or natural
-    gradients on ``q(u)`` -- see ``non_parametric_pro.gp.natural_gradient_svgp_fit``;
-    those two share the same ``vgp_noncollapsed`` directory since natural gradients is
-    just a different optimiser for the same non-collapsed model, not a separate one --
-    whichever ``fit_vgp.py`` run happened most recently is what's here). This must match
-    whichever ``fit_vgp.py collapsed=...`` value was actually run -- see that script's
-    ``state_dir`` for the exact same subdirectory names.
-    ``cfg.vgp_name`` mirrors ``fit_vgp.py``'s own ``name`` override, for loading a
-    specifically-named run rather than the bare variant directory.
-    """
-    if not cfg.inducing:
-        return Path(cfg.results_root) / cfg.dataset / f"split_{cfg.split}" / "exact_gp"
-
-    if cfg.vgp_variant not in _VGP_VARIANT_SUBDIRS:
-        msg = (
-            f"Unknown vgp_variant={cfg.vgp_variant!r}; "
-            f"expected one of {sorted(_VGP_VARIANT_SUBDIRS)}."
-        )
-        raise ValueError(msg)
-    subdir = _VGP_VARIANT_SUBDIRS[cfg.vgp_variant]
-    if cfg.vgp_name:
-        subdir = f"{subdir}_{cfg.vgp_name}"
-    return Path(cfg.results_root) / cfg.dataset / f"split_{cfg.split}" / subdir
-
-
 def pro_out_dir(cfg: DictConfig) -> Path:
-    subdir = "inducing_pro_gp" if cfg.inducing else "pro_gp"
+    subdir = "inducing_pro_gp_scratch_cv" if cfg.inducing else "pro_gp_scratch_cv"
     if cfg.name:
         subdir = f"{subdir}_{cfg.name}"
     return Path(cfg.results_root) / cfg.dataset / f"split_{cfg.split}" / subdir
 
 
-def _cholesky_basis(kernel, x, jitter=1e-6):
-    k = kernel.gram(x).as_matrix()
-    return jnp.linalg.cholesky(k + jitter * jnp.eye(k.shape[0]))
+def _adaptation_algorithm(cfg: DictConfig):
+    """`algorithm` argument for `cross_validated_parameter_adaptation` -- `ula` (exact,
+    full-batch) or `sgld(batch_size=...)` (minibatched; see `non_parametric_pro.sgld`).
+    Both satisfy the same `build_kernel`/`init`/`refresh` duck-type, so this is the only
+    place that needs to branch."""
+    if cfg.algorithm == "ula":
+        return ula
+    if cfg.algorithm == "sgld":
+        return sgld(batch_size=cfg.sgld_batch_size)
+    msg = f"Unknown algorithm={cfg.algorithm!r}; expected 'ula' or 'sgld'."
+    raise ValueError(msg)
 
 
-def load_gp_state(cfg: DictConfig):
-    """Load state from fit_vgp.py (inducing=true) or fit_exact_gp.py (inducing=false)."""
-    path = gp_state_dir(cfg) / "gp_state.npz"
-    script = "fit_vgp.py" if cfg.inducing else "fit_exact_gp.py"
-    if not path.exists():
-        raise FileNotFoundError(f"No state at {path} — run {script} first.")
-
-    state = np.load(path)
-    if "kernel_type" in state:
-        kernel_type = str(state["kernel_type"])
-    else:
-        # Pre-existing states saved before kernel_type was recorded -- these were all
-        # fit with Matern32, so this matches their actual behaviour; re-run
-        # fit_exact_gp.py/fit_vgp.py to pick up kernel_type for new fits.
-        kernel_type = "Matern32"
-        log.warning(
-            "%s has no 'kernel_type' (pre-fix save); assuming Matern32. "
-            "Re-run %s to save kernel_type explicitly.",
-            path, script,
-        )
-    kernel_cls = getattr(gpx.kernels, kernel_type)
-    kernel = kernel_cls(
-        lengthscale=jnp.array(state["lengthscale"]),
-        variance=jnp.array(state["variance"]),
-    )
-    sigma_val = float(state["sigma"])
-    inducing_basis = PointInducingBasis(jnp.array(state["z"])) if cfg.inducing else None
-
-    scaler_x = StandardScaler()
-    scaler_x.mean_ = state["scaler_x_mean"]
-    scaler_x.scale_ = state["scaler_x_scale"]
-    scaler_y = StandardScaler()
-    scaler_y.mean_ = state["scaler_y_mean"]
-    scaler_y.scale_ = state["scaler_y_scale"]
-
-    return kernel, sigma_val, inducing_basis, scaler_x, scaler_y
+def _sampling_algorithm(cfg: DictConfig, pro_params: ProParameters):
+    """Standalone sampler for the final post-adaptation draw, mirroring
+    `_adaptation_algorithm`'s choice of `ula` vs `sgld`."""
+    if cfg.algorithm == "ula":
+        return parametric_ula(pro_logdensity_fn, pro_params)
+    if cfg.algorithm == "sgld":
+        return parametric_sgld(pro_logdensity_fn, pro_params, batch_size=cfg.sgld_batch_size)
+    msg = f"Unknown algorithm={cfg.algorithm!r}; expected 'ula' or 'sgld'."
+    raise ValueError(msg)
 
 
-@hydra.main(version_base=None, config_path="conf", config_name="fit_pro")
+@hydra.main(version_base=None, config_path="../conf", config_name="fit_pro")
 def main(cfg: DictConfig) -> None:
     mode = "inducing" if cfg.inducing else "exact GP"
-    log.info("PRO (%s): dataset=%s split=%d", mode, cfg.dataset, cfg.split)
+    log.info(
+        "PRO-scratch-CV (%s): dataset=%s split=%d folds=%d",
+        mode, cfg.dataset, cfg.split, cfg.num_folds,
+    )
 
     key = jr.PRNGKey(cfg.seed)
     out_dir = pro_out_dir(cfg)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # --- Load GP state -------------------------------------------------------
-    kernel, sigma_val, inducing_basis, scaler_x, scaler_y = load_gp_state(cfg)
-    if cfg.inducing:
-        log.info("Loaded VGP state: M=%d  sigma=%.4f",
-                 inducing_basis.z.shape[0], sigma_val)
-    else:
-        log.info("Loaded exact GP state: sigma=%.4f", sigma_val)
+    _, gp_sigma_val, inducing_basis, scaler_x, scaler_y = load_gp_state(cfg)
 
-    if cfg.initial_sigma is not None:
-        log.info("Overriding loaded sigma=%.4f with cfg.initial_sigma=%.4f", sigma_val, cfg.initial_sigma)
-        sigma_val = cfg.initial_sigma
-
-    # --- Data ----------------------------------------------------------------
+    # --- Data ------------------------------------------------------------------
     example = load_uci_regression_dataset(cfg.dataset, split=cfg.split)
     x_train = scaler_x.transform(example.x_train)
     y_train = scaler_y.transform(example.y_train)
@@ -158,77 +98,83 @@ def main(cfg: DictConfig) -> None:
 
     log.info("N_train=%d  N_test=%d", x_train.shape[0], x_test.shape[0])
 
-    # --- PRO setup -----------------------------------------------------------
-    if cfg.inducing:
-        basis, residual_std = compute_inducing_basis(inducing_basis, kernel, x_train)
-        basis_dim = inducing_basis.z.shape[0]
-    else:
-        basis, residual_std = _cholesky_basis(kernel, x_train), None
-        basis_dim = x_train.shape[0]
-
-    sigma = gpx.parameters.SigmoidBounded(sigma_val, low=cfg.sigma_min, high=100.0)
+    # --- PRO setup ---------------------------------------------------------------
+    sigma = gpx.parameters.SigmoidBounded(0.4, low=cfg.sigma_min, high=1.0)
     pro_params = ProParameters(
         y=y_train,
-        basis=basis,
+        basis=None,
         step_size=cfg.step_size,
         sigma=sigma,
         alpha=cfg.alpha,
-        residual_std=residual_std,
+        residual_std=None,
     )
 
-    key, pos_key = jr.split(key)
-    pro_position = jr.normal(pos_key, (basis_dim, cfg.num_particles))
+    D = x_train.shape[1]
+    init_lengthscale = jnp.sqrt(D) * jnp.ones((D,))
+    lengthscale = gpx.parameters.SigmoidBounded(
+        init_lengthscale, low=cfg.lengthscale_min, high=cfg.lengthscale_max
+    )
+    kernel = gpx.kernels.RBF(lengthscale=lengthscale, variance=px.NonTrainable(jnp.array(1.0)))
 
-    # --- Parameter adaptation ------------------------------------------------
-    log.info("Running adaptation (steps=%d)...", cfg.num_adapt_steps)
-    adaptation = parameter_adaptation(
-        ula,
+    # --- Cross-validated adaptation ---------------------------------------------
+    log.info(
+        "Running cross-validated adaptation (folds=%d, steps/fold=%d)...",
+        cfg.num_folds, cfg.num_adapt_steps,
+    )
+    key, cv_key = jr.split(key)
+    cv_result = cross_validated_parameter_adaptation(
+        _adaptation_algorithm(cfg),
         pro_logdensity_fn,
         pro_params,
-        x_train=x_train,
+        x_full=x_train,
+        y_full=y_train,
         initial_kernel=kernel,
+        num_folds=cfg.num_folds,
+        val_fraction=cfg.val_fraction,
+        num_particles=cfg.num_particles,
+        num_steps=cfg.num_adapt_steps,
         warmup_steps=cfg.warmup_steps,
         sigma_adapt_steps=cfg.sigma_adapt_steps,
         kernel_adapt_steps=cfg.kernel_adapt_steps,
         objective_fn=regularised_score,
+        rng_key=cv_key,
         inducing_basis=inducing_basis,
+        adapt_target=cfg.adapt_target,
         sigma_optimizer=ox.adam(cfg.sigma_lr),
         kernel_optimizer=ox.adam(cfg.kernel_lr),
         progress_bar=True,
     )
-
-    key, adapt_key = jr.split(key)
-    adaptation_results, adaptation_info = adaptation.run(
-        adapt_key, pro_position, num_steps=cfg.num_adapt_steps
+    adapted_kernel = cv_result.kernel
+    adapted_sigma_val = float(np.array(cv_result.sigma).reshape(()))
+    log.info(
+        "CV sigma: min=%.4f  per-fold=%s", adapted_sigma_val, np.array(cv_result.fold_sigma)
     )
-    adapted_kernel = jax.tree.map(lambda x: x[-1], adaptation_info.kernel)
-    pro_params = adaptation_results.parameters
-    pro_position = adaptation_results.state.position
 
-    # Recompute basis on the full training set with the adapted kernel.
-    # For inducing, basis_dim = M is unchanged so particles carry over directly.
-    # For the full GP, basis_dim changes from N_train to N_full, so we reinitialise
-    # particles — the adapted kernel and sigma are still used as the starting point.
-    if cfg.kernel_adapt_steps > 0:
-        log.info("Recomputing basis with adapted kernel...")
-        if cfg.inducing:
-            basis_full, residual_std_full = compute_inducing_basis(
-                inducing_basis, adapted_kernel, x_train
-            )
-        else:
-            basis_full = _cholesky_basis(adapted_kernel, x_train)
-            residual_std_full = None
-            key, pos_key = jr.split(key)
-            pro_position = jr.normal(pos_key, (x_train.shape[0], cfg.num_particles))
-
-        pro_params = pro_params._replace(
-            basis=basis_full,
-            residual_std=residual_std_full,
+    # --- Recompute basis on the full training set with the CV-averaged kernel --
+    log.info("Recomputing basis on full training set with cross-validated kernel...")
+    if cfg.inducing:
+        basis_full, residual_std_full = compute_inducing_basis(
+            inducing_basis, adapted_kernel, x_train
         )
+        basis_dim = inducing_basis.output_dim()
+    else:
+        basis_full = cholesky_basis(adapted_kernel, x_train)
+        residual_std_full = None
+        basis_dim = x_train.shape[0]
+
+    key, pos_key = jr.split(key)
+    pro_position = jr.normal(pos_key, (basis_dim, cfg.num_particles))
+
+    sigma = gpx.parameters.SigmoidBounded(adapted_sigma_val, low=cfg.sigma_min, high=1.0)
+    pro_params = pro_params._replace(
+        basis=basis_full,
+        residual_std=residual_std_full,
+        sigma=sigma,
+    )
 
     # --- Sampling ------------------------------------------------------------
-    log.info("Running sampling (steps=%d)...", cfg.num_sample_steps)
-    algorithm = parametric_ula(pro_logdensity_fn, pro_params)
+    log.info("Running sampling (steps=%d, algorithm=%s)...", cfg.num_sample_steps, cfg.algorithm)
+    algorithm = _sampling_algorithm(cfg, pro_params)
 
     key, sample_key = jr.split(key)
     _, (states, _) = run_inference_algorithm_with_burn_in(
@@ -239,10 +185,9 @@ def main(cfg: DictConfig) -> None:
         initial_position=pro_position,
         progress_bar=True,
     )
-
     particles = states.position[::cfg.thin]
 
-    # --- Evaluation ----------------------------------------------------------
+    # --- Evaluation ------------------------------------------------------------
     test_basis, test_cov = prediction_basis(
         adapted_kernel, x_train, x_test, pro_params, inducing_basis=inducing_basis
     )
@@ -251,8 +196,10 @@ def main(cfg: DictConfig) -> None:
         "dataset": cfg.dataset,
         "split": cfg.split,
         "inducing": cfg.inducing,
-        "gp_sigma": float(sigma_val),
+        "num_folds": cfg.num_folds,
+        "gp_sigma": float(gp_sigma_val),
         "pro_sigma": pro_sigma,
+        "pro_sigma_per_fold": np.array(cv_result.fold_sigma).tolist(),
         "pro_nlpd": float(nlpd_pro(
             y_test, test_basis, test_cov, particles, parameters=pro_params
         )),
@@ -260,7 +207,7 @@ def main(cfg: DictConfig) -> None:
             y_test, test_basis, test_cov, particles, parameters=pro_params
         )),
     }
-    log.info("PRO  NLPD=%.4f  CRPS=%.4f", metrics["pro_nlpd"], metrics["pro_crps"])
+    log.info("PRO-scratch-CV  NLPD=%.4f  CRPS=%.4f", metrics["pro_nlpd"], metrics["pro_crps"])
 
     # --- Save ----------------------------------------------------------------
     with open(out_dir / "pro_metrics.json", "w") as f:

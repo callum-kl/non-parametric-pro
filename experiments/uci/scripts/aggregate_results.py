@@ -8,16 +8,6 @@ import numpy as np
 
 RESULTS_ROOT = Path(__file__).resolve().parents[1] / "results"
 
-# (filename, {json_key -> normalised_key})
-# Each method's own fitted noise level is normalised to a single "sigma" key -- for
-# pro_gp/inducing_pro_gp that's `pro_sigma` (PRO's own, possibly-adapted sigma), not the
-# `gp_sigma` also logged in pro_metrics.json for reference (that's the seeding exact_gp/vgp
-# run's sigma, already reported under its own method row).
-#
-# Keyed by the *base* method name a results dir is expected to match exactly, or to match as
-# a `<base>_<suffix>` prefix -- fit_*.py scripts accept a `name=<suffix>` override (see
-# `pro_out_dir`/`state_dir` in the fit scripts) to keep alternate runs (e.g. untuned
-# baselines) alongside the default ones without overwriting them.
 METHOD_METRICS = {
     "exact_gp": (
         "gp_metrics.json",
@@ -62,9 +52,6 @@ METHOD_METRICS = {
 }
 
 SUMMARY_METRICS = ("nlpd", "sigma")
-
-# Longest base name first, so e.g. "pro_gp_cv_untuned" resolves against the "pro_gp_cv"
-# base rather than the shorter "pro_gp" prefix it also happens to start with.
 _BASES_BY_LENGTH = sorted(METHOD_METRICS, key=len, reverse=True)
 
 
@@ -119,13 +106,10 @@ def collect():
 
 
 def _standard_error(v: list[float]) -> float:
-    """Standard error of the mean (sample std, ddof=1, over sqrt(n)); 0.0 for a single
-    value rather than np.std's NaN."""
     return float(np.std(v, ddof=1) / np.sqrt(len(v))) if len(v) > 1 else 0.0
 
 
 def summarise(records):
-    # {dataset: {method: {metric: (mean, se)}}}
     summary = {}
     for dataset, methods in records.items():
         summary[dataset] = {}

@@ -1,27 +1,3 @@
-"""One example instance each of multimodal, heteroskedastic, block_outliers, and
-well_specified, with a standard GP (predictive mean +- std density band) and a PRO GP
-(individual posterior function draws) fit to each, overlaid on the data, laid out as a
-2x2 grid.
-
-Same as `example_grid.py`, except PRO's uncertainty is shown as `NUM_PRO_DRAWS`
-individual posterior function draws (spaghetti lines, see `_overlay_pro_draws`) instead
-of a masked density band -- each draw is one coherent function trajectory, so (unlike
-`example_grid.py`'s per-x marginal density) this can show whether an upper ridge at one
-x and an upper ridge at another belong to the *same* draw, at the cost of only showing a
-handful of the mixture's support rather than its full continuous density. Standard GP's
-overlay is unchanged (still a masked density band), since a single Gaussian has no
-separate "draws vs. density" distinction worth drawing out.
-
-Mirrors `synthetic.py`'s `mode=panel`/`mode=instance`: one shared `--seed` splits into
-`--num-instances` candidate draws per source (same `jr.split(PRNGKey(seed),
-num_instances)` convention), and each panel picks one by index -- default index set
-per-source in `_SOURCES` below, overridable from the CLI without touching the file, so
-you can eyeball a panel and dial in whichever draw looks best:
-
-    python experiments/synthetic/example_grid_draws.py
-    python experiments/synthetic/example_grid_draws.py --well-specified-index 7
-"""
-
 import argparse
 import os
 from pathlib import Path
@@ -173,10 +149,6 @@ def _overlay_gp_density(ax, x_test, result: FitResult, *, cmap, alpha=1.0, **den
 
 
 def _overlay_pro_draws(ax, x_test, result: FitResult, *, color=PRO_COLOR, alpha=PRO_DRAW_ALPHA) -> None:
-    """PRO GP predictive: `NUM_PRO_DRAWS` individual posterior function draws
-    (spaghetti lines) instead of `_overlay_gp_density`'s masked-density-band
-    convention -- each draw is one coherent function trajectory (see the module
-    docstring for why that's the interesting difference)."""
     order = jnp.argsort(x_test[:, 0])
     x_sorted = x_test[order, 0]
     draws_sorted = result.function_draws[order]  # (N_x, num_draws)
@@ -196,13 +168,8 @@ def main(seed: int, num_instances: int, index_overrides: dict[str, int]) -> None
 
         data = spec.make_instance(instance_key, **spec.kwargs)
 
-        # `plot_case` draws the dataset's own data/truth (using "C0"/"C1"/"black" --
-        # see each source's own module); GP_COLOR/PRO_COLOR are picked to not clash.
         spec.plot_case(ax, data, **spec.plot_kwargs)
 
-        # well_specified's fit is meant to match the data's own generative kernel
-        # family (see non_parametric_pro/data/well_specified.py); every other source
-        # has no such field, so this falls back to the standard fixed-RBF fit.
         kernel_type = getattr(data, "kernel_type", "rbf")
 
         gp_result = fit_gp(data, kernel_type=kernel_type)
@@ -216,10 +183,6 @@ def main(seed: int, num_instances: int, index_overrides: dict[str, int]) -> None
         ax.set_xticks([])
         ax.set_yticks([])
 
-    # GP's contourf isn't a labeled artist `ax.get_legend_handles_labels()` picks up,
-    # and PRO is now several unlabeled line segments (one `ax.plot` per draw) rather
-    # than one labeled artist -- build the shared legend from explicit proxies instead
-    # of collecting from an axes either way.
     legend_handles = [
         Patch(color=GP_COLOR, label="Standard GP"),
         Line2D([0], [0], color=PRO_COLOR, alpha=PRO_DRAW_ALPHA, linewidth=1.5, label="PRO GP"),
