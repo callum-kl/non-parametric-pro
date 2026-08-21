@@ -1,8 +1,0 @@
-# Note: for this dataset, *smaller* param_name values are more severe (fewer degrees
-# of freedom = heavier tails) -- the opposite direction from every other ds/*.yaml here.
-# noise_df must be > 2 (the variance-matching factor sqrt((df-2)/df) is 0 at df=2 and
-# undefined below it).
-source: heavy_tailed
-param_name: noise_df
-noise_df: 2.5
-noise_std_frac: 0.5

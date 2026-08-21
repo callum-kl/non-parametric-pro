@@ -1,8 +1,0 @@
-source: regime_switch
-param_name: roughness_factor
-num_regions: 1
-roughness_factor: 5.0
-min_width: 0.5
-max_width: 1.0
-ell_range: [0.5, 1.0]
-noise_std_frac: 0.2

@@ -28,34 +28,12 @@ from non_parametric_pro.data.synthetic.block_outliers import (
     make_block_outlier_instance,
     plot_block_outlier_case,
 )
-from non_parametric_pro.data.extrapolation import (
-    EXTRAPOLATION_KWARGS,
-    extrapolation_region_mask,
-    make_extrapolation_instance,
-    plot_extrapolation_case,
-)
-from non_parametric_pro.data.heavy_tailed import (
-    HEAVY_TAILED_KWARGS,
-    make_heavy_tailed_instance,
-    plot_heavy_tailed_case,
-)
+
 from non_parametric_pro.data.synthetic.heteroskedastic import (
     HETEROSKEDASTIC_KWARGS,
     heteroskedastic_region_mask,
     make_heteroskedastic_instance,
     plot_heteroskedastic_case,
-)
-from non_parametric_pro.data.huber import HUBER_KWARGS, make_huber_instance, plot_huber_case
-from archive.interpolation_gap import (
-    INTERPOLATION_GAP_KWARGS,
-    interpolation_gap_mask,
-    make_interpolation_instance,
-    plot_interpolation_case,
-)
-from archive.linear_mismatch import (
-    LINEAR_MISMATCH_KWARGS,
-    make_linear_mismatch_instance,
-    plot_linear_mismatch_case,
 )
 from non_parametric_pro.data.synthetic.multimodal import (
     MULTIMODAL_KWARGS,
@@ -63,18 +41,7 @@ from non_parametric_pro.data.synthetic.multimodal import (
     multimodal_region_mask,
     plot_multimodal_case,
 )
-from archive.regime_switch import (
-    REGIME_SWITCH_KWARGS,
-    make_regime_switch_instance,
-    plot_regime_switch_case,
-    regime_switch_region_mask,
-)
-from non_parametric_pro.data.saturation import (
-    SATURATION_KWARGS,
-    make_saturation_instance,
-    plot_saturation_case,
-)
-from non_parametric_pro.data.skewed import SKEWED_KWARGS, make_skewed_instance, plot_skewed_case
+
 from non_parametric_pro.data.synthetic.well_specified import (
     WELL_SPECIFIED_KWARGS,
     build_kernel,
@@ -111,14 +78,6 @@ _PLOT_CASE_FNS = {
     "block_outliers": plot_block_outlier_case,
     "heteroskedastic": plot_heteroskedastic_case,
     "multimodal": plot_multimodal_case,
-    "regime_switch": plot_regime_switch_case,
-    "heavy_tailed": plot_heavy_tailed_case,
-    "interpolation_gap": plot_interpolation_case,
-    "huber": plot_huber_case,
-    "skewed": plot_skewed_case,
-    "saturation": plot_saturation_case,
-    "linear_mismatch": plot_linear_mismatch_case,
-    "extrapolation": plot_extrapolation_case,
     "well_specified": plot_well_specified_case,
 }
 
@@ -352,14 +311,6 @@ _DATASET_SOURCES = {
     "block_outliers": (make_block_outlier_instance, BLOCK_OUTLIERS_KWARGS),
     "heteroskedastic": (make_heteroskedastic_instance, HETEROSKEDASTIC_KWARGS),
     "multimodal": (make_multimodal_instance, MULTIMODAL_KWARGS),
-    "regime_switch": (make_regime_switch_instance, REGIME_SWITCH_KWARGS),
-    "heavy_tailed": (make_heavy_tailed_instance, HEAVY_TAILED_KWARGS),
-    "interpolation_gap": (make_interpolation_instance, INTERPOLATION_GAP_KWARGS),
-    "huber": (make_huber_instance, HUBER_KWARGS),
-    "skewed": (make_skewed_instance, SKEWED_KWARGS),
-    "saturation": (make_saturation_instance, SATURATION_KWARGS),
-    "linear_mismatch": (make_linear_mismatch_instance, LINEAR_MISMATCH_KWARGS),
-    "extrapolation": (make_extrapolation_instance, EXTRAPOLATION_KWARGS),
     "well_specified": (make_well_specified_instance, WELL_SPECIFIED_KWARGS),
 }
 
@@ -384,25 +335,10 @@ def _multimodal_region_mask_fn(data):
     return multimodal_region_mask(data.x_test[:, 0], data.regions)
 
 
-def _regime_switch_region_mask_fn(data):
-    return regime_switch_region_mask(data.x_test[:, 0], data.regions)
-
-
-def _interpolation_gap_region_mask_fn(data):
-    return interpolation_gap_mask(data.x_test[:, 0], data.gap_center, data.gap_width)
-
-
-def _extrapolation_region_mask_fn(data):
-    return extrapolation_region_mask(data.x_test[:, 0], data.boundary, data.extrapolate_right)
-
-
 _REGION_MASK_FNS = {
     "block_outliers": _block_outliers_region_mask_fn,
     "heteroskedastic": _heteroskedastic_region_mask_fn,
     "multimodal": _multimodal_region_mask_fn,
-    "regime_switch": _regime_switch_region_mask_fn,
-    "interpolation_gap": _interpolation_gap_region_mask_fn,
-    "extrapolation": _extrapolation_region_mask_fn,
 }
 
 
