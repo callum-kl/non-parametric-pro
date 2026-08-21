@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 
-RESULTS_ROOT = Path(__file__).parent / "results"
+RESULTS_ROOT = Path(__file__).resolve().parents[1] / "results"
 
 BASELINE_ALGORITHM = "standard_gp"
 Z_95 = 1.96

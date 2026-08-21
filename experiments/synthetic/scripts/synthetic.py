@@ -68,10 +68,10 @@ from non_parametric_pro.util import (
 log = logging.getLogger(__name__)
 
 OmegaConf.register_new_resolver(
-    "script_dir", lambda: str(Path(__file__).resolve().parent), replace=True
+    "script_dir", lambda: str(Path(__file__).resolve().parents[1]), replace=True
 )
 
-FIGURES_DIR = Path(__file__).resolve().parent / "figures"
+FIGURES_DIR = Path(__file__).resolve().parents[1] / "figures"
 
 
 _PLOT_CASE_FNS = {
@@ -440,7 +440,7 @@ def out_dir(cfg: DictConfig, param_value) -> Path:
     )
 
 
-@hydra.main(version_base=None, config_path="conf", config_name="synthetic")
+@hydra.main(version_base=None, config_path="../conf", config_name="synthetic")
 def main(cfg: DictConfig) -> None:
     if cfg.mode == "instance":
         debug_instance(cfg)

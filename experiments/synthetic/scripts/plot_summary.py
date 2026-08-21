@@ -11,8 +11,8 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 from matplotlib.lines import Line2D
 
-RESULTS_ROOT = Path(__file__).parent / "results"
-FIGURES_DIR = Path(__file__).parent / "figures"
+RESULTS_ROOT = Path(__file__).resolve().parents[1] / "results"
+FIGURES_DIR = Path(__file__).resolve().parents[1] / "figures"
 SUMMARY_CSV = RESULTS_ROOT / "summary.csv"
 
 SOURCES = ("block_outliers", "heteroskedastic", "multimodal", "well_specified")

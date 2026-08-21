@@ -16,7 +16,7 @@ from example_grid import _SOURCES as EXAMPLE_SOURCES
 from example_grid import plot_examples
 from plot_summary import ALGORITHM_COLORS, DIVIDER_COLOR, SOURCES, load_summary, plot_summary_row
 
-FIGURES_DIR = Path(__file__).resolve().parent / "figures"
+FIGURES_DIR = Path(__file__).resolve().parents[1] / "figures"
 
 _EXAMPLE_ORDER = tuple(spec.name for spec in EXAMPLE_SOURCES)
 if _EXAMPLE_ORDER != SOURCES:

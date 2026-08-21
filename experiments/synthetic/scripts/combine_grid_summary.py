@@ -2,7 +2,7 @@ from pathlib import Path
 
 from PIL import Image
 
-FIGURES_DIR = Path(__file__).resolve().parent / "figures"
+FIGURES_DIR = Path(__file__).resolve().parents[1] / "figures"
 
 GAP_PX = 24
 BACKGROUND = (255, 255, 255, 255)

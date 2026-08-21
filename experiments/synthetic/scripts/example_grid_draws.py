@@ -33,7 +33,7 @@ from non_parametric_pro.data.synthetic.well_specified import (
 
 from synthetic import FitResult, fit_gp, fit_pro
 
-FIGURES_DIR = Path(__file__).resolve().parent / "figures"
+FIGURES_DIR = Path(__file__).resolve().parents[1] / "figures"
 
 GP_COLOR = "#3f8f5f"
 PRO_COLOR = "#3a76c4"
