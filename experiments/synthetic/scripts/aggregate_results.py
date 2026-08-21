@@ -1,4 +1,5 @@
-"""Aggregate per-run metrics across synthetic datasets, their distinguishing parameter
+"""
+Aggregate per-run metrics across synthetic datasets, their distinguishing parameter
 values, and algorithms; print a summary table per dataset, plus a paired per-instance
 NLPD-difference table against a baseline algorithm.
 """
@@ -18,7 +19,9 @@ REGION_LABELS = ("region", "background")
 
 
 def collect():
-    records: dict[str, dict[object, dict[str, dict]]] = defaultdict(lambda: defaultdict(dict))
+    records: dict[str, dict[object, dict[str, dict]]] = defaultdict(
+        lambda: defaultdict(dict)
+    )
     param_names: dict[str, str] = {}
 
     if not RESULTS_ROOT.exists():
@@ -81,7 +84,11 @@ def print_tables(records, param_names):
                 else:
                     mean = entry["nlpd_mean"]
                     ci95 = _nlpd_ci95(entry)
-                    cell = f"{mean:.4f}±{ci95:.4f}" if ci95 is not None else f"{mean:.4f}±?"
+                    cell = (
+                        f"{mean:.4f}±{ci95:.4f}"
+                        if ci95 is not None
+                        else f"{mean:.4f}±?"
+                    )
                     row += f"{cell:>{col_width}}"
             print(row)
 
@@ -90,8 +97,13 @@ def save_csv(records, param_names, path: Path):
     import csv
 
     fieldnames = [
-        "source", "param_name", "param_value", "algorithm",
-        "nlpd_mean", "nlpd_std", "nlpd_ci95",
+        "source",
+        "param_name",
+        "param_value",
+        "algorithm",
+        "nlpd_mean",
+        "nlpd_std",
+        "nlpd_ci95",
     ]
 
     with path.open("w", newline="") as f:
@@ -140,7 +152,12 @@ def _paired_stats(entry_values: list[float], base_values: list[float]) -> dict |
     if n == 0:
         return None
     sem = _sample_std(diffs) / np.sqrt(n)
-    return {"diff_mean": float(np.mean(diffs)), "diff_sem": sem, "diff_ci95": Z_95 * sem, "n": n}
+    return {
+        "diff_mean": float(np.mean(diffs)),
+        "diff_sem": sem,
+        "diff_ci95": Z_95 * sem,
+        "n": n,
+    }
 
 
 def compute_paired_diffs(records, baseline=BASELINE_ALGORITHM):
@@ -228,12 +245,25 @@ def print_diff_tables(diffs, param_names, baseline=BASELINE_ALGORITHM, label="Δ
             print(row)
 
 
-def save_diff_csv(diffs_by_region: dict[str, dict], param_names, path: Path, baseline=BASELINE_ALGORITHM):
+def save_diff_csv(
+    diffs_by_region: dict[str, dict],
+    param_names,
+    path: Path,
+    baseline=BASELINE_ALGORITHM,
+):
     import csv
 
     fieldnames = [
-        "source", "param_name", "param_value", "region", "baseline", "algorithm",
-        "diff_mean", "diff_sem", "diff_ci95", "n",
+        "source",
+        "param_name",
+        "param_value",
+        "region",
+        "baseline",
+        "algorithm",
+        "diff_mean",
+        "diff_sem",
+        "diff_ci95",
+        "n",
     ]
 
     with path.open("w", newline="") as f:
@@ -274,7 +304,9 @@ def region_summary(records):
                 if region_nlpds is None:
                     continue
                 for label in REGION_LABELS:
-                    values = [v for v in region_nlpds.get(label, []) if not math.isnan(v)]
+                    values = [
+                        v for v in region_nlpds.get(label, []) if not math.isnan(v)
+                    ]
                     n = len(values)
                     if n == 0:
                         continue
@@ -289,7 +321,10 @@ def region_summary(records):
 
 
 def print_region_summary_tables(summary, param_names):
-    titles = {"region": "misspecified region", "background": "background (well-specified)"}
+    titles = {
+        "region": "misspecified region",
+        "background": "background (well-specified)",
+    }
     for label in REGION_LABELS:
         by_source = summary[label]
         for source in sorted(by_source):
@@ -300,7 +335,9 @@ def print_region_summary_tables(summary, param_names):
                 continue
 
             col_width = max(24, max((len(a) for a in algorithms), default=0) + 1)
-            header = f"{param_name:<16}" + "".join(f"{a:>{col_width}}" for a in algorithms)
+            header = f"{param_name:<16}" + "".join(
+                f"{a:>{col_width}}" for a in algorithms
+            )
 
             print(f"\n{'─' * len(header)}")
             print(f"  {source}  ({titles[label]}, mean±95% CI)")
@@ -323,8 +360,14 @@ def save_region_summary_csv(summary, param_names, path: Path):
     import csv
 
     fieldnames = [
-        "source", "param_name", "param_value", "region", "algorithm",
-        "nlpd_mean", "nlpd_ci95", "n",
+        "source",
+        "param_name",
+        "param_value",
+        "region",
+        "algorithm",
+        "nlpd_mean",
+        "nlpd_ci95",
+        "n",
     ]
 
     with path.open("w", newline="") as f:
@@ -335,7 +378,9 @@ def save_region_summary_csv(summary, param_names, path: Path):
             for source in sorted(by_source):
                 param_name = param_names[source]
                 for param_value in sorted(by_source[source]):
-                    for algorithm, entry in sorted(by_source[source][param_value].items()):
+                    for algorithm, entry in sorted(
+                        by_source[source][param_value].items()
+                    ):
                         writer.writerow(
                             {
                                 "source": source,
@@ -363,15 +408,23 @@ if __name__ == "__main__":
         summary = region_summary(records)
         if any(summary[label] for label in REGION_LABELS):
             print_region_summary_tables(summary, param_names)
-            save_region_summary_csv(summary, param_names, RESULTS_ROOT / "region_summary.csv")
+            save_region_summary_csv(
+                summary, param_names, RESULTS_ROOT / "region_summary.csv"
+            )
 
         diffs_by_region = {"overall": compute_paired_diffs(records)}
         for label in REGION_LABELS:
             diffs_by_region[label] = compute_paired_region_diffs(records, label)
 
-        labels = {"overall": "Δ NLPD", "region": "Δ NLPD (region)", "background": "Δ NLPD (background)"}
+        labels = {
+            "overall": "Δ NLPD",
+            "region": "Δ NLPD (region)",
+            "background": "Δ NLPD (background)",
+        }
         if any(diffs_by_region.values()):
             for key, diffs in diffs_by_region.items():
                 if diffs:
                     print_diff_tables(diffs, param_names, label=labels[key])
-            save_diff_csv(diffs_by_region, param_names, RESULTS_ROOT / "paired_diff.csv")
+            save_diff_csv(
+                diffs_by_region, param_names, RESULTS_ROOT / "paired_diff.csv"
+            )

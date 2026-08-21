@@ -28,7 +28,6 @@ from non_parametric_pro.data.synthetic.block_outliers import (
     make_block_outlier_instance,
     plot_block_outlier_case,
 )
-
 from non_parametric_pro.data.synthetic.heteroskedastic import (
     HETEROSKEDASTIC_KWARGS,
     heteroskedastic_region_mask,
@@ -41,7 +40,6 @@ from non_parametric_pro.data.synthetic.multimodal import (
     multimodal_region_mask,
     plot_multimodal_case,
 )
-
 from non_parametric_pro.data.synthetic.well_specified import (
     WELL_SPECIFIED_KWARGS,
     build_kernel,
@@ -101,7 +99,9 @@ def make_dataset_panel(
 ):
     keys = jr.split(key, num_instances)
     nrows, ncols = grid_shape
-    fig, axes = plt.subplots(nrows, ncols, figsize=(4 * ncols, 3 * nrows), sharex=True, sharey=True)
+    fig, axes = plt.subplots(
+        nrows, ncols, figsize=(4 * ncols, 3 * nrows), sharex=True, sharey=True
+    )
 
     for ax, instance_key in zip(axes.flat, keys, strict=True):
         data = get_instance(instance_key)
@@ -131,6 +131,7 @@ def run_dataset_instance(
     fig.tight_layout()
     fig.savefig(FIGURES_DIR / filename, dpi=150)
 
+
 class FitResult(NamedTuple):
     mean: jnp.ndarray
     std: jnp.ndarray
@@ -155,7 +156,7 @@ def fit_gp(data, key=None, *, kernel_lengthscale=0.3, kernel_type="rbf") -> FitR
         model=posterior,
         objective=lambda p, d: -gpx.objectives.conjugate_mll(p, d),
         train_data=gp_data,
-        verbose=False
+        verbose=False,
     )
 
     latent = opt_posterior.predict(x_test, train_data=gp_data)
@@ -166,7 +167,8 @@ def fit_gp(data, key=None, *, kernel_lengthscale=0.3, kernel_type="rbf") -> FitR
     nlpd_per_point = nlpd_gp(y_test, mean, std, return_per_point=True)
     return FitResult(mean=mean, std=std, nlpd_per_point=nlpd_per_point)
 
-def fit_pro(  # noqa: PLR0913
+
+def fit_pro(
     data,
     key,
     *,
@@ -249,11 +251,14 @@ def fit_pro(  # noqa: PLR0913
     )
 
     particles = states.position[::thin]
-    test_basis, test_cov = prediction_basis(
-        adapted_kernel, x_train, x_test, pro_params
-    )
+    test_basis, test_cov = prediction_basis(adapted_kernel, x_train, x_test, pro_params)
     nlpd_per_point = nlpd_pro(
-        y_test, test_basis, test_cov, particles, parameters=pro_params, return_per_point=True
+        y_test,
+        test_basis,
+        test_cov,
+        particles,
+        parameters=pro_params,
+        return_per_point=True,
     )
 
     sigma_val = px.unwrap(pro_params.sigma)
@@ -273,8 +278,12 @@ def fit_pro(  # noqa: PLR0913
     sigma_eff = jnp.sqrt(sigma_val**2 + residual_std**2)
 
     return FitResult(
-        mean=mean, std=std, nlpd_per_point=nlpd_per_point, function_draws=function_draws,
-        particle_predictions=particle_predictions, sigma_eff=sigma_eff,
+        mean=mean,
+        std=std,
+        nlpd_per_point=nlpd_per_point,
+        function_draws=function_draws,
+        particle_predictions=particle_predictions,
+        sigma_eff=sigma_eff,
     )
 
 
@@ -282,7 +291,9 @@ def evaluate(get_instance, fit_function, key, num_instances, *, region_mask_fn=N
     keys = jr.split(key, num_instances)
 
     nlpds = []
-    region_nlpds = {"region": [], "background": []} if region_mask_fn is not None else None
+    region_nlpds = (
+        {"region": [], "background": []} if region_mask_fn is not None else None
+    )
 
     for instance_key in progress_bar(keys):
         data = get_instance(instance_key)
@@ -316,9 +327,11 @@ _DATASET_SOURCES = {
 
 
 def _instance_fn(make_instance, kwarg_names, cfg: DictConfig):
-    """Build a `key -> data` closure for `make_instance`, forwarding only the subset of
+    """
+    Build a `key -> data` closure for `make_instance`, forwarding only the subset of
     `kwarg_names` that `cfg` actually sets -- so a `ds` config can override any subset
-    of a generator's parameters without a code change here."""
+    of a generator's parameters without a code change here.
+    """
     kwargs = {k: cfg[k] for k in kwarg_names if k in cfg}
     return lambda key: make_instance(key, **kwargs)
 
@@ -420,8 +433,12 @@ def debug_instance(cfg: DictConfig) -> None:
     nlpd = float(jnp.mean(nlpd_per_point))
     log.info(
         "Instance %d/%d (%s, %s=%s): NLPD=%.4f",
-        cfg.instance_index, cfg.num_instances, cfg.algorithm, cfg.param_name,
-        cfg[cfg.param_name], nlpd,
+        cfg.instance_index,
+        cfg.num_instances,
+        cfg.algorithm,
+        cfg.param_name,
+        cfg[cfg.param_name],
+        nlpd,
     )
 
     fig, ax = plt.subplots()
@@ -467,11 +484,19 @@ def main(cfg: DictConfig) -> None:
     param_value = cfg[cfg.param_name]
 
     log.info(
-        "Evaluating %s on %s (%s=%s)", cfg.algorithm, cfg.source, cfg.param_name, param_value
+        "Evaluating %s on %s (%s=%s)",
+        cfg.algorithm,
+        cfg.source,
+        cfg.param_name,
+        param_value,
     )
     region_mask_fn = _get_region_mask_fn(cfg)
     mean, std, nlpds, region_nlpds = evaluate(
-        get_instance, fit_algorithm, key, cfg.num_instances, region_mask_fn=region_mask_fn
+        get_instance,
+        fit_algorithm,
+        key,
+        cfg.num_instances,
+        region_mask_fn=region_mask_fn,
     )
 
     metrics = {

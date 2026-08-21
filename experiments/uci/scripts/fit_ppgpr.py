@@ -60,9 +60,13 @@ def main(cfg: DictConfig) -> None:
     lengthscale = gpx.parameters.SigmoidBounded(
         jnp.sqrt(D) * jnp.ones((D,)), low=cfg.lengthscale_min, high=cfg.lengthscale_max
     )
-    kernel = gpx.kernels.RBF(lengthscale=lengthscale, variance=px.NonTrainable(jnp.array(1.0)))
+    kernel = gpx.kernels.RBF(
+        lengthscale=lengthscale, variance=px.NonTrainable(jnp.array(1.0))
+    )
     prior = gpx.gps.Prior(mean_function=gpx.mean_functions.Zero(), kernel=kernel)
-    likelihood = gpx.likelihoods.Gaussian(num_datapoints=data.n, obs_stddev=jnp.sqrt(0.01))
+    likelihood = gpx.likelihoods.Gaussian(
+        num_datapoints=data.n, obs_stddev=jnp.sqrt(0.01)
+    )
     posterior = prior * likelihood
 
     key, km_key = jr.split(key)
@@ -73,7 +77,7 @@ def main(cfg: DictConfig) -> None:
         inducing_inputs=z_init,
         jitter=cfg.jitter,
     )
-    objective = lambda p, d: -predictive_log_likelihood(p, d, beta=cfg.beta_reg)  # noqa: E731
+    objective = lambda p, d: -predictive_log_likelihood(p, d, beta=cfg.beta_reg)
     optim = ox.chain(ox.clip_by_global_norm(cfg.grad_clip_norm), ox.adam(cfg.kernel_lr))
     opt_vf, _ = gpx.fit(
         model=variational_family,

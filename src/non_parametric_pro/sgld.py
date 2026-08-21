@@ -10,7 +10,14 @@ from blackjax.types import PRNGKey
 from non_parametric_pro.density import pro_score_fn
 from non_parametric_pro.ula import ULAInfo, ULAState, init, refresh
 
-__all__ = ["SGLDAlgorithm", "build_kernel", "init", "parametric_sgld", "refresh", "sgld"]
+__all__ = [
+    "SGLDAlgorithm",
+    "build_kernel",
+    "init",
+    "parametric_sgld",
+    "refresh",
+    "sgld",
+]
 
 
 def build_kernel(logdensity_fn: Callable, *, batch_size: int) -> Callable:

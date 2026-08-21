@@ -1,4 +1,3 @@
-
 from typing import NamedTuple
 
 import gpjax as gpx
@@ -11,7 +10,6 @@ from non_parametric_pro.util import train_val_split
 
 
 class OutlierBlockRegions(NamedTuple):
-
     centers: jax.Array
     widths: jax.Array
 
@@ -43,7 +41,6 @@ def block_outlier_region_mask(x: jax.Array, regions: OutlierBlockRegions) -> jax
 
 
 class BlockOutlierCase(NamedTuple):
-
     x_train: jax.Array
     y_train: jax.Array
     y_truth_train: jax.Array
@@ -75,7 +72,14 @@ def make_block_outlier_instance(
     num_regions: int = 1,
 ) -> BlockOutlierCase:
     (
-        x_key, ell_key, alpha_key, latent_key, region_key, sign_key, noise_key, split_key,
+        x_key,
+        ell_key,
+        alpha_key,
+        latent_key,
+        region_key,
+        sign_key,
+        noise_key,
+        split_key,
     ) = jr.split(key, 8)
 
     ell = jr.uniform(ell_key, (), minval=ell_range[0], maxval=ell_range[1])
@@ -89,7 +93,11 @@ def make_block_outlier_instance(
     y_truth = prior.predict(x).sample(latent_key)
 
     regions = sample_outlier_block_regions(
-        region_key, x_min=x_min, x_max=x_max, min_width=min_width, max_width=max_width,
+        region_key,
+        x_min=x_min,
+        x_max=x_max,
+        min_width=min_width,
+        max_width=max_width,
         num_regions=num_regions,
     )
 
@@ -126,8 +134,12 @@ def make_block_outlier_instance(
 
 
 def plot_block_outlier_case(
-    ax, data: BlockOutlierCase, *,
-    show_curve: bool = True, show_train: bool = True, color_by_outlier: bool = True,
+    ax,
+    data: BlockOutlierCase,
+    *,
+    show_curve: bool = True,
+    show_train: bool = True,
+    color_by_outlier: bool = True,
     outlier_subsample_frac: float = 1.0,
 ) -> None:
     x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
@@ -140,7 +152,13 @@ def plot_block_outlier_case(
 
     is_outlier = data.is_outlier_train
     if show_train:
-        ax.scatter(data.x_train[~is_outlier], data.y_train[~is_outlier], color="black", s=8, zorder=3)
+        ax.scatter(
+            data.x_train[~is_outlier],
+            data.y_train[~is_outlier],
+            color="black",
+            s=8,
+            zorder=3,
+        )
     else:
         ax.scatter(data.x_test, data.y_test, color="black", s=8, zorder=3)
 
@@ -150,8 +168,13 @@ def plot_block_outlier_case(
             stride = max(1, round(1.0 / outlier_subsample_frac))
             outlier_idx = outlier_idx[::stride]
         ax.scatter(
-            data.x_train[outlier_idx], data.y_train[outlier_idx],
-            color="maroon", marker="x", s=40, linewidths=1.5, zorder=4,
+            data.x_train[outlier_idx],
+            data.y_train[outlier_idx],
+            color="maroon",
+            marker="x",
+            s=40,
+            linewidths=1.5,
+            zorder=4,
         )
     ax.set_title(
         f"$\\ell$={data.ell:.2f}  $\\alpha$={data.alpha:.2f}  "
@@ -161,6 +184,15 @@ def plot_block_outlier_case(
 
 
 BLOCK_OUTLIERS_KWARGS = (
-    "n", "test_fraction", "x_min", "x_max", "noise_std_frac",
-    "outlier_offset_frac", "min_width", "max_width", "ell_range", "alpha_range", "num_regions",
+    "n",
+    "test_fraction",
+    "x_min",
+    "x_max",
+    "noise_std_frac",
+    "outlier_offset_frac",
+    "min_width",
+    "max_width",
+    "ell_range",
+    "alpha_range",
+    "num_regions",
 )

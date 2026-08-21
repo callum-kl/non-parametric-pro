@@ -1,4 +1,3 @@
-
 from typing import NamedTuple
 
 import gpjax as gpx
@@ -19,7 +18,9 @@ _KERNEL_CONSTRUCTORS = {
 }
 
 
-def build_kernel(kernel_type: str, *, lengthscale, variance=None) -> gpx.kernels.AbstractKernel:
+def build_kernel(
+    kernel_type: str, *, lengthscale, variance=None
+) -> gpx.kernels.AbstractKernel:
     try:
         kernel_cls = _KERNEL_CONSTRUCTORS[kernel_type]
     except KeyError:
@@ -31,7 +32,6 @@ def build_kernel(kernel_type: str, *, lengthscale, variance=None) -> gpx.kernels
 
 
 class WellSpecifiedCase(NamedTuple):
-
     x_train: jax.Array
     y_train: jax.Array
     y_truth_train: jax.Array
@@ -57,7 +57,9 @@ def make_well_specified_instance(
     alpha_range: tuple[float, float] = (0.5, 2.0),
     kernel_types: tuple[str, ...] = KERNEL_TYPES,
 ) -> WellSpecifiedCase:
-    x_key, ell_key, alpha_key, kernel_key, latent_key, split_key, noise_key = jr.split(key, 7)
+    x_key, ell_key, alpha_key, kernel_key, latent_key, split_key, noise_key = jr.split(
+        key, 7
+    )
 
     ell = jr.uniform(ell_key, (), minval=ell_range[0], maxval=ell_range[1])
     alpha = jr.uniform(alpha_key, (), minval=alpha_range[0], maxval=alpha_range[1])
@@ -112,6 +114,12 @@ def plot_well_specified_case(
 
 
 WELL_SPECIFIED_KWARGS = (
-    "n", "train_fraction", "x_min", "x_max", "noise_std_frac",
-    "ell_range", "alpha_range", "kernel_types",
+    "n",
+    "train_fraction",
+    "x_min",
+    "x_max",
+    "noise_std_frac",
+    "ell_range",
+    "alpha_range",
+    "kernel_types",
 )

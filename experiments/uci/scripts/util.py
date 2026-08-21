@@ -1,6 +1,5 @@
 """PRO GP sampling, seeded from an exact GP or VGP depending on cfg.inducing."""
 
-import json
 import logging
 import os
 from pathlib import Path
@@ -12,6 +11,7 @@ import jax.numpy as jnp
 import numpy as np
 from omegaconf import DictConfig, OmegaConf
 from sklearn.preprocessing import StandardScaler
+
 from non_parametric_pro.inducing import PointInducingBasis
 
 log = logging.getLogger(__name__)
@@ -70,7 +70,8 @@ def load_gp_state(cfg: DictConfig):
         log.warning(
             "%s has no 'kernel_type' (pre-fix save); assuming Matern32. "
             "Re-run %s to save kernel_type explicitly.",
-            path, script,
+            path,
+            script,
         )
     kernel_cls = getattr(gpx.kernels, kernel_type)
     kernel = kernel_cls(

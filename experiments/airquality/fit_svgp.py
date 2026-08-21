@@ -1,4 +1,5 @@
-"""Fit a standard SVGP on one Kampala air-quality site, save its RMSE/NLPD.
+"""
+Fit a standard SVGP on one Kampala air-quality site, save its RMSE/NLPD.
 
 Ports ``sparse_approximations/sparse_gp.py`` from
 https://github.com/claramst/gps-kampala-airquality (see
@@ -35,7 +36,10 @@ from non_parametric_pro.util import nlpd_gp
 
 log = logging.getLogger(__name__)
 
-_SPLIT_FNS = {"forecasting": kampala_forecasting_split, "nowcasting": kampala_nowcasting_split}
+_SPLIT_FNS = {
+    "forecasting": kampala_forecasting_split,
+    "nowcasting": kampala_nowcasting_split,
+}
 
 
 def state_dir(cfg: DictConfig, site_id: str) -> Path:
@@ -43,10 +47,22 @@ def state_dir(cfg: DictConfig, site_id: str) -> Path:
     return Path(cfg.results_root) / cfg.mode / site_id / method
 
 
-def _load_split(cfg: DictConfig, records: KampalaAirQualityRecords, site_id: str) -> KampalaSplit:
+def _load_split(
+    cfg: DictConfig, records: KampalaAirQualityRecords, site_id: str
+) -> KampalaSplit:
     split_fn = _SPLIT_FNS[cfg.mode]
-    outlier_mask = kampala_outlier_mask(records, iqr_multiplier=cfg.outlier_iqr_multiplier) if cfg.remove_outliers else None
-    return split_fn(records, site_id, fold=cfg.fold, max_train=cfg.max_train, outlier_mask=outlier_mask)
+    outlier_mask = (
+        kampala_outlier_mask(records, iqr_multiplier=cfg.outlier_iqr_multiplier)
+        if cfg.remove_outliers
+        else None
+    )
+    return split_fn(
+        records,
+        site_id,
+        fold=cfg.fold,
+        max_train=cfg.max_train,
+        outlier_mask=outlier_mask,
+    )
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="fit_svgp")
@@ -64,7 +80,11 @@ def main(cfg: DictConfig) -> None:
 
     log.info(
         "Fitting SVGP: mode=%s site_id=%s (index %d/%d) remove_outliers=%s",
-        cfg.mode, site_id, cfg.site_index, len(site_ids), cfg.remove_outliers,
+        cfg.mode,
+        site_id,
+        cfg.site_index,
+        len(site_ids),
+        cfg.remove_outliers,
     )
 
     split = _load_split(cfg, records, site_id)
@@ -74,11 +94,19 @@ def main(cfg: DictConfig) -> None:
     D = x_train.shape[1]
     N = x_train.shape[0]
     num_inducing = min(cfg.num_inducing, N)
-    log.info("N_train=%d  N_test=%d  D=%d  num_inducing=%d", N, x_test.shape[0], D, num_inducing)
+    log.info(
+        "N_train=%d  N_test=%d  D=%d  num_inducing=%d",
+        N,
+        x_test.shape[0],
+        D,
+        num_inducing,
+    )
 
     # --- SVGP fit --------------------------------------------------------------
     data = gpx.Dataset(X=x_train, y=y_train)
-    kernel = gpx.kernels.RBF(lengthscale=jnp.ones((D,)), variance=px.NonTrainable(jnp.array(1.0)))
+    kernel = gpx.kernels.RBF(
+        lengthscale=jnp.ones((D,)), variance=px.NonTrainable(jnp.array(1.0))
+    )
     prior = gpx.gps.Prior(mean_function=gpx.mean_functions.Zero(), kernel=kernel)
     likelihood = gpx.likelihoods.Gaussian(num_datapoints=data.n)
     posterior = prior * likelihood
@@ -86,7 +114,8 @@ def main(cfg: DictConfig) -> None:
     key = jr.PRNGKey(cfg.seed)
     z_init = kmeans_inducing_points(key, x_train, num_inducing).z
     variational_family = gpx.variational_families.VariationalGaussian(
-        posterior=posterior, inducing_inputs=z_init,
+        posterior=posterior,
+        inducing_inputs=z_init,
     )
 
     opt_variational_family, _ = gpx.fit(
@@ -121,7 +150,9 @@ def main(cfg: DictConfig) -> None:
     }
     log.info(
         "SVGP site=%s NLPD=%.4f RMSE=%.4f",
-        site_id, metrics["nlpd"], metrics["rmse"],
+        site_id,
+        metrics["nlpd"],
+        metrics["rmse"],
     )
 
     # --- Save ----------------------------------------------------------------
@@ -131,8 +162,12 @@ def main(cfg: DictConfig) -> None:
     z_opt = np.array(px.unwrap(opt_variational_family.inducing_inputs))
     np.savez(
         out_dir / "svgp_state.npz",
-        lengthscale=np.array(px.unwrap(opt_variational_family.posterior.prior.kernel.lengthscale)),
-        sigma=np.array(px.unwrap(opt_variational_family.posterior.likelihood.obs_stddev)).reshape(()),
+        lengthscale=np.array(
+            px.unwrap(opt_variational_family.posterior.prior.kernel.lengthscale)
+        ),
+        sigma=np.array(
+            px.unwrap(opt_variational_family.posterior.likelihood.obs_stddev)
+        ).reshape(()),
         z=z_opt,
         y_mean=split.y_mean,
         y_std=split.y_std,

@@ -9,7 +9,7 @@ mode: forecasting
 site_index: 0
 
 fold: 0
-max_train: 100000  # above the actual per-split size => no subsampling, matching sparse_gp.py
+max_train: 100000 # above the actual per-split size => no subsampling, matching sparse_gp.py
 remove_outliers: false
 outlier_iqr_multiplier: 1.5
 

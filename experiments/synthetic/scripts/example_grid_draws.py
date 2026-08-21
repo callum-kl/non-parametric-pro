@@ -1,7 +1,8 @@
 import argparse
 import os
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, NamedTuple
+from typing import NamedTuple
 
 os.environ.setdefault("JAX_ENABLE_X64", "1")
 
@@ -16,6 +17,7 @@ import numpy as np
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
+from synthetic import FitResult, fit_gp, fit_pro
 
 from non_parametric_pro.data.synthetic.block_outliers import (
     make_block_outlier_instance,
@@ -25,13 +27,14 @@ from non_parametric_pro.data.synthetic.heteroskedastic import (
     make_heteroskedastic_instance,
     plot_heteroskedastic_case,
 )
-from non_parametric_pro.data.synthetic.multimodal import make_multimodal_instance, plot_multimodal_case
+from non_parametric_pro.data.synthetic.multimodal import (
+    make_multimodal_instance,
+    plot_multimodal_case,
+)
 from non_parametric_pro.data.synthetic.well_specified import (
     make_well_specified_instance,
     plot_well_specified_case,
 )
-
-from synthetic import FitResult, fit_gp, fit_pro
 
 FIGURES_DIR = Path(__file__).resolve().parents[1] / "figures"
 
@@ -41,17 +44,20 @@ GP_CMAP = LinearSegmentedColormap.from_list("gp_density", ["#e8f4ec", GP_COLOR])
 PRO_DRAW_ALPHA = 0.7
 NUM_PRO_DRAWS = 10
 
-plt.rcParams.update({
-    "font.size": 12,
-    "axes.spines.top": False,
-    "axes.spines.right": False,
-    "axes.spines.left": False,
-    "axes.spines.bottom": False,
-    "axes.grid": True,
-    "grid.color": "#e1e0d9",
-    "grid.linewidth": 0.6,
-    "legend.frameon": False,
-})
+plt.rcParams.update(
+    {
+        "font.size": 12,
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "axes.spines.left": False,
+        "axes.spines.bottom": False,
+        "axes.grid": True,
+        "grid.color": "#e1e0d9",
+        "grid.linewidth": 0.6,
+        "legend.frameon": False,
+    }
+)
+
 
 class SourceSpec(NamedTuple):
     name: str
@@ -70,10 +76,19 @@ _SOURCES = [
         make_block_outlier_instance,
         plot_block_outlier_case,
         {
-            "num_regions": 1, "outlier_offset_frac": 1.5,
-            "min_width": 0.15, "max_width": 0.3, "ell_range": (0.5, 1.0), "noise_std_frac": 0.15,
+            "num_regions": 1,
+            "outlier_offset_frac": 1.5,
+            "min_width": 0.15,
+            "max_width": 0.3,
+            "ell_range": (0.5, 1.0),
+            "noise_std_frac": 0.15,
         },
-        {"show_curve": False, "show_train": False, "color_by_outlier": True, "outlier_subsample_frac": 0.3},
+        {
+            "show_curve": False,
+            "show_train": False,
+            "color_by_outlier": True,
+            "outlier_subsample_frac": 0.3,
+        },
         instance_index=5,
     ),
     SourceSpec(
@@ -81,7 +96,13 @@ _SOURCES = [
         "Heteroskedastic",
         make_heteroskedastic_instance,
         plot_heteroskedastic_case,
-        {"num_regions": 2, "min_width": 0.3, "max_width": 0.8, "ell_range": (0.5, 1.0), "noise_std_frac": 0.15},
+        {
+            "num_regions": 2,
+            "min_width": 0.3,
+            "max_width": 0.8,
+            "ell_range": (0.5, 1.0),
+            "noise_std_frac": 0.15,
+        },
         {"show_curve": False, "show_noise_bands": False, "show_train": False},
         instance_index=4,
     ),
@@ -91,8 +112,13 @@ _SOURCES = [
         make_multimodal_instance,
         plot_multimodal_case,
         {
-            "num_regions": 1, "mix_prob": 0.5, "min_width": 0.3, "max_width": 0.8,
-            "ell_range": (0.5, 1.0), "noise_std_frac": 0.1, "n": 300,
+            "num_regions": 1,
+            "mix_prob": 0.5,
+            "min_width": 0.3,
+            "max_width": 0.8,
+            "ell_range": (0.5, 1.0),
+            "noise_std_frac": 0.1,
+            "n": 300,
         },
         {"show_curves": False, "color_by_branch": False, "show_train": False},
         instance_index=3,
@@ -102,38 +128,74 @@ _SOURCES = [
         "Well-specified",
         make_well_specified_instance,
         plot_well_specified_case,
-        {"train_fraction": 0.7, 'noise_std_frac': 0.2},
+        {"train_fraction": 0.7, "noise_std_frac": 0.2},
         {"show_curve": False, "show_train": False},
         instance_index=2,
     ),
 ]
 
 
-_DENSITY_DEFAULTS = {"num_bands": 3, "credible_k": 5.0, "num_y": 150, "min_density_frac": 0.03}
+_DENSITY_DEFAULTS = {
+    "num_bands": 3,
+    "credible_k": 5.0,
+    "num_y": 150,
+    "min_density_frac": 0.03,
+}
 
-def _masked_density_bands(  # noqa: PLR0913
-    ax, x_sorted, mean_sorted, std_sorted, density_fn, *,
-    cmap, num_bands, credible_k, num_y, min_density_frac, alpha=1.0, edge_color=None,
+
+def _masked_density_bands(
+    ax,
+    x_sorted,
+    mean_sorted,
+    std_sorted,
+    density_fn,
+    *,
+    cmap,
+    num_bands,
+    credible_k,
+    num_y,
+    min_density_frac,
+    alpha=1.0,
+    edge_color=None,
 ) -> None:
     y_lo = float(jnp.min(mean_sorted - credible_k * std_sorted))
     y_hi = float(jnp.max(mean_sorted + credible_k * std_sorted))
     y_grid = jnp.linspace(y_lo, y_hi, num_y)
 
     density = density_fn(y_grid)
-    in_band = jnp.abs(y_grid[None, :] - mean_sorted[:, None]) <= credible_k * std_sorted[:, None]
+    in_band = (
+        jnp.abs(y_grid[None, :] - mean_sorted[:, None])
+        <= credible_k * std_sorted[:, None]
+    )
     density = np.asarray(jnp.where(in_band, density, jnp.nan))
 
     peak = np.nanmax(density)
     levels = np.linspace(min_density_frac, 1.0, num_bands) * peak
 
-    x_grid, y_mesh = np.meshgrid(np.asarray(x_sorted), np.asarray(y_grid), indexing="ij")
-    ax.contourf(x_grid, y_mesh, density, levels=levels, cmap=cmap, alpha=alpha, extend="neither")
+    x_grid, y_mesh = np.meshgrid(
+        np.asarray(x_sorted), np.asarray(y_grid), indexing="ij"
+    )
+    ax.contourf(
+        x_grid, y_mesh, density, levels=levels, cmap=cmap, alpha=alpha, extend="neither"
+    )
     if edge_color is not None:
-        ax.contour(x_grid, y_mesh, density, levels=levels, colors=edge_color, linewidths=0.6, alpha=alpha)
-    ax.plot(x_sorted, mean_sorted, color=edge_color or cmap(1.0), linewidth=1.4, alpha=alpha)
+        ax.contour(
+            x_grid,
+            y_mesh,
+            density,
+            levels=levels,
+            colors=edge_color,
+            linewidths=0.6,
+            alpha=alpha,
+        )
+    ax.plot(
+        x_sorted, mean_sorted, color=edge_color or cmap(1.0), linewidth=1.4, alpha=alpha
+    )
 
 
-def _overlay_gp_density(ax, x_test, result: FitResult, *, cmap, alpha=1.0, **density_kwargs) -> None:
+def _overlay_gp_density(
+    ax, x_test, result: FitResult, *, cmap, alpha=1.0, **density_kwargs
+) -> None:
     order = jnp.argsort(x_test[:, 0])
     x_sorted = x_test[order, 0]
     mean_sorted, std_sorted = result.mean[order], result.std[order]
@@ -143,12 +205,21 @@ def _overlay_gp_density(ax, x_test, result: FitResult, *, cmap, alpha=1.0, **den
         return jnp.exp(-0.5 * z**2) / (std_sorted[:, None] * jnp.sqrt(2 * jnp.pi))
 
     _masked_density_bands(
-        ax, x_sorted, mean_sorted, std_sorted, density_fn, cmap=cmap, alpha=alpha, edge_color=GP_COLOR,
+        ax,
+        x_sorted,
+        mean_sorted,
+        std_sorted,
+        density_fn,
+        cmap=cmap,
+        alpha=alpha,
+        edge_color=GP_COLOR,
         **{**_DENSITY_DEFAULTS, **density_kwargs},
     )
 
 
-def _overlay_pro_draws(ax, x_test, result: FitResult, *, color=PRO_COLOR, alpha=PRO_DRAW_ALPHA) -> None:
+def _overlay_pro_draws(
+    ax, x_test, result: FitResult, *, color=PRO_COLOR, alpha=PRO_DRAW_ALPHA
+) -> None:
     order = jnp.argsort(x_test[:, 0])
     x_sorted = x_test[order, 0]
     draws_sorted = result.function_draws[order]  # (N_x, num_draws)
@@ -176,7 +247,9 @@ def main(seed: int, num_instances: int, index_overrides: dict[str, int]) -> None
         _overlay_gp_density(ax, data.x_test, gp_result, cmap=GP_CMAP)
 
         fit_key, _ = jr.split(instance_key)
-        pro_result = fit_pro(data, fit_key, kernel_type=kernel_type, num_function_draws=NUM_PRO_DRAWS)
+        pro_result = fit_pro(
+            data, fit_key, kernel_type=kernel_type, num_function_draws=NUM_PRO_DRAWS
+        )
         _overlay_pro_draws(ax, data.x_test, pro_result)
 
         ax.set_title(spec.title, fontsize=13)
@@ -185,14 +258,37 @@ def main(seed: int, num_instances: int, index_overrides: dict[str, int]) -> None
 
     legend_handles = [
         Patch(color=GP_COLOR, label="Standard GP"),
-        Line2D([0], [0], color=PRO_COLOR, alpha=PRO_DRAW_ALPHA, linewidth=1.5, label="PRO GP"),
-        Line2D([0], [0], marker="o", color="black", linestyle="None", markersize=6, label="Test data"),
         Line2D(
-            [0], [0], marker="x", color="maroon", linestyle="None",
-            markersize=8, markeredgewidth=1.5, label="Outliers",
+            [0],
+            [0],
+            color=PRO_COLOR,
+            alpha=PRO_DRAW_ALPHA,
+            linewidth=1.5,
+            label="PRO GP",
+        ),
+        Line2D(
+            [0],
+            [0],
+            marker="o",
+            color="black",
+            linestyle="None",
+            markersize=6,
+            label="Test data",
+        ),
+        Line2D(
+            [0],
+            [0],
+            marker="x",
+            color="maroon",
+            linestyle="None",
+            markersize=8,
+            markeredgewidth=1.5,
+            label="Outliers",
         ),
     ]
-    fig.legend(handles=legend_handles, loc="lower center", ncol=4, fontsize=10, frameon=False)
+    fig.legend(
+        handles=legend_handles, loc="lower center", ncol=4, fontsize=10, frameon=False
+    )
     fig.tight_layout(rect=(0, 0.04, 1, 1))
     out_path = FIGURES_DIR / "example_grid_draws.png"
     fig.savefig(out_path, dpi=150)
@@ -205,7 +301,9 @@ if __name__ == "__main__":
     parser.add_argument("--num-instances", type=int, default=20)
     for _spec in _SOURCES:
         parser.add_argument(
-            f"--{_spec.name.replace('_', '-')}-index", type=int, default=None,
+            f"--{_spec.name.replace('_', '-')}-index",
+            type=int,
+            default=None,
             help=f"Override this panel's instance index (default from _SOURCES: {_spec.instance_index}).",
         )
     args = parser.parse_args()

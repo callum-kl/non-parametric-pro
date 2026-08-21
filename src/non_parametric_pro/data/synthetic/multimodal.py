@@ -56,7 +56,9 @@ def sample_mixture_regions(
 def _region_bump(x: jax.Array, center: float, width: float, shape: int) -> jax.Array:
     gaussian = jnp.exp(-0.5 * ((x - center) / width) ** 2)
     ramp = jnp.clip(1.0 - jnp.abs(x - center) / width, 0.0, 1.0)
-    return jnp.select([shape == _SHAPE_GAUSSIAN, shape == _SHAPE_RAMP], [gaussian, ramp])
+    return jnp.select(
+        [shape == _SHAPE_GAUSSIAN, shape == _SHAPE_RAMP], [gaussian, ramp]
+    )
 
 
 def _region_bumps(x: jax.Array, regions: MixtureRegions) -> jax.Array:
@@ -65,7 +67,9 @@ def _region_bumps(x: jax.Array, regions: MixtureRegions) -> jax.Array:
     )
 
 
-def mixture_probability(x: jax.Array, regions: MixtureRegions, *, mix_prob: float) -> jax.Array:
+def mixture_probability(
+    x: jax.Array, regions: MixtureRegions, *, mix_prob: float
+) -> jax.Array:
     return mix_prob * jnp.max(_region_bumps(x, regions), axis=0)
 
 
@@ -162,15 +166,21 @@ def make_multimodal_instance(
 
 
 def plot_multimodal_case(
-    ax, data: MultimodalCase, *,
-    show_curves: bool = True, color_by_branch: bool = True, show_train: bool = True,
+    ax,
+    data: MultimodalCase,
+    *,
+    show_curves: bool = True,
+    color_by_branch: bool = True,
+    show_train: bool = True,
 ) -> None:
     if show_curves:
         x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
         y_shared_full = jnp.concatenate(
             [data.y_truth_shared_train[:, 0], data.y_truth_shared_test[:, 0]]
         )
-        y_alt_full = jnp.concatenate([data.y_truth_alt_train[:, 0], data.y_truth_alt_test[:, 0]])
+        y_alt_full = jnp.concatenate(
+            [data.y_truth_alt_train[:, 0], data.y_truth_alt_test[:, 0]]
+        )
         order = jnp.argsort(x_full)
         x_sorted = x_full[order]
         y_shared_sorted = y_shared_full[order]
@@ -193,6 +203,15 @@ def plot_multimodal_case(
 
 
 MULTIMODAL_KWARGS = (
-    "n", "test_fraction", "x_min", "x_max", "noise_std_frac",
-    "mix_prob", "min_width", "max_width", "ell_range", "alpha_range", "num_regions",
+    "n",
+    "test_fraction",
+    "x_min",
+    "x_max",
+    "noise_std_frac",
+    "mix_prob",
+    "min_width",
+    "max_width",
+    "ell_range",
+    "alpha_range",
+    "num_regions",
 )

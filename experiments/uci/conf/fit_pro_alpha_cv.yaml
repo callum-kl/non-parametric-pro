@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - ds@_global_: yacht  # override with: "ds@_global_=<name>"
+  - ds@_global_: yacht # override with: "ds@_global_=<name>"
 
 split: 1
 seed: 0
@@ -17,17 +17,17 @@ step_size: 0.0001
 
 sigma_min: 0.1
 sigma_max: 100.0
-sigma_init: null  # if set, used as the initial sigma instead of the loaded GP state's sigma
+sigma_init: null # if set, used as the initial sigma instead of the loaded GP state's sigma
 sigma_lr: 0.1
 
-algorithm: ula  # "ula" (exact, full-batch) | "sgld" (minibatched -- non_parametric_pro.sgld)
-sgld_batch_size: 512  # only used when algorithm=sgld; must be < the train fold's size
+algorithm: ula # "ula" (exact, full-batch) | "sgld" (minibatched -- non_parametric_pro.sgld)
+sgld_batch_size: 512 # only used when algorithm=sgld; must be < the train fold's size
 
 # alpha = c / sqrt(n), n = size of the training set -- cross-validate over c, not alpha
 # directly.
 c_grid: [10, 25, 50, 100]
 val_fraction: 0.3
-adapt_target: null  # "train" | "val" | null (null -> sigma adapts on val if given, else train)
+adapt_target: null # "train" | "val" | null (null -> sigma adapts on val if given, else train)
 
 num_adapt_steps: 15000
 warmup_steps: 10000

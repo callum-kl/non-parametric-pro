@@ -1,4 +1,5 @@
-"""Print per-split metrics for a single dataset (companion to aggregate_results.py).
+"""
+Print per-split metrics for a single dataset (companion to aggregate_results.py).
 
 Usage:
     python print_split_results.py <dataset>
@@ -67,11 +68,15 @@ def print_table(dataset: str, records: dict[int, dict[str, dict[str, float]]]):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("dataset", help="Dataset name, e.g. 'servo' (matches results/<dataset>/)")
+    parser.add_argument(
+        "dataset", help="Dataset name, e.g. 'servo' (matches results/<dataset>/)"
+    )
     args = parser.parse_args()
 
     records = collect_dataset(args.dataset)
     if not records:
-        raise SystemExit(f"No results found for dataset '{args.dataset}' under {RESULTS_ROOT}")
+        raise SystemExit(
+            f"No results found for dataset '{args.dataset}' under {RESULTS_ROOT}"
+        )
 
     print_table(args.dataset, records)

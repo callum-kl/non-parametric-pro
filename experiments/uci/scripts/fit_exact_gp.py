@@ -12,7 +12,6 @@ import hydra
 import jax.numpy as jnp
 import jax.random as jr
 import numpy as np
-import optax as ox
 import paramax as px
 from omegaconf import DictConfig, OmegaConf
 from sklearn.preprocessing import StandardScaler
@@ -25,6 +24,7 @@ log = logging.getLogger(__name__)
 OmegaConf.register_new_resolver(
     "script_dir", lambda: str(Path(__file__).resolve().parents[1]), replace=True
 )
+
 
 def state_dir(cfg: DictConfig) -> Path:
     subdir = f"exact_gp_{cfg.name}" if cfg.name else "exact_gp"
@@ -83,9 +83,13 @@ def main(cfg: DictConfig) -> None:
         lengthscale = gpx.parameters.SigmoidBounded(
             init_lengthscale, low=cfg.lengthscale_min, high=cfg.lengthscale_max
         )
-        kernel = gpx.kernels.RBF(lengthscale=lengthscale, variance=px.NonTrainable(jnp.array(1.0)))
+        kernel = gpx.kernels.RBF(
+            lengthscale=lengthscale, variance=px.NonTrainable(jnp.array(1.0))
+        )
         prior = gpx.gps.Prior(mean_function=gpx.mean_functions.Zero(), kernel=kernel)
-        likelihood = gpx.likelihoods.Gaussian(num_datapoints=data.n, obs_stddev=jnp.sqrt(0.01))
+        likelihood = gpx.likelihoods.Gaussian(
+            num_datapoints=data.n, obs_stddev=jnp.sqrt(0.01)
+        )
         posterior = prior * likelihood
 
         candidate, history = gpx.fit_scipy(
@@ -97,7 +101,10 @@ def main(cfg: DictConfig) -> None:
         final_loss = float(history[-1])
         log.info(
             "Restart %d/%d: final negative %s=%.4f",
-            i + 1, cfg.num_restarts, cfg.objective, final_loss,
+            i + 1,
+            cfg.num_restarts,
+            cfg.objective,
+            final_loss,
         )
         if final_loss < best_loss:
             best_loss = final_loss

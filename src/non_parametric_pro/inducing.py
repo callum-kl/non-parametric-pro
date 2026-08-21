@@ -12,14 +12,11 @@ from jax.scipy.linalg import solve_triangular
 
 @runtime_checkable
 class InducingBasis(Protocol):
-
     def inducing_cov(self, kernel: gpx.kernels.AbstractKernel) -> jax.Array:
         """K_zz: (M, M) covariance between inducing features."""
         ...
 
-    def cross_cov(
-        self, kernel: gpx.kernels.AbstractKernel, x: jax.Array
-    ) -> jax.Array:
+    def cross_cov(self, kernel: gpx.kernels.AbstractKernel, x: jax.Array) -> jax.Array:
         """K_zx: (M, N) cross-covariance between inducing features and x."""
         ...
 
@@ -42,9 +39,7 @@ class PointInducingBasis:
     def inducing_cov(self, kernel: gpx.kernels.AbstractKernel) -> jax.Array:
         return kernel.gram(self._z2d()).as_matrix()
 
-    def cross_cov(
-        self, kernel: gpx.kernels.AbstractKernel, x: jax.Array
-    ) -> jax.Array:
+    def cross_cov(self, kernel: gpx.kernels.AbstractKernel, x: jax.Array) -> jax.Array:
         return kernel.cross_covariance(self._z2d(), x)
 
     def output_dim(self) -> int:
@@ -76,6 +71,7 @@ def kmeans_inducing_points(
     Returns
     -------
     A :class:`PointInducingBasis` whose ``z`` are the ``(M, D)`` centroids.
+
     """
     x = x_train.reshape(-1, 1) if x_train.ndim == 1 else x_train  # (N, D)
 
@@ -83,12 +79,10 @@ def kmeans_inducing_points(
     centroids = x[init_idx]
 
     def step(centroids: jax.Array, _: None) -> tuple[jax.Array, None]:
-        dists = jnp.sum(
-            (x[:, None, :] - centroids[None, :, :]) ** 2, axis=-1
-        )                                               # (N, M)
-        assignments = jnp.argmin(dists, axis=1)        # (N,)
+        dists = jnp.sum((x[:, None, :] - centroids[None, :, :]) ** 2, axis=-1)  # (N, M)
+        assignments = jnp.argmin(dists, axis=1)  # (N,)
         one_hot = jax.nn.one_hot(assignments, num_inducing)  # (N, M)
-        counts = one_hot.sum(axis=0)                   # (M,)
+        counts = one_hot.sum(axis=0)  # (M,)
         new_centroids = one_hot.T @ x / jnp.maximum(counts[:, None], 1)
         return jnp.where(counts[:, None] > 0, new_centroids, centroids), None
 
@@ -128,9 +122,7 @@ class RFFInducingBasis:
 
     frequencies: jax.Array  # (M, D)
 
-    def _features(
-        self, kernel: gpx.kernels.AbstractKernel, x: jax.Array
-    ) -> jax.Array:
+    def _features(self, kernel: gpx.kernels.AbstractKernel, x: jax.Array) -> jax.Array:
         x = x.reshape(-1, 1) if x.ndim == 1 else x
         lengthscale = paramax.unwrap(kernel.lengthscale)
         z = x @ (self.frequencies / lengthscale).T  # (N, M)
@@ -142,9 +134,7 @@ class RFFInducingBasis:
         scaling = variance / self.frequencies.shape[0]
         return jnp.eye(num_features) / scaling
 
-    def cross_cov(
-        self, kernel: gpx.kernels.AbstractKernel, x: jax.Array
-    ) -> jax.Array:
+    def cross_cov(self, kernel: gpx.kernels.AbstractKernel, x: jax.Array) -> jax.Array:
         return self._features(kernel, x).T  # (2M, N)
 
     def output_dim(self) -> int:

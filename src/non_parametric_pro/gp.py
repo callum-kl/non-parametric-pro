@@ -63,26 +63,26 @@ def predictive_log_likelihood(
     # ---- unpack variational family -----------------------------------------
     variational_mean = _val(variational_family.variational_mean)
     variational_sqrt = _val(variational_family.variational_root_covariance)
-    inducing_inputs  = _val(variational_family.inducing_inputs)
+    inducing_inputs = _val(variational_family.inducing_inputs)
 
     mean_fn = variational_family.posterior.prior.mean_function
-    kernel  = variational_family.posterior.prior.kernel
-    noise   = _val(variational_family.posterior.likelihood.obs_stddev) ** 2
-    jitter  = variational_family.jitter
+    kernel = variational_family.posterior.prior.kernel
+    noise = _val(variational_family.posterior.likelihood.obs_stddev) ** 2
+    jitter = variational_family.jitter
 
     # ---- kernel matrices ----------------------------------------------------
     Kzz = kernel.gram(inducing_inputs).as_matrix()
     Kzz = Kzz + jitter * jnp.eye(Kzz.shape[0])
-    Lz  = jnp.linalg.cholesky(Kzz)
+    Lz = jnp.linalg.cholesky(Kzz)
 
-    Kzx      = kernel.cross_covariance(inducing_inputs, x)
+    Kzx = kernel.cross_covariance(inducing_inputs, x)
     Kxx_diag = vmap(kernel, in_axes=(0, 0))(x, x)
 
-    muz  = mean_fn(inducing_inputs)
-    mux  = mean_fn(x)
+    muz = mean_fn(inducing_inputs)
+    mux = mean_fn(x)
 
     # ---- predictive mean: μ(x) = μx + Kxz Kzz⁻¹ (mz − μz) ----------------
-    Lz_inv_Kzx  = solve_triangular(Lz, Kzx, lower=True)
+    Lz_inv_Kzx = solve_triangular(Lz, Kzx, lower=True)
     Kzz_inv_Kzx = solve_triangular(Lz.T, Lz_inv_Kzx, lower=False)
 
     pred_mean = (mux + Kzz_inv_Kzx.T @ (variational_mean - muz)).squeeze()
@@ -90,34 +90,30 @@ def predictive_log_likelihood(
     # ---- predictive variance (diagonal only) --------------------------------
 
     A = variational_sqrt.T @ Kzz_inv_Kzx
-    pred_var = (
-        Kxx_diag
-        - jnp.sum(Lz_inv_Kzx ** 2, axis=0)
-        + jnp.sum(A ** 2, axis=0)
-    )
+    pred_var = Kxx_diag - jnp.sum(Lz_inv_Kzx**2, axis=0) + jnp.sum(A**2, axis=0)
 
     # ---- per-point log N(y_i; μ_i, σ² + v_i) -------------------------------
     total_var = noise + pred_var
     log_lik = (
         -0.5 * jnp.log(2.0 * jnp.pi * total_var)
         - 0.5 * (y.squeeze() - pred_mean) ** 2 / total_var
-    ) 
+    )
 
     # ---- KL(q(u) || p(u)) -----
-    S  = variational_sqrt @ variational_sqrt.T
+    S = variational_sqrt @ variational_sqrt.T
     Ls = jnp.linalg.cholesky(S + jitter * jnp.eye(S.shape[0]))
 
     log_det_Kzz = 2.0 * jnp.sum(jnp.log(jnp.diag(Lz)))
-    log_det_S   = 2.0 * jnp.sum(jnp.log(jnp.diag(Ls)))
+    log_det_S = 2.0 * jnp.sum(jnp.log(jnp.diag(Ls)))
 
-    Lz_inv_Ls  = solve_triangular(Lz, Ls, lower=True)
-    trace_term = jnp.sum(Lz_inv_Ls ** 2)
+    Lz_inv_Ls = solve_triangular(Lz, Ls, lower=True)
+    trace_term = jnp.sum(Lz_inv_Ls**2)
 
-    diff        = variational_mean - muz
+    diff = variational_mean - muz
     Lz_inv_diff = solve_triangular(Lz, diff, lower=True)
-    mahalanobis = jnp.sum(Lz_inv_diff ** 2)
+    mahalanobis = jnp.sum(Lz_inv_diff**2)
 
-    m  = inducing_inputs.shape[0]
+    m = inducing_inputs.shape[0]
     kl = 0.5 * (log_det_Kzz - log_det_S - m + trace_term + mahalanobis)
 
     N_total = variational_family.posterior.likelihood.num_datapoints
@@ -197,7 +193,7 @@ def _hyper_loss(
     return -gpx.objectives.elbo(exp_vf, data)
 
 
-def natural_gradient_svgp_fit(  # noqa: PLR0913
+def natural_gradient_svgp_fit(
     posterior: gpx.gps.AbstractPosterior,
     inducing_inputs: jnp.ndarray,
     train_data: Dataset,
@@ -299,9 +295,7 @@ def natural_gradient_svgp_fit(  # noqa: PLR0913
         _, step_key = xs
         data = train_data
         if minibatch:
-            batch_idx = jr.choice(
-                step_key, train_data.n, (batch_size,), replace=False
-            )
+            batch_idx = jr.choice(step_key, train_data.n, (batch_size,), replace=False)
             data = Dataset(X=train_data.X[batch_idx], y=train_data.y[batch_idx])
 
         eta1, eta2 = _natural_to_moments(
@@ -316,9 +310,7 @@ def natural_gradient_svgp_fit(  # noqa: PLR0913
         new_natural_matrix = state.natural_matrix + natural_lr * grad_eta2
 
         hyper = (state.posterior, state.inducing_inputs)
-        grad_hyper = eqx.filter_grad(_hyper_loss)(
-            hyper, data, eta1, eta2_full, jitter
-        )
+        grad_hyper = eqx.filter_grad(_hyper_loss)(hyper, data, eta1, eta2_full, jitter)
         updates, new_hyper_opt_state = hyper_optimizer.update(
             grad_hyper, state.hyper_opt_state, eqx.filter(hyper, eqx.is_array)
         )
@@ -339,9 +331,7 @@ def natural_gradient_svgp_fit(  # noqa: PLR0913
         else jnp.zeros((num_iters, 2), dtype=jnp.uint32)
     )
     scan_fn = gen_scan_fn(num_iters, progress_bar=progress_bar)
-    final_state, elbo_history = scan_fn(
-        step, init_state, (jnp.arange(num_iters), keys)
-    )
+    final_state, elbo_history = scan_fn(step, init_state, (jnp.arange(num_iters), keys))
 
     final_vf = gpx.variational_families.NaturalVariationalGaussian(
         posterior=final_state.posterior,

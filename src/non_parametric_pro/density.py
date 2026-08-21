@@ -23,7 +23,7 @@ class ProParameters(NamedTuple):
 
 
 def _effective_sigma(parameters: "ProParameters") -> jax.Array:
-    """sigma for full GP, sqrt(sigma² + residual_std²) for inducing."""
+    """Sigma for full GP, sqrt(sigma² + residual_std²) for inducing."""
     sigma = paramax.unwrap(parameters.sigma)
     if parameters.residual_std is None:
         return sigma
@@ -33,9 +33,7 @@ def _effective_sigma(parameters: "ProParameters") -> jax.Array:
 def normal_logpdf(y, mean, sigma):
     """Evaluate the Gaussian observation density for each particle."""
     return (
-        -0.5 * ((y - mean) / sigma) ** 2
-        - jnp.log(sigma)
-        - 0.5 * jnp.log(2.0 * jnp.pi)
+        -0.5 * ((y - mean) / sigma) ** 2 - jnp.log(sigma) - 0.5 * jnp.log(2.0 * jnp.pi)
     )
 
 

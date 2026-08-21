@@ -1,16 +1,16 @@
 defaults:
   - _self_
-  - ds@_global_: yacht  # override with: "ds@_global_=<name>"
+  - ds@_global_: yacht # override with: "ds@_global_=<name>"
 
 split: 1
 seed: 0
-name: null  # optional suffix for the results dir, e.g. name=untuned -> exact_gp_untuned
+name: null # optional suffix for the results dir, e.g. name=untuned -> exact_gp_untuned
 
 kernel_lr: 0.1
 lengthscale_min: 1.0e-3
 lengthscale_max: 1.0e3
 
-objective: mll  # "mll" (conjugate_mll) | "loocv" (conjugate_loocv, Rasmussen & Williams sec. 5.4.2)
+objective: mll # "mll" (conjugate_mll) | "loocv" (conjugate_loocv, Rasmussen & Williams sec. 5.4.2)
 
 # L-BFGS multi-start: restart 0 uses the deterministic sqrt(D) init; restarts 1..N-1
 # jitter each ARD dimension's init log-lengthscale (std=restart_jitter_std) from

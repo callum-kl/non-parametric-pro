@@ -1,4 +1,5 @@
-"""Run fit_pro_full_basis.py across a fixed list of datasets, in sequence.
+"""
+Run fit_pro_full_basis.py across a fixed list of datasets, in sequence.
 
 Datasets default to: autompg, concrete, forest, housing, machine, servo, solar, stock.
 """
@@ -11,7 +12,14 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 DEFAULT_DATASETS = [
-    "autompg", "concrete", "forest", "housing", "machine", "servo", "solar", "stock",
+    "autompg",
+    "concrete",
+    "forest",
+    "housing",
+    "machine",
+    "servo",
+    "solar",
+    "stock",
 ]
 
 
@@ -21,29 +29,47 @@ def _run(args: list[str]) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument(
-        "--datasets", default=",".join(DEFAULT_DATASETS),
+        "--datasets",
+        default=",".join(DEFAULT_DATASETS),
         help=f"comma-separated ds@_global_ overrides (default: {','.join(DEFAULT_DATASETS)})",
     )
-    parser.add_argument("--splits", default="1,2,3,4,5", help="comma-separated split list (default: 1,2,3,4,5)")
-    parser.add_argument("--n-jobs", default="-1", help="hydra.launcher.n_jobs for the joblib launcher (default: -1)")
     parser.add_argument(
-        "--val-fraction", type=float, default=None,
+        "--splits",
+        default="1,2,3,4,5",
+        help="comma-separated split list (default: 1,2,3,4,5)",
+    )
+    parser.add_argument(
+        "--n-jobs",
+        default="-1",
+        help="hydra.launcher.n_jobs for the joblib launcher (default: -1)",
+    )
+    parser.add_argument(
+        "--val-fraction",
+        type=float,
+        default=None,
         help="override cfg.val_fraction (default: fit_pro_full_basis.yaml's own default)",
     )
     parser.add_argument(
-        "--alpha", type=float, default=None,
+        "--alpha",
+        type=float,
+        default=None,
         help="override cfg.alpha (default: fit_pro_full_basis.yaml's own default)",
     )
     parser.add_argument(
-        "--num-particles", type=int, default=None,
+        "--num-particles",
+        type=int,
+        default=None,
         help="override cfg.num_particles (default: fit_pro_full_basis.yaml's own default)",
     )
     parser.add_argument(
-        "--name", default=None,
+        "--name",
+        default=None,
         help="override cfg.name -- results dir suffix, e.g. name=untuned -> pro_gp_full_untuned "
-             "(default: fit_pro_full_basis.yaml's own default, i.e. no suffix)",
+        "(default: fit_pro_full_basis.yaml's own default, i.e. no suffix)",
     )
     args = parser.parse_args()
 

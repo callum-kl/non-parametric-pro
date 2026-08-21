@@ -1,4 +1,5 @@
-"""Run fit_exact_gp.py, for one objective, across a fixed list of datasets, in sequence.
+"""
+Run fit_exact_gp.py, for one objective, across a fixed list of datasets, in sequence.
 
 For each dataset, reproduces this hydra multirun invocation:
 
@@ -13,7 +14,14 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 DEFAULT_DATASETS = [
-    "autompg", "concrete", "forest", "housing", "machine", "servo", "solar", "stock",
+    "autompg",
+    "concrete",
+    "forest",
+    "housing",
+    "machine",
+    "servo",
+    "solar",
+    "stock",
 ]
 
 
@@ -23,17 +31,30 @@ def _run(args: list[str]) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument(
-        "--datasets", default=",".join(DEFAULT_DATASETS),
+        "--datasets",
+        default=",".join(DEFAULT_DATASETS),
         help=f"comma-separated ds@_global_ overrides (default: {','.join(DEFAULT_DATASETS)})",
     )
     parser.add_argument(
-        "--objective", default="mll", choices=["mll", "loocv"],
+        "--objective",
+        default="mll",
+        choices=["mll", "loocv"],
         help="cfg.objective for fit_exact_gp.py (default: mll)",
     )
-    parser.add_argument("--splits", default="1,2,3,4,5", help="comma-separated split list (default: 1,2,3,4,5)")
-    parser.add_argument("--n-jobs", default="-1", help="hydra.launcher.n_jobs for the joblib launcher (default: -1)")
+    parser.add_argument(
+        "--splits",
+        default="1,2,3,4,5",
+        help="comma-separated split list (default: 1,2,3,4,5)",
+    )
+    parser.add_argument(
+        "--n-jobs",
+        default="-1",
+        help="hydra.launcher.n_jobs for the joblib launcher (default: -1)",
+    )
     args = parser.parse_args()
 
     launcher = ["-m", "hydra/launcher=joblib", f"hydra.launcher.n_jobs={args.n_jobs}"]

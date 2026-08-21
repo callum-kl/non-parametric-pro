@@ -14,11 +14,16 @@ import numpy as np
 import optax as ox
 import paramax as px
 from omegaconf import DictConfig, OmegaConf
+from util import load_gp_state
 
 from non_parametric_pro import ula
 from non_parametric_pro.data.uci.uci import load_uci_regression_dataset
 from non_parametric_pro.density import ProParameters, pro_logdensity_fn
-from non_parametric_pro.inducing import InducingBasis, PointInducingBasis, compute_inducing_basis
+from non_parametric_pro.inducing import (
+    InducingBasis,
+    PointInducingBasis,
+    compute_inducing_basis,
+)
 from non_parametric_pro.parameter_adaptation import parameter_adaptation
 from non_parametric_pro.sgld import parametric_sgld, sgld
 from non_parametric_pro.ula import parametric_ula
@@ -29,8 +34,6 @@ from non_parametric_pro.util import (
     run_inference_algorithm_with_burn_in,
     train_val_split,
 )
-
-from util import load_gp_state
 
 log = logging.getLogger(__name__)
 
@@ -47,9 +50,11 @@ def pro_out_dir(cfg: DictConfig) -> Path:
 
 
 def _row_selectable_basis(cfg: DictConfig, inducing_basis, x_train) -> InducingBasis:
-    """Identical to ``fit_pro_full_basis.py``'s helper of the same name -- see there for
+    """
+    Identical to ``fit_pro_full_basis.py``'s helper of the same name -- see there for
     the full derivation of why this gives exact row-slices of the shared full basis for
-    both the inducing and exact-GP cases."""
+    both the inducing and exact-GP cases.
+    """
     return inducing_basis if cfg.inducing else PointInducingBasis(z=x_train)
 
 
@@ -66,7 +71,9 @@ def _sampling_algorithm(cfg: DictConfig, pro_params: ProParameters):
     if cfg.algorithm == "ula":
         return parametric_ula(pro_logdensity_fn, pro_params)
     if cfg.algorithm == "sgld":
-        return parametric_sgld(pro_logdensity_fn, pro_params, batch_size=cfg.sgld_batch_size)
+        return parametric_sgld(
+            pro_logdensity_fn, pro_params, batch_size=cfg.sgld_batch_size
+        )
     msg = f"Unknown algorithm={cfg.algorithm!r}; expected 'ula' or 'sgld'."
     raise ValueError(msg)
 
@@ -76,7 +83,10 @@ def main(cfg: DictConfig) -> None:
     mode = "inducing" if cfg.inducing else "exact GP"
     log.info(
         "PRO-alpha-CV-full-basis (%s): dataset=%s split=%d c_grid=%s",
-        mode, cfg.dataset, cfg.split, list(cfg.c_grid),
+        mode,
+        cfg.dataset,
+        cfg.split,
+        list(cfg.c_grid),
     )
 
     key = jr.PRNGKey(cfg.seed)
@@ -88,7 +98,9 @@ def main(cfg: DictConfig) -> None:
     sigma_init_val = gp_sigma_val if cfg.sigma_init is None else cfg.sigma_init
     log.info(
         "Loaded %s state: gp_sigma=%.4f, sigma starts at %.4f",
-        "VGP" if cfg.inducing else "exact GP", gp_sigma_val, sigma_init_val,
+        "VGP" if cfg.inducing else "exact GP",
+        gp_sigma_val,
+        sigma_init_val,
     )
 
     # --- Data ------------------------------------------------------------------
@@ -103,7 +115,9 @@ def main(cfg: DictConfig) -> None:
 
     # --- Full basis, from *all* training points -------------------------------
     if cfg.inducing:
-        basis_full, residual_std_full = compute_inducing_basis(inducing_basis, kernel, x_train)
+        basis_full, residual_std_full = compute_inducing_basis(
+            inducing_basis, kernel, x_train
+        )
     else:
         basis_full = cholesky_basis(kernel, x_train)
         residual_std_full = None
@@ -116,12 +130,19 @@ def main(cfg: DictConfig) -> None:
     for c in cfg.c_grid:
         alpha = float(c) / math.sqrt(n)
         key, split_key, pos_key, adapt_key = jr.split(key, 4)
-        split = train_val_split(split_key, x_train, y_train, val_fraction=cfg.val_fraction)
+        split = train_val_split(
+            split_key, x_train, y_train, val_fraction=cfg.val_fraction
+        )
 
         fold_params = ProParameters(
-            y=split.y_train, basis=None, step_size=cfg.step_size,
-            sigma=gpx.parameters.SigmoidBounded(sigma_init_val, low=cfg.sigma_min, high=cfg.sigma_max),
-            alpha=alpha, residual_std=None,
+            y=split.y_train,
+            basis=None,
+            step_size=cfg.step_size,
+            sigma=gpx.parameters.SigmoidBounded(
+                sigma_init_val, low=cfg.sigma_min, high=cfg.sigma_max
+            ),
+            alpha=alpha,
+            residual_std=None,
         )
         initial_position = jr.normal(pos_key, (basis_dim, cfg.num_particles))
 
@@ -148,19 +169,31 @@ def main(cfg: DictConfig) -> None:
         )
         adapted_kernel_c = (
             px.unwrap(jax.tree.map(lambda x: x[-1], adaptation_info.kernel))
-            if cfg.kernel_adapt_steps > 0 else kernel
+            if cfg.kernel_adapt_steps > 0
+            else kernel
         )
         val_basis, val_cov = prediction_basis(
-            adapted_kernel_c, split.x_train, split.x_val,
-            adaptation_results.parameters, inducing_basis=row_selectable_basis,
+            adapted_kernel_c,
+            split.x_train,
+            split.x_val,
+            adaptation_results.parameters,
+            inducing_basis=row_selectable_basis,
         )
-        val_nlpd = float(nlpd_pro(
-            split.y_val, val_basis, val_cov, adaptation_results.state.position,
-            parameters=adaptation_results.parameters,
-        ))
+        val_nlpd = float(
+            nlpd_pro(
+                split.y_val,
+                val_basis,
+                val_cov,
+                adaptation_results.state.position,
+                parameters=adaptation_results.parameters,
+            )
+        )
         log.info(
             "  c=%.4g  alpha=%.4g  adapted sigma=%.4f  val NLPD=%.4f",
-            c, alpha, float(np.array(px.unwrap(adaptation_results.parameters.sigma))), val_nlpd,
+            c,
+            alpha,
+            float(np.array(px.unwrap(adaptation_results.parameters.sigma))),
+            val_nlpd,
         )
         c_val_nlpd.append(val_nlpd)
         c_results.append((adaptation_results, adapted_kernel_c))
@@ -171,24 +204,37 @@ def main(cfg: DictConfig) -> None:
     adaptation_results, adapted_kernel = c_results[best_idx]
     adapted_sigma_val = float(np.array(px.unwrap(adaptation_results.parameters.sigma)))
     log.info(
-        "Best c=%.4g (alpha=%.4g, val NLPD=%.4f)", best_c, best_alpha, c_val_nlpd[best_idx]
+        "Best c=%.4g (alpha=%.4g, val NLPD=%.4f)",
+        best_c,
+        best_alpha,
+        c_val_nlpd[best_idx],
     )
 
     if cfg.kernel_adapt_steps > 0:
-        log.info("Kernel was adapted (kernel_adapt_steps=%d) -- recomputing full basis...", cfg.kernel_adapt_steps)
+        log.info(
+            "Kernel was adapted (kernel_adapt_steps=%d) -- recomputing full basis...",
+            cfg.kernel_adapt_steps,
+        )
         if cfg.inducing:
-            basis_full, residual_std_full = compute_inducing_basis(inducing_basis, adapted_kernel, x_train)
+            basis_full, residual_std_full = compute_inducing_basis(
+                inducing_basis, adapted_kernel, x_train
+            )
         else:
             basis_full = cholesky_basis(adapted_kernel, x_train)
             residual_std_full = None
 
     log.info(
         "Running final sampling on full training set (steps=%d, algorithm=%s)...",
-        cfg.num_sample_steps, cfg.algorithm,
+        cfg.num_sample_steps,
+        cfg.algorithm,
     )
     pro_params = ProParameters(
-        y=y_train, basis=basis_full, step_size=cfg.step_size,
-        sigma=adaptation_results.parameters.sigma, alpha=best_alpha, residual_std=residual_std_full,
+        y=y_train,
+        basis=basis_full,
+        step_size=cfg.step_size,
+        sigma=adaptation_results.parameters.sigma,
+        alpha=best_alpha,
+        residual_std=residual_std_full,
     )
     algorithm = _sampling_algorithm(cfg, pro_params)
     key, sample_key = jr.split(key)
@@ -204,7 +250,11 @@ def main(cfg: DictConfig) -> None:
 
     # --- Evaluation ------------------------------------------------------------
     test_basis, test_cov = prediction_basis(
-        adapted_kernel, x_train, x_test, pro_params, inducing_basis=inducing_basis if cfg.inducing else None
+        adapted_kernel,
+        x_train,
+        x_test,
+        pro_params,
+        inducing_basis=inducing_basis if cfg.inducing else None,
     )
     metrics = {
         "dataset": cfg.dataset,
@@ -218,13 +268,14 @@ def main(cfg: DictConfig) -> None:
         "c_val_nlpd": c_val_nlpd,
         "best_c": best_c,
         "best_alpha": best_alpha,
-        "pro_nlpd": float(nlpd_pro(
-            y_test, test_basis, test_cov, particles, parameters=pro_params
-        )),
+        "pro_nlpd": float(
+            nlpd_pro(y_test, test_basis, test_cov, particles, parameters=pro_params)
+        ),
     }
     log.info(
         "PRO-alpha-CV-full-basis  best_c=%.4g  NLPD=%.4f",
-        best_c, metrics["pro_nlpd"],
+        best_c,
+        metrics["pro_nlpd"],
     )
 
     # --- Save ----------------------------------------------------------------

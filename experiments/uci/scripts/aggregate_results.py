@@ -56,7 +56,8 @@ _BASES_BY_LENGTH = sorted(METHOD_METRICS, key=len, reverse=True)
 
 
 def _resolve_method(dirname: str) -> tuple[str, str, dict[str, str]] | None:
-    """Match a results subdir name against a known base method, allowing a `_<suffix>`.
+    """
+    Match a results subdir name against a known base method, allowing a `_<suffix>`.
 
     Returns ``(base, fname, key_map)`` for an exact base match or a `<base>_<suffix>`
     match, or ``None`` if the dir doesn't correspond to a known method.
@@ -115,8 +116,7 @@ def summarise(records):
         summary[dataset] = {}
         for method, metrics in methods.items():
             summary[dataset][method] = {
-                k: (float(np.mean(v)), _standard_error(v))
-                for k, v in metrics.items()
+                k: (float(np.mean(v)), _standard_error(v)) for k, v in metrics.items()
             }
     return summary
 
@@ -127,11 +127,13 @@ def print_table(summary):
     row_label_width = max(20, max((len(m) for m in methods), default=0) + 1)
 
     for metric in SUMMARY_METRICS:
-        print(f"\n{'─'*72}")
+        print(f"\n{'─' * 72}")
         print(f"  {metric.upper()}")
-        print(f"{'─'*72}")
+        print(f"{'─' * 72}")
         col_width = max(16, max((len(ds) for ds in datasets), default=0) + 1)
-        header = f"{'model':<{row_label_width}}" + "".join(f"{ds:>{col_width}}" for ds in datasets)
+        header = f"{'model':<{row_label_width}}" + "".join(
+            f"{ds:>{col_width}}" for ds in datasets
+        )
         print(header)
         print("─" * len(header))
         for method in methods:

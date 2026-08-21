@@ -1,4 +1,5 @@
-"""Run the SVGP / PPGPR / PRO-CV (inducing) variant combination for one dataset, in sequence.
+"""
+Run the SVGP / PPGPR / PRO-CV (inducing) variant combination for one dataset, in sequence.
 
 Reproduces these 3 hydra multirun invocations (results dirs in parens):
 
@@ -25,10 +26,20 @@ def _run(args: list[str]) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("dataset", help="ds@_global_ override, e.g. autompg")
-    parser.add_argument("--splits", default="1,2,3,4,5", help="comma-separated split list (default: 1,2,3,4,5)")
-    parser.add_argument("--n-jobs", default="-1", help="hydra.launcher.n_jobs for the joblib launcher (default: -1)")
+    parser.add_argument(
+        "--splits",
+        default="1,2,3,4,5",
+        help="comma-separated split list (default: 1,2,3,4,5)",
+    )
+    parser.add_argument(
+        "--n-jobs",
+        default="-1",
+        help="hydra.launcher.n_jobs for the joblib launcher (default: -1)",
+    )
     args = parser.parse_args()
 
     ds = f"ds@_global_={args.dataset}"

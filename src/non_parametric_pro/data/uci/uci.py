@@ -1,4 +1,3 @@
-
 import csv
 import io
 import os
@@ -79,7 +78,6 @@ MIN_DATA_COLUMNS = 2
 
 
 class UCIRegressionDataset(NamedTuple):
-
     x_train: np.ndarray
     y_train: np.ndarray
     x_test: np.ndarray
@@ -225,7 +223,9 @@ def download_wine_quality_white(
         archive = Path(tmpdir) / "wine-quality.zip"
         urllib.request.urlretrieve(source_url, archive)
         with zipfile.ZipFile(archive) as zf, zf.open("winequality-white.csv") as f:
-            rows = list(csv.reader(io.TextIOWrapper(f, encoding="utf-8"), delimiter=";"))
+            rows = list(
+                csv.reader(io.TextIOWrapper(f, encoding="utf-8"), delimiter=";")
+            )
 
     data = np.array(rows[1:], dtype=np.float64)
     x, y = data[:, :-1], data[:, -1]
@@ -252,7 +252,9 @@ def download_abalone(
 
     sex = np.array([r[0] for r in rows])
     numeric = np.array([r[1:] for r in rows], dtype=np.float64)
-    sex_onehot = np.stack([sex == cat for cat in ("M", "F", "I")], axis=1).astype(np.float64)
+    sex_onehot = np.stack([sex == cat for cat in ("M", "F", "I")], axis=1).astype(
+        np.float64
+    )
     x = np.hstack([sex_onehot, numeric[:, :-1]])
     y = numeric[:, -1]
     return _write_uci_regression_dataset("abalone", x, y, directory=directory)
@@ -299,7 +301,9 @@ def load_uci_regression_dataset(
     directory: Path | None = None,
 ) -> UCIRegressionDataset:
     if not 1 <= split <= NUM_UCI_SPLITS:
-        msg = f"split must be in 1..{NUM_UCI_SPLITS} (merged pairs of the 10 raw splits)."
+        msg = (
+            f"split must be in 1..{NUM_UCI_SPLITS} (merged pairs of the 10 raw splits)."
+        )
         raise ValueError(msg)
 
     directory = directory if directory is not None else package_data_dir("uci_datasets")

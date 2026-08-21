@@ -62,9 +62,13 @@ def main(cfg: DictConfig) -> None:
     lengthscale = gpx.parameters.SigmoidBounded(
         jnp.sqrt(D) * jnp.ones((D,)), low=cfg.lengthscale_min, high=cfg.lengthscale_max
     )
-    kernel = gpx.kernels.RBF(lengthscale=lengthscale, variance=px.NonTrainable(jnp.array(1.0)))
+    kernel = gpx.kernels.RBF(
+        lengthscale=lengthscale, variance=px.NonTrainable(jnp.array(1.0))
+    )
     prior = gpx.gps.Prior(mean_function=gpx.mean_functions.Zero(), kernel=kernel)
-    likelihood = gpx.likelihoods.Gaussian(num_datapoints=data.n, obs_stddev=jnp.sqrt(0.01))
+    likelihood = gpx.likelihoods.Gaussian(
+        num_datapoints=data.n, obs_stddev=jnp.sqrt(0.01)
+    )
     posterior = prior * likelihood
 
     key, km_key = jr.split(key)
@@ -75,7 +79,7 @@ def main(cfg: DictConfig) -> None:
             posterior=posterior,
             inducing_inputs=z_init,
         )
-        objective = lambda p, d: -gpx.objectives.collapsed_elbo(p, d)  # noqa: E731
+        objective = lambda p, d: -gpx.objectives.collapsed_elbo(p, d)
         opt_vf, _ = gpx.fit_scipy(
             model=variational_family,
             objective=objective,
@@ -100,7 +104,7 @@ def main(cfg: DictConfig) -> None:
             posterior=posterior,
             inducing_inputs=z_init,
         )
-        objective = lambda p, d: -gpx.objectives.elbo(p, d)  # noqa: E731
+        objective = lambda p, d: -gpx.objectives.elbo(p, d)
         opt_vf, _ = gpx.fit(
             model=variational_family,
             objective=objective,
@@ -117,7 +121,11 @@ def main(cfg: DictConfig) -> None:
 
     # --- Evaluate ------------------------------------------------------------
     posterior_ = opt_vf.posterior
-    latent = opt_vf.predict(x_test, train_data=data) if cfg.collapsed else opt_vf.predict(x_test)
+    latent = (
+        opt_vf.predict(x_test, train_data=data)
+        if cfg.collapsed
+        else opt_vf.predict(x_test)
+    )
     predictive = posterior_.likelihood(latent)
     mean = predictive.mean
     std = jnp.sqrt(predictive.variance)

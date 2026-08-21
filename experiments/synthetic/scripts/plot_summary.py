@@ -32,24 +32,28 @@ DODGE_FRAC = 0.03
 
 DIVIDER_COLOR = "#cccac0"
 
-plt.rcParams.update({
-    "font.size": 12,
-    "axes.spines.top": False,
-    "axes.spines.right": False,
-    "axes.spines.left": False,
-    "axes.spines.bottom": False,
-    "axes.grid": True,
-    "grid.color": "#e1e0d9",
-    "grid.linewidth": 0.6,
-    "legend.frameon": False,
-})
+plt.rcParams.update(
+    {
+        "font.size": 12,
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "axes.spines.left": False,
+        "axes.spines.bottom": False,
+        "axes.grid": True,
+        "grid.color": "#e1e0d9",
+        "grid.linewidth": 0.6,
+        "legend.frameon": False,
+    }
+)
 
 
 def load_summary(path: Path = SUMMARY_CSV):
-    """{source: {algorithm: [(n, nlpd_mean, nlpd_ci95), ...]}}, each algorithm's list
+    """
+    {source: {algorithm: [(n, nlpd_mean, nlpd_ci95), ...]}}, each algorithm's list
     sorted by `n`. Only rows whose own `param_name` is `"n"` are kept -- `summary.csv`
     also holds each dataset's own misspecification-severity sweep (`amplitude_frac`,
-    `outlier_offset_frac`, `noise_skewness`, ...), which isn't what this plot shows."""
+    `outlier_offset_frac`, `noise_skewness`, ...), which isn't what this plot shows.
+    """
     records: dict[str, dict[str, list[tuple[float, float, float]]]] = defaultdict(
         lambda: defaultdict(list)
     )
@@ -71,10 +75,14 @@ def load_summary(path: Path = SUMMARY_CSV):
     return records
 
 
-def _plot_sweep(ax, by_algorithm: dict[str, list[tuple[float, float, float]]], all_values):
-    """Per-algorithm line+error-bar series across the swept `n` values -- dodged apart
+def _plot_sweep(
+    ax, by_algorithm: dict[str, list[tuple[float, float, float]]], all_values
+):
+    """
+    Per-algorithm line+error-bar series across the swept `n` values -- dodged apart
     so nearby points' error bars stay legible, log2-scaled (`n` doubles each step) so
-    the ticks stay evenly spaced, with the actual tested values as ticks."""
+    the ticks stay evenly spaced, with the actual tested values as ticks.
+    """
     for algorithm in ALGORITHMS:
         points = by_algorithm.get(algorithm)
         if not points:
@@ -84,9 +92,17 @@ def _plot_sweep(ax, by_algorithm: dict[str, list[tuple[float, float, float]]], a
         mean = [point[1] for point in points]
         ci95 = [point[2] for point in points]
         ax.errorbar(
-            x, mean, yerr=ci95, fmt="o-",
-            color=ALGORITHM_COLORS[algorithm], label=ALGORITHM_LABELS[algorithm],
-            markersize=6, linewidth=1.5, elinewidth=1.5, capsize=4, capthick=1.5,
+            x,
+            mean,
+            yerr=ci95,
+            fmt="o-",
+            color=ALGORITHM_COLORS[algorithm],
+            label=ALGORITHM_LABELS[algorithm],
+            markersize=6,
+            linewidth=1.5,
+            elinewidth=1.5,
+            capsize=4,
+            capthick=1.5,
         )
 
     ax.set_xlabel("dataset size")
@@ -99,11 +115,18 @@ def _plot_sweep(ax, by_algorithm: dict[str, list[tuple[float, float, float]]], a
 def _plot_categorical(ax, by_algorithm: dict[str, list[tuple[float, float, float]]]):
     xs = list(range(len(ALGORITHMS)))
     for x, algorithm in zip(xs, ALGORITHMS, strict=True):
-        (_, mean, ci95), = by_algorithm[algorithm]
+        ((_, mean, ci95),) = by_algorithm[algorithm]
         ax.errorbar(
-            [x], [mean], yerr=[ci95], fmt="o",
-            color=ALGORITHM_COLORS[algorithm], label=ALGORITHM_LABELS[algorithm],
-            markersize=6, elinewidth=1.5, capsize=4, capthick=1.5,
+            [x],
+            [mean],
+            yerr=[ci95],
+            fmt="o",
+            color=ALGORITHM_COLORS[algorithm],
+            label=ALGORITHM_LABELS[algorithm],
+            markersize=6,
+            elinewidth=1.5,
+            capsize=4,
+            capthick=1.5,
         )
 
     ax.set_xticks(xs)
@@ -112,8 +135,12 @@ def _plot_categorical(ax, by_algorithm: dict[str, list[tuple[float, float, float
     ax.set_xlim(xs[0] - 0.5, xs[-1] + 0.5)
 
 
-def _plot_source(ax, source: str, by_algorithm: dict[str, list[tuple[float, float, float]]]):
-    all_values = sorted({point[0] for points in by_algorithm.values() for point in points})
+def _plot_source(
+    ax, source: str, by_algorithm: dict[str, list[tuple[float, float, float]]]
+):
+    all_values = sorted(
+        {point[0] for points in by_algorithm.values() for point in points}
+    )
     is_sweep = len(all_values) > 1
 
     if is_sweep:
@@ -137,8 +164,12 @@ def _add_grid_dividers(fig, axes) -> None:
     bottom = min(pos[1][0].y0, pos[1][1].y0)
     top = max(pos[0][0].y1, pos[0][1].y1)
 
-    fig.add_artist(Line2D([v_x, v_x], [bottom, top], color=DIVIDER_COLOR, linewidth=1.0))
-    fig.add_artist(Line2D([left, right], [h_y, h_y], color=DIVIDER_COLOR, linewidth=1.0))
+    fig.add_artist(
+        Line2D([v_x, v_x], [bottom, top], color=DIVIDER_COLOR, linewidth=1.0)
+    )
+    fig.add_artist(
+        Line2D([left, right], [h_y, h_y], color=DIVIDER_COLOR, linewidth=1.0)
+    )
 
 
 def plot_summary_row(axes, records, sources=SOURCES) -> None:
@@ -148,7 +179,11 @@ def plot_summary_row(axes, records, sources=SOURCES) -> None:
 
 def plot_summary(records, sources=SOURCES, filename="summary_panel.png"):
     fig, axes = plt.subplots(
-        2, 2, figsize=(9, 8.5), sharey=True, gridspec_kw={"hspace": 0.45, "wspace": 0.12}
+        2,
+        2,
+        figsize=(9, 8.5),
+        sharey=True,
+        gridspec_kw={"hspace": 0.45, "wspace": 0.12},
     )
 
     plot_summary_row(axes.flat, records, sources)

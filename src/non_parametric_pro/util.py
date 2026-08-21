@@ -5,8 +5,8 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import paramax
-from blackjax.types import PRNGKey
 from blackjax.progress_bar import gen_scan_fn
+from blackjax.types import PRNGKey
 from blackjax.util import run_inference_algorithm
 from jax.scipy.linalg import solve_triangular
 
@@ -16,6 +16,7 @@ from non_parametric_pro.inducing import InducingBasis, RFFInducingBasis
 PARTICLE_MATRIX_NDIM = 2
 SCANNED_PARTICLES_NDIM = 3
 
+
 class TrainValSplit(NamedTuple):
     x_train: jax.Array
     y_train: jax.Array
@@ -23,6 +24,7 @@ class TrainValSplit(NamedTuple):
     y_val: jax.Array
     train_idx: jax.Array
     val_idx: jax.Array
+
 
 def train_val_split(
     key: PRNGKey,
@@ -78,7 +80,7 @@ def predictive_moments(
     return mean, jnp.sqrt(jnp.maximum(variance, 0.0))
 
 
-def draw_predictive_samples(  # noqa: PLR0913
+def draw_predictive_samples(
     rng_key: PRNGKey,
     basis: jax.Array,
     particles: jax.Array,
@@ -99,9 +101,13 @@ def draw_predictive_samples(  # noqa: PLR0913
     noise = sample_std * jr.normal(noise_key, selected.shape)
     return selected + noise
 
-def cholesky_basis(kernel: gpx.kernels.AbstractKernel, x: jax.Array, jitter: float = 1e-6) -> jax.Array:
+
+def cholesky_basis(
+    kernel: gpx.kernels.AbstractKernel, x: jax.Array, jitter: float = 1e-6
+) -> jax.Array:
     k = kernel.gram(x).as_matrix()
     return jnp.linalg.cholesky(k + jitter * jnp.eye(k.shape[0]))
+
 
 def prediction_basis(
     kernel: gpx.kernels.AbstractKernel,
@@ -124,13 +130,12 @@ def prediction_basis(
         test_basis = inducing_basis.basis_matrix(k, x_te, parameters.jitter)
     else:
         K_zz = inducing_basis.inducing_cov(k)  # (M, M)
-        L_zz = jnp.linalg.cholesky(
-            K_zz + parameters.jitter * jnp.eye(K_zz.shape[0])
-        )
+        L_zz = jnp.linalg.cholesky(K_zz + parameters.jitter * jnp.eye(K_zz.shape[0]))
         K_z_test = inducing_basis.cross_cov(k, x_te)  # (M, N_test)
         test_basis = solve_triangular(L_zz, K_z_test, lower=True).T  # (N_test, M)
 
     return test_basis, test_covariance
+
 
 def nlpd_gp(
     y_test: jax.Array,
@@ -142,11 +147,7 @@ def nlpd_gp(
     y = y_test.squeeze()
     mu = predictive_mean.squeeze()
     std = predictive_std.squeeze()
-    log_p = (
-        -0.5 * jnp.log(2 * jnp.pi)
-        - jnp.log(std)
-        - 0.5 * ((y - mu) / std) ** 2
-    )
+    log_p = -0.5 * jnp.log(2 * jnp.pi) - jnp.log(std) - 0.5 * ((y - mu) / std) ** 2
     if return_per_point:
         return -log_p
 
@@ -211,8 +212,14 @@ def posterior_function_draws(
     return conditional_means + residual_cholesky @ residual_noise
 
 
-
-def run_inference_algorithm_with_burn_in(rng_key, inference_algorithm, num_steps, burn_ratio, initial_position, progress_bar=False):
+def run_inference_algorithm_with_burn_in(
+    rng_key,
+    inference_algorithm,
+    num_steps,
+    burn_ratio,
+    initial_position,
+    progress_bar=False,
+):
     burn_key, sample_key = jr.split(rng_key)
     num_burn_steps = int(num_steps * burn_ratio)
     num_sample_steps = num_steps - num_burn_steps

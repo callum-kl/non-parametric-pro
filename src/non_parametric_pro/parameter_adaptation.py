@@ -12,7 +12,6 @@ from blackjax.adaptation.base import AdaptationResults
 from blackjax.base import AdaptationAlgorithm
 from blackjax.progress_bar import gen_scan_fn
 from blackjax.types import ArrayLikeTree, PRNGKey
-
 from jax.scipy.linalg import solve_triangular
 
 from non_parametric_pro.density import ProParameters
@@ -20,6 +19,7 @@ from non_parametric_pro.inducing import InducingBasis, compute_inducing_basis
 from non_parametric_pro.util import TrainValSplit, train_val_split
 
 _WARMUP, _ADAPT_NU, _ADAPT_BASIS, _ADAPT_BOTH = 0, 1, 2, 3
+
 
 class ParameterAdaptationState(NamedTuple):
     sigma: paramax.AbstractUnwrappable
@@ -108,7 +108,6 @@ def base(
         unwrapped = paramax.unwrap(kernel)
         x = x_train.reshape(-1, 1) if x_train.ndim == 1 else x_train
         if inducing_basis is None:
-            
             k_train = unwrapped.gram(x).as_matrix()
             basis = jnp.linalg.cholesky(k_train + jitter * jnp.eye(k_train.shape[0]))
             return basis, None
@@ -137,7 +136,8 @@ def base(
         vb: jax.Array | None,
         vr: jax.Array | None,
     ) -> ProParameters:
-        """Swap to validation y/basis if `adapt_target` calls for it, else training.
+        """
+        Swap to validation y/basis if `adapt_target` calls for it, else training.
 
         With `adapt_target=None`, reproduces the original `sigma`-only default:
         validation if `x_val` was given, training otherwise.
@@ -169,7 +169,9 @@ def base(
                 y=y_val, basis=val_basis, residual_std=val_residual_std
             )
         else:
-            obj_params = base_parameters._replace(basis=new_basis, residual_std=new_residual_std)
+            obj_params = base_parameters._replace(
+                basis=new_basis, residual_std=new_residual_std
+            )
         return -objective_fn(position, obj_params)
 
     def init(
@@ -177,7 +179,9 @@ def base(
         initial_kernel: gpx.kernels.AbstractKernel,
     ) -> ParameterAdaptationState:
         initial_basis, initial_residual_std = basis_fn(initial_kernel)
-        initial_val_basis, initial_val_residual_std = val_basis_fn(initial_kernel, initial_basis)
+        initial_val_basis, initial_val_residual_std = val_basis_fn(
+            initial_kernel, initial_basis
+        )
         return ParameterAdaptationState(
             sigma=initial_sigma,
             sigma_opt_state=sigma_optimizer.init(
@@ -207,8 +211,11 @@ def base(
         base_parameters: ProParameters,
     ) -> ParameterAdaptationState:
         _, grad = eqx.filter_value_and_grad(sigma_loss)(
-            state.sigma, position, base_parameters,
-            state.val_basis, state.val_residual_std,
+            state.sigma,
+            position,
+            base_parameters,
+            state.val_basis,
+            state.val_residual_std,
         )
         updates, new_opt_state = sigma_optimizer.update(
             grad, state.sigma_opt_state, eqx.filter(state.sigma, eqx.is_array)
@@ -270,7 +277,7 @@ def base(
     return init, update, final
 
 
-def parameter_adaptation(  # noqa: PLR0913
+def parameter_adaptation(
     algorithm,
     logdensity_fn: Callable,
     base_parameters: ProParameters,
@@ -344,7 +351,7 @@ def parameter_adaptation(  # noqa: PLR0913
         init_state = algorithm.init(position, init_parameters, logdensity_fn)
 
         if progress_bar:
-            print("Running parameter adaptation")  # noqa: T201
+            print("Running parameter adaptation")
         schedule = build_schedule(
             num_steps,
             warmup_steps=warmup_steps,
@@ -367,10 +374,11 @@ def parameter_adaptation(  # noqa: PLR0913
 
 
 class CrossValidationResult(NamedTuple):
-    """Cross-validated sigma/kernel hyperparameters from :func:`cross_validated_parameter_adaptation`.
+    """
+    Cross-validated sigma/kernel hyperparameters from :func:`cross_validated_parameter_adaptation`.
     """
 
-    sigma: jax.Array 
+    sigma: jax.Array
     kernel: gpx.kernels.AbstractKernel
     fold_sigma: jax.Array
     fold_kernel: gpx.kernels.AbstractKernel
@@ -411,7 +419,7 @@ def _kfold_splits(
     return splits
 
 
-def cross_validated_parameter_adaptation(  # noqa: PLR0913
+def cross_validated_parameter_adaptation(
     algorithm,
     logdensity_fn: Callable,
     base_parameters: ProParameters,
@@ -444,12 +452,13 @@ def cross_validated_parameter_adaptation(  # noqa: PLR0913
     )
     fold_keys = jr.split(run_key, len(splits))
 
-
     @jax.jit
     def run_one_fold(x_train, y_train, x_val, y_val, pos_key, adapt_key):
         fold_parameters = base_parameters._replace(y=y_train)
         basis_dim = (
-            inducing_basis.output_dim() if inducing_basis is not None else x_train.shape[0]
+            inducing_basis.output_dim()
+            if inducing_basis is not None
+            else x_train.shape[0]
         )
         initial_position = jr.normal(pos_key, (basis_dim, num_particles))
 

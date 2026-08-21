@@ -1,4 +1,5 @@
-"""Print val NLPD per alpha (best marked with *) per split for fit_pro_alpha_cv.py's results.
+"""
+Print val NLPD per alpha (best marked with *) per split for fit_pro_alpha_cv.py's results.
 
 Usage:
     python print_best_alpha.py           # all datasets with alpha-CV results
@@ -81,14 +82,20 @@ def print_table(records: dict[str, dict[str, dict[int, AlphaCVRun]]]):
             print("─" * len(header))
             for split in splits:
                 run = runs[split]
-                nlpd_by_alpha = dict(zip(run.alpha_grid, run.alpha_val_nlpd, strict=True))
+                nlpd_by_alpha = dict(
+                    zip(run.alpha_grid, run.alpha_val_nlpd, strict=True)
+                )
                 row = f"{split:<10}"
                 for a in alphas:
                     value = nlpd_by_alpha.get(a)
                     if value is None:
                         cell = "—"
                     else:
-                        marker = "*" if run.best_alpha is not None and a == run.best_alpha else ""
+                        marker = (
+                            "*"
+                            if run.best_alpha is not None and a == run.best_alpha
+                            else ""
+                        )
                         cell = f"{value:.4f}{marker}"
                     row += f"{cell:>{col_width}}"
                 print(row)
@@ -97,7 +104,9 @@ def print_table(records: dict[str, dict[str, dict[int, AlphaCVRun]]]):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "dataset", nargs="?", default=None,
+        "dataset",
+        nargs="?",
+        default=None,
         help="Optional dataset name to filter to (default: all datasets with alpha-CV results)",
     )
     args = parser.parse_args()
