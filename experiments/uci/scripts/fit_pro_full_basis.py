@@ -16,14 +16,13 @@ from omegaconf import DictConfig, OmegaConf
 
 from non_parametric_pro import ula
 from non_parametric_pro.data.uci.uci import load_uci_regression_dataset
-from non_parametric_pro.density import ProParameters, pro_logdensity_fn, regularised_score
+from non_parametric_pro.density import ProParameters, pro_logdensity_fn
 from non_parametric_pro.inducing import InducingBasis, PointInducingBasis, compute_inducing_basis
 from non_parametric_pro.parameter_adaptation import parameter_adaptation
 from non_parametric_pro.sgld import parametric_sgld, sgld
 from non_parametric_pro.ula import parametric_ula
 from non_parametric_pro.util import (
     cholesky_basis,
-    crps_pro,
     nlpd_pro,
     prediction_basis,
     run_inference_algorithm_with_burn_in,
@@ -123,7 +122,7 @@ def main(cfg: DictConfig) -> None:
         warmup_steps=cfg.warmup_steps,
         sigma_adapt_steps=cfg.sigma_adapt_steps,
         kernel_adapt_steps=cfg.kernel_adapt_steps,
-        objective_fn=regularised_score,
+        objective_fn=pro_logdensity_fn,
         inducing_basis=row_selectable_basis,
         x_val=split.x_val,
         y_val=split.y_val,
@@ -183,11 +182,8 @@ def main(cfg: DictConfig) -> None:
         "pro_nlpd": float(nlpd_pro(
             y_test, test_basis, test_cov, particles, parameters=pro_params
         )),
-        "pro_crps": float(crps_pro(
-            y_test, test_basis, test_cov, particles, parameters=pro_params
-        )),
     }
-    log.info("PRO-full-basis  NLPD=%.4f  CRPS=%.4f", metrics["pro_nlpd"], metrics["pro_crps"])
+    log.info("PRO-full-basis  NLPD=%.4f", metrics["pro_nlpd"])
 
     # --- Save ----------------------------------------------------------------
     with open(out_dir / "pro_metrics.json", "w") as f:

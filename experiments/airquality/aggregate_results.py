@@ -9,7 +9,7 @@ import numpy as np
 
 RESULTS_ROOT = Path(__file__).parent / "results"
 METHODS = ("svgp", "svgp_no_outliers")
-METRICS = ("rmse", "nlpd", "crps")
+METRICS = ("rmse", "nlpd")
 
 
 def collect():

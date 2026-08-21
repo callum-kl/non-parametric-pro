@@ -11,43 +11,43 @@ RESULTS_ROOT = Path(__file__).resolve().parents[1] / "results"
 METHOD_METRICS = {
     "exact_gp": (
         "gp_metrics.json",
-        {"gp_nlpd": "nlpd", "gp_crps": "crps", "gp_sigma": "sigma"},
+        {"gp_nlpd": "nlpd", "gp_sigma": "sigma"},
     ),
     "vgp": (
         "gp_metrics.json",
-        {"vgp_nlpd": "nlpd", "vgp_crps": "crps", "gp_sigma": "sigma"},
+        {"vgp_nlpd": "nlpd", "gp_sigma": "sigma"},
     ),
     "vgp_noncollapsed": (
         "gp_metrics.json",
-        {"vgp_nlpd": "nlpd", "vgp_crps": "crps", "gp_sigma": "sigma"},
+        {"vgp_nlpd": "nlpd", "gp_sigma": "sigma"},
     ),
     "ppgpr": (
         "gp_metrics.json",
-        {"ppgpr_nlpd": "nlpd", "ppgpr_crps": "crps", "gp_sigma": "sigma"},
+        {"ppgpr_nlpd": "nlpd", "gp_sigma": "sigma"},
     ),
     "pro_gp": (
         "pro_metrics.json",
-        {"pro_nlpd": "nlpd", "pro_crps": "crps", "pro_sigma": "sigma"},
+        {"pro_nlpd": "nlpd", "pro_sigma": "sigma"},
     ),
     "inducing_pro_gp": (
         "pro_metrics.json",
-        {"pro_nlpd": "nlpd", "pro_crps": "crps", "pro_sigma": "sigma"},
+        {"pro_nlpd": "nlpd", "pro_sigma": "sigma"},
     ),
     "pro_gp_cv": (
         "pro_metrics.json",
-        {"pro_nlpd": "nlpd", "pro_crps": "crps", "pro_sigma": "sigma"},
+        {"pro_nlpd": "nlpd", "pro_sigma": "sigma"},
     ),
     "inducing_pro_gp_cv": (
         "pro_metrics.json",
-        {"pro_nlpd": "nlpd", "pro_crps": "crps", "pro_sigma": "sigma"},
+        {"pro_nlpd": "nlpd", "pro_sigma": "sigma"},
     ),
     "pro_gp_alpha_cv": (
         "pro_metrics.json",
-        {"pro_nlpd": "nlpd", "pro_crps": "crps", "pro_sigma": "sigma"},
+        {"pro_nlpd": "nlpd", "pro_sigma": "sigma"},
     ),
     "inducing_pro_gp_alpha_cv": (
         "pro_metrics.json",
-        {"pro_nlpd": "nlpd", "pro_crps": "crps", "pro_sigma": "sigma"},
+        {"pro_nlpd": "nlpd", "pro_sigma": "sigma"},
     ),
 }
 

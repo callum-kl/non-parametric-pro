@@ -1,4 +1,4 @@
-"""Fit a standard SVGP on one Kampala air-quality site, save its RMSE/NLPD/CRPS.
+"""Fit a standard SVGP on one Kampala air-quality site, save its RMSE/NLPD.
 
 Ports ``sparse_approximations/sparse_gp.py`` from
 https://github.com/claramst/gps-kampala-airquality (see
@@ -31,7 +31,7 @@ from archive.kampala_airquality import (
     load_kampala_airquality_records,
 )
 from non_parametric_pro.inducing import kmeans_inducing_points
-from non_parametric_pro.util import crps_gp, nlpd_gp
+from non_parametric_pro.util import nlpd_gp
 
 log = logging.getLogger(__name__)
 
@@ -117,12 +117,11 @@ def main(cfg: DictConfig) -> None:
         "n_train": N,
         "n_test": int(x_test.shape[0]),
         "nlpd": float(nlpd_gp(y_test, mean, std)),
-        "crps": float(crps_gp(y_test, mean, std)),
         "rmse": rmse_raw,
     }
     log.info(
-        "SVGP site=%s NLPD=%.4f CRPS=%.4f RMSE=%.4f",
-        site_id, metrics["nlpd"], metrics["crps"], metrics["rmse"],
+        "SVGP site=%s NLPD=%.4f RMSE=%.4f",
+        site_id, metrics["nlpd"], metrics["rmse"],
     )
 
     # --- Save ----------------------------------------------------------------

@@ -20,7 +20,7 @@ from sklearn.preprocessing import StandardScaler
 from non_parametric_pro.data.uci.uci import load_uci_regression_dataset
 from non_parametric_pro.gp import natural_gradient_svgp_fit
 from non_parametric_pro.inducing import kmeans_inducing_points
-from non_parametric_pro.util import crps_gp, nlpd_gp
+from non_parametric_pro.util import nlpd_gp
 
 log = logging.getLogger(__name__)
 
@@ -124,12 +124,11 @@ def main(cfg: DictConfig) -> None:
 
     metrics = {
         "vgp_nlpd": float(nlpd_gp(y_test, mean, std)),
-        "vgp_crps": float(crps_gp(y_test, mean, std)),
         "gp_sigma": float(np.array(px.unwrap(opt_sigma)).reshape(())),
         "collapsed": bool(cfg.collapsed),
         "natural_gradients": bool(cfg.natural_gradients),
     }
-    log.info("VGP  NLPD=%.4f  CRPS=%.4f", metrics["vgp_nlpd"], metrics["vgp_crps"])
+    log.info("VGP  NLPD=%.4f", metrics["vgp_nlpd"])
 
     # --- Save ----------------------------------------------------------------
     np.savez(

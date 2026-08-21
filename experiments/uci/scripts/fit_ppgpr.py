@@ -20,7 +20,7 @@ from sklearn.preprocessing import StandardScaler
 from non_parametric_pro.data.uci.uci import load_uci_regression_dataset
 from non_parametric_pro.gp import predictive_log_likelihood
 from non_parametric_pro.inducing import kmeans_inducing_points
-from non_parametric_pro.util import crps_gp, nlpd_gp
+from non_parametric_pro.util import nlpd_gp
 
 log = logging.getLogger(__name__)
 
@@ -98,11 +98,10 @@ def main(cfg: DictConfig) -> None:
 
     metrics = {
         "ppgpr_nlpd": float(nlpd_gp(y_test, mean, std)),
-        "ppgpr_crps": float(crps_gp(y_test, mean, std)),
         "gp_sigma": float(np.array(px.unwrap(opt_sigma)).reshape(())),
         "beta_reg": float(cfg.beta_reg),
     }
-    log.info("PPGPR  NLPD=%.4f  CRPS=%.4f", metrics["ppgpr_nlpd"], metrics["ppgpr_crps"])
+    log.info("PPGPR  NLPD=%.4f", metrics["ppgpr_nlpd"])
 
     # --- Save ----------------------------------------------------------------
     np.savez(

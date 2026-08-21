@@ -89,7 +89,7 @@ class UCIRegressionDataset(NamedTuple):
 
 
 def package_data_dir(*parts: str) -> Path:
-    repo_root = Path(__file__).resolve().parents[3]
+    repo_root = Path(__file__).resolve().parents[4]
     return repo_root.joinpath("data", *parts)
 
 

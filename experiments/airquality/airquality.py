@@ -16,7 +16,6 @@ from non_parametric_pro import ula
 from non_parametric_pro.density import ProParameters, pro_logdensity_fn, pro_score_fn
 from non_parametric_pro.ula import parametric_ula
 from non_parametric_pro.util import posterior_function_draws
-from non_parametric_pro.gp import _full_gp_basis
 from non_parametric_pro.parameter_adaptation import parameter_adaptation
 from archive.kampala_airquality import load_kampala_airquality_records, kampala_forecasting_split, kampala_site_ids
 from non_parametric_pro.inducing import PointInducingBasis, compute_inducing_basis, kmeans_inducing_points

@@ -18,8 +18,8 @@ class ProParameters(NamedTuple):
     jitter: float = 1e-6
     tolerance: float = 1e-300
     basis: jax.Array | None = None
-    residual_std: jax.Array | None = None  # (N,1) inducing residual; None for full GP
-    batch_idx: jax.Array | None = None  # (b,) minibatch row indices; None = full batch
+    residual_std: jax.Array | None = None
+    batch_idx: jax.Array | None = None
 
 
 def _effective_sigma(parameters: "ProParameters") -> jax.Array:
