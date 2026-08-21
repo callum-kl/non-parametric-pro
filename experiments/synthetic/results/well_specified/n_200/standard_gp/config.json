@@ -1,0 +1,46 @@
+{
+  "seed": 2421,
+  "mode": "evaluate",
+  "algorithm": "standard_gp",
+  "num_instances": 10,
+  "instance_index": 0,
+  "results_root": "${script_dir:}/results",
+  "kernel": {
+    "lengthscale": 0.3
+  },
+  "pro": {
+    "step_size": 0.0001,
+    "alpha": 1.0,
+    "sigma_init": 0.3,
+    "sigma_min": 0.1,
+    "sigma_max": 1.0,
+    "num_particles": 32,
+    "num_folds": 1,
+    "val_fraction": 0.25,
+    "num_adapt_steps": 10000,
+    "warmup_steps": 1000,
+    "sigma_adapt_steps": 300,
+    "kernel_adapt_steps": 150,
+    "sigma_lr": 0.1,
+    "kernel_lr": 0.05,
+    "num_sample_steps": 30000,
+    "burn_fraction": 0.9,
+    "thin": 10
+  },
+  "panel": {
+    "num_instances": 20,
+    "grid_shape": [
+      5,
+      4
+    ]
+  },
+  "source": "well_specified",
+  "param_name": "n",
+  "n": 200,
+  "train_fraction": 0.7,
+  "noise_std_frac": 0.15,
+  "ell_range": [
+    0.5,
+    1.0
+  ]
+}

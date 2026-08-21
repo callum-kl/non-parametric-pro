@@ -1,0 +1,73 @@
+import os
+
+os.environ.setdefault("JAX_ENABLE_X64", "1")
+
+import gpjax as gpx
+import jax.numpy as jnp
+import jax.random as jr
+import optax as ox
+import paramax as px
+
+from archive.kampala_airquality import (
+    kampala_forecasting_split,
+    kampala_site_ids,
+    load_kampala_airquality_records,
+)
+from non_parametric_pro.inducing import (
+    kmeans_inducing_points,
+)
+from non_parametric_pro.util import nlpd_gp
+
+if __name__ == "__main__":
+    key = jr.PRNGKey(0)
+
+    records = load_kampala_airquality_records()
+    site_ids = kampala_site_ids(records)
+    data = kampala_forecasting_split(records, site_ids[0], max_train=100000)
+
+    x_train, y_train = jnp.array(data.x_train), jnp.array(data.y_train)
+    x_test, y_test = jnp.array(data.x_test), jnp.array(data.y_test)
+
+    M = 1000
+    D = x_train.shape[1]
+    N = x_train.shape[0]
+
+    gpx_data = gpx.Dataset(X=x_train, y=y_train)
+    kernel = gpx.kernels.RBF(
+        lengthscale=jnp.ones((D,)), variance=px.NonTrainable(jnp.array(1.0))
+    )
+    prior = gpx.gps.Prior(mean_function=gpx.mean_functions.Zero(), kernel=kernel)
+    likelihood = gpx.likelihoods.Gaussian(num_datapoints=gpx_data.n)
+    posterior = prior * likelihood
+    optim = ox.adam(learning_rate=0.01)
+
+    z_init = kmeans_inducing_points(key, x_train, M).z
+
+    variational_family = gpx.variational_families.VariationalGaussian(
+        posterior=posterior,
+        inducing_inputs=z_init,
+    )
+
+    opt_variational_family, _ = gpx.fit(
+        model=variational_family,
+        objective=lambda p, d: -gpx.objectives.elbo(p, d),
+        train_data=gpx_data,
+        optim=optim,
+        num_iters=500,
+        verbose=True,
+        batch_size=500,
+    )
+
+    v_gp_latent_dist = opt_variational_family.predict(x_test)
+    v_gp_predictive_dist = opt_variational_family.posterior.likelihood(v_gp_latent_dist)
+
+    v_gp_predictive_mean = v_gp_predictive_dist.mean
+    v_gp_predictive_std = jnp.sqrt(v_gp_predictive_dist.variance)
+
+    z_opt = px.unwrap(opt_variational_family.inducing_inputs)
+
+    y_test_raw = data.y_std * y_test.squeeze() + data.y_mean
+    v_gp_predictive_mean_raw = data.y_std * v_gp_predictive_mean + data.y_mean
+
+    print(nlpd_gp(y_test, v_gp_predictive_mean, v_gp_predictive_std))
+    print(jnp.sqrt(jnp.mean((y_test_raw - v_gp_predictive_mean_raw) ** 2)))

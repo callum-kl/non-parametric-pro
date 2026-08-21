@@ -1,0 +1,52 @@
+defaults:
+  - _self_
+  - ds@_global_: yacht  # override with: "ds@_global_=<name>"
+
+split: 1
+seed: 0
+inducing: false  # true → reads VGP state; false → reads exact GP state
+vgp_variant: collapsed  # "collapsed" | "noncollapsed" (plain Adam or natural gradients -- they share a dir); only used when inducing=true
+vgp_name: null  # optional suffix matching fit_vgp.py's own `name` override, if that run used one
+gp_name: null  # optional suffix matching fit_exact_gp.py's own `name` override, if that run used one
+               # (e.g. gp_name=loo -> reads exact_gp_loo); only used when inducing=false
+name: null  # optional suffix for the results dir, e.g. name=untuned -> pro_gp_cv_untuned
+
+results_root: ${script_dir:}/results
+
+num_particles: 50
+alpha: 1.0
+sigma_min: 0.1
+sigma_max: 100.0
+sigma_init: null  # if set, used as the initial sigma instead of the loaded GP state's sigma
+
+algorithm: ula  # "ula" (exact, full-batch) | "sgld" (minibatched -- non_parametric_pro.sgld)
+sgld_batch_size: 512  # only used when algorithm=sgld; must be < N_train for the dataset
+                       # (override per-dataset, e.g. via ds@_global_, for small N_train)
+
+# Cross-validation (see cross_validated_parameter_adaptation): num_folds>=2 is classic
+# disjoint k-fold; num_folds=1 is a single val_fraction-sized random hold-out instead.
+num_folds: 3
+val_fraction: 0.2
+
+# per-dataset defaults; ds yaml values take priority via @_global_ merge
+num_adapt_steps: 10000
+num_sample_steps: 30000
+step_size: 0.0001
+
+warmup_steps: 1000
+sigma_adapt_steps: 900
+kernel_adapt_steps: 0
+sigma_lr: 0.1
+kernel_lr: 0.01
+adapt_target: null
+
+burn_fraction: 0.9
+thin: 50
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: ${script_dir:}/.hydra_logs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: ${script_dir:}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}

@@ -1,0 +1,6 @@
+source: well_specified
+param_name: n
+n: 100
+train_fraction: 0.7
+noise_std_frac: 0.15
+ell_range: [0.5, 1.0]

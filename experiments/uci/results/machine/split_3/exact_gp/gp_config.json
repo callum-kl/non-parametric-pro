@@ -1,0 +1,13 @@
+{
+  "split": 3,
+  "seed": 0,
+  "name": null,
+  "kernel_lr": 0.1,
+  "lengthscale_min": 0.001,
+  "lengthscale_max": 1000.0,
+  "objective": "mll",
+  "num_restarts": 1,
+  "restart_jitter_std": 0.75,
+  "results_root": "${script_dir:}/results",
+  "dataset": "machine"
+}

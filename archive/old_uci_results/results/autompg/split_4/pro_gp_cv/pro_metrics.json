@@ -1,0 +1,13 @@
+{
+  "dataset": "autompg",
+  "split": 4,
+  "inducing": false,
+  "num_folds": 1,
+  "gp_sigma": 0.27100091987940766,
+  "pro_sigma": 0.26523226875711337,
+  "pro_sigma_per_fold": [
+    0.2652322687571133
+  ],
+  "pro_nlpd": 0.4178254952160271,
+  "pro_crps": 0.19381691365990747
+}

@@ -1,0 +1,9 @@
+{
+  "dataset": "housing",
+  "split": 1,
+  "inducing": false,
+  "gp_sigma": 0.1922274880012067,
+  "pro_sigma": 0.17473853934976638,
+  "pro_nlpd": 0.15564769904938705,
+  "pro_crps": 0.17161538844628252
+}

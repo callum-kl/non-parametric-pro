@@ -1,0 +1,7 @@
+# N=4177, D=10
+dataset: abalone
+vgp_variant: collapsed
+collapsed: true
+inducing: true
+algorithm: sgld
+num_folds: 1

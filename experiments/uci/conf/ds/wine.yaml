@@ -1,0 +1,6 @@
+dataset: wine
+vgp_variant: collapsed
+collapsed: true
+inducing: true
+algorithm: sgld
+num_folds: 1

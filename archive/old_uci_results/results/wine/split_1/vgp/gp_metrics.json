@@ -1,0 +1,7 @@
+{
+  "vgp_nlpd": 0.560745603201401,
+  "vgp_crps": 0.24059417287251167,
+  "gp_sigma": 0.38806505394062824,
+  "collapsed": true,
+  "natural_gradients": true
+}

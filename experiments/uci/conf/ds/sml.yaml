@@ -1,0 +1,3 @@
+dataset: sml
+num_inducing: 300
+collapsed: false
