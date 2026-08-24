@@ -12,6 +12,7 @@ matplotlib.use("Agg")
 
 import gpjax as gpx
 import hydra
+import jax
 import jax.numpy as jnp
 import jax.random as jr
 import matplotlib.pyplot as plt
@@ -50,7 +51,8 @@ from non_parametric_pro.density import (
     ProParameters,
     pro_logdensity_fn,
 )
-from non_parametric_pro.parameter_adaptation import cross_validated_parameter_adaptation
+from non_parametric_pro.inducing import PointInducingBasis
+from non_parametric_pro.parameter_adaptation import parameter_adaptation
 from non_parametric_pro.ula import parametric_ula
 from non_parametric_pro.util import (
     cholesky_basis,
@@ -61,6 +63,7 @@ from non_parametric_pro.util import (
     predictive_moments,
     project_particles,
     run_inference_algorithm_with_burn_in,
+    train_val_split,
 )
 
 log = logging.getLogger(__name__)
@@ -180,7 +183,6 @@ def fit_pro(
     sigma_min=0.1,
     sigma_max=1.0,
     num_particles=32,
-    num_folds=1,
     val_fraction=0.25,
     num_adapt_steps=10000,
     warmup_steps=1000,
@@ -196,57 +198,70 @@ def fit_pro(
     x_train, y_train = data.x_train, data.y_train
     x_test, y_test = data.x_test, data.y_test
 
-    sigma = gpx.parameters.SigmoidBounded(sigma_init, low=sigma_min, high=sigma_max)
-    pro_params = ProParameters(
-        y=y_train,
+    kernel = build_kernel(kernel_type, lengthscale=kernel_lengthscale)
+    basis_full = cholesky_basis(kernel, x_train)
+    basis_dim = basis_full.shape[1]
+    row_selectable_basis = PointInducingBasis(z=x_train)
+
+    key, split_key, pos_key, adapt_key = jr.split(key, 4)
+    split = train_val_split(split_key, x_train, y_train, val_fraction=val_fraction)
+
+    fold_params = ProParameters(
+        y=split.y_train,
         basis=None,
         step_size=step_size,
-        sigma=sigma,
+        sigma=gpx.parameters.SigmoidBounded(sigma_init, low=sigma_min, high=sigma_max),
         alpha=alpha,
         residual_std=None,
     )
-    kernel = build_kernel(kernel_type, lengthscale=kernel_lengthscale)
-    key, cv_key = jr.split(key)
-    cv_result = cross_validated_parameter_adaptation(
+    initial_position = jr.normal(pos_key, (basis_dim, num_particles))
+
+    adaptation = parameter_adaptation(
         ula,
         pro_logdensity_fn,
-        pro_params,
-        x_full=x_train,
-        y_full=y_train,
+        fold_params,
+        x_train=split.x_train,
         initial_kernel=kernel,
-        num_folds=num_folds,
-        val_fraction=val_fraction,
-        num_particles=num_particles,
-        num_steps=num_adapt_steps,
         warmup_steps=warmup_steps,
         sigma_adapt_steps=sigma_adapt_steps,
         kernel_adapt_steps=kernel_adapt_steps,
         objective_fn=pro_logdensity_fn,
-        rng_key=cv_key,
+        inducing_basis=row_selectable_basis,
+        x_val=split.x_val,
+        y_val=split.y_val,
+        adapt_target=None,
         sigma_optimizer=ox.adam(sigma_lr),
         kernel_optimizer=ox.adam(kernel_lr),
         progress_bar=False,
     )
-    adapted_kernel = cv_result.kernel
-    adapted_sigma_val = float(np.array(cv_result.sigma).reshape(()))
-
-    key, pos_key = jr.split(key)
-    basis = cholesky_basis(adapted_kernel, x_train)
-    basis_dim = x_train.shape[0]
-    pro_position = jr.normal(pos_key, (basis_dim, num_particles))
-    pro_params = pro_params._replace(
-        basis=basis,
-        sigma=adapted_sigma_val,
+    adaptation_results, adaptation_info = adaptation.run(
+        adapt_key, initial_position, num_steps=num_adapt_steps
     )
 
-    key, sample_key = jr.split(key)
+    if kernel_adapt_steps > 0:
+        adapted_kernel = px.unwrap(
+            jax.tree.map(lambda x: x[-1], adaptation_info.kernel)
+        )
+        basis_full = cholesky_basis(adapted_kernel, x_train)
+    else:
+        adapted_kernel = kernel
+
+    pro_params = ProParameters(
+        y=y_train,
+        basis=basis_full,
+        step_size=step_size,
+        sigma=adaptation_results.parameters.sigma,
+        alpha=alpha,
+        residual_std=None,
+    )
     algorithm = parametric_ula(pro_logdensity_fn, pro_params)
+    key, sample_key = jr.split(key)
     _, (states, _) = run_inference_algorithm_with_burn_in(
         rng_key=sample_key,
         inference_algorithm=algorithm,
         num_steps=num_sample_steps,
         burn_ratio=burn_fraction,
-        initial_position=pro_position,
+        initial_position=adaptation_results.state.position,
         progress_bar=False,
     )
 
@@ -380,7 +395,6 @@ def _fit_pro_fn(cfg: DictConfig):
         sigma_min=cfg.pro.sigma_min,
         sigma_max=cfg.pro.sigma_max,
         num_particles=cfg.pro.num_particles,
-        num_folds=cfg.pro.num_folds,
         val_fraction=cfg.pro.val_fraction,
         num_adapt_steps=cfg.pro.num_adapt_steps,
         warmup_steps=cfg.pro.warmup_steps,
