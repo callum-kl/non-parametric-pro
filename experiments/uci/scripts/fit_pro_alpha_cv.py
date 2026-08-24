@@ -51,7 +51,7 @@ def pro_out_dir(cfg: DictConfig) -> Path:
 
 def _row_selectable_basis(cfg: DictConfig, inducing_basis, x_train) -> InducingBasis:
     """
-    Identical to ``fit_pro_full_basis.py``'s helper of the same name -- see there for
+    Identical to ``fit_pro.py``'s helper of the same name -- see there for
     the full derivation of why this gives exact row-slices of the shared full basis for
     both the inducing and exact-GP cases.
     """

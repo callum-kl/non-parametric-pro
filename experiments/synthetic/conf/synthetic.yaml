@@ -20,7 +20,6 @@ pro:
   sigma_min: 0.1
   sigma_max: 1.0
   num_particles: 32
-  num_folds: 1
   val_fraction: 0.25
   num_adapt_steps: 10000
   warmup_steps: 1000

@@ -1,5 +1,5 @@
 """
-Run fit_pro_full_basis.py across a fixed list of datasets, in sequence.
+Run fit_pro.py across a fixed list of datasets, in sequence.
 
 Datasets default to: autompg, concrete, forest, housing, machine, servo, solar, stock.
 """
@@ -51,31 +51,31 @@ def main() -> None:
         "--val-fraction",
         type=float,
         default=None,
-        help="override cfg.val_fraction (default: fit_pro_full_basis.yaml's own default)",
+        help="override cfg.val_fraction (default: fit_pro.yaml's own default)",
     )
     parser.add_argument(
         "--alpha",
         type=float,
         default=None,
-        help="override cfg.alpha (default: fit_pro_full_basis.yaml's own default)",
+        help="override cfg.alpha (default: fit_pro.yaml's own default)",
     )
     parser.add_argument(
         "--num-particles",
         type=int,
         default=None,
-        help="override cfg.num_particles (default: fit_pro_full_basis.yaml's own default)",
+        help="override cfg.num_particles (default: fit_pro.yaml's own default)",
     )
     parser.add_argument(
         "--name",
         default=None,
         help="override cfg.name -- results dir suffix, e.g. name=untuned -> pro_gp_full_untuned "
-        "(default: fit_pro_full_basis.yaml's own default, i.e. no suffix)",
+        "(default: fit_pro.yaml's own default, i.e. no suffix)",
     )
     args = parser.parse_args()
 
     launcher = ["-m", "hydra/launcher=joblib", f"hydra.launcher.n_jobs={args.n_jobs}"]
     splits = f"split={args.splits}"
-    fit_pro_full_basis = str(SCRIPT_DIR / "fit_pro_full_basis.py")
+    fit_pro = str(SCRIPT_DIR / "fit_pro.py")
 
     overrides = []
     if args.val_fraction is not None:
@@ -89,7 +89,7 @@ def main() -> None:
 
     for dataset in args.datasets.split(","):
         ds = f"ds@_global_={dataset}"
-        _run([sys.executable, fit_pro_full_basis, *launcher, ds, splits, *overrides])
+        _run([sys.executable, fit_pro, *launcher, ds, splits, *overrides])
 
 
 if __name__ == "__main__":

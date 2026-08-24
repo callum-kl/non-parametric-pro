@@ -72,10 +72,10 @@ def _sampling_algorithm(cfg: DictConfig, pro_params: ProParameters):
     raise ValueError(msg)
 
 
-@hydra.main(version_base=None, config_path="../conf", config_name="fit_pro_full_basis")
+@hydra.main(version_base=None, config_path="../conf", config_name="fit_pro")
 def main(cfg: DictConfig) -> None:
     mode = "inducing" if cfg.inducing else "exact GP"
-    log.info("PRO-full-basis (%s): dataset=%s split=%d", mode, cfg.dataset, cfg.split)
+    log.info("PRO (%s): dataset=%s split=%d", mode, cfg.dataset, cfg.split)
 
     key = jr.PRNGKey(cfg.seed)
     out_dir = pro_out_dir(cfg)
@@ -218,7 +218,7 @@ def main(cfg: DictConfig) -> None:
             nlpd_pro(y_test, test_basis, test_cov, particles, parameters=pro_params)
         ),
     }
-    log.info("PRO-full-basis  NLPD=%.4f", metrics["pro_nlpd"])
+    log.info("PRO  NLPD=%.4f", metrics["pro_nlpd"])
 
     # --- Save ----------------------------------------------------------------
     with open(out_dir / "pro_metrics.json", "w") as f:
