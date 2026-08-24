@@ -25,7 +25,7 @@ SOURCE_TITLES = {
 
 ALGORITHMS = ("pro_gp", "standard_gp")
 ALGORITHM_LABELS = {"pro_gp": "PrO-GP", "standard_gp": "Standard GP"}
-ALGORITHM_COLORS = {"pro_gp": "#3a76c4", "standard_gp": "#3f8f5f"}
+ALGORITHM_COLORS = {"pro_gp": "#e8974e", "standard_gp": "#4c3a8e"}
 
 N_MIN = 100
 DODGE_FRAC = 0.03
@@ -76,7 +76,7 @@ def load_summary(path: Path = SUMMARY_CSV):
 
 
 def _plot_sweep(
-    ax, by_algorithm: dict[str, list[tuple[float, float, float]]], all_values
+    ax, by_algorithm: dict[str, list[tuple[float, float, float]]], all_values, colors
 ):
     """
     Per-algorithm line+error-bar series across the swept `n` values -- dodged apart
@@ -96,7 +96,7 @@ def _plot_sweep(
             mean,
             yerr=ci95,
             fmt="o-",
-            color=ALGORITHM_COLORS[algorithm],
+            color=colors[algorithm],
             label=ALGORITHM_LABELS[algorithm],
             markersize=6,
             linewidth=1.5,
@@ -105,14 +105,16 @@ def _plot_sweep(
             capthick=1.5,
         )
 
-    ax.set_xlabel("dataset size")
+    ax.set_xlabel("training size n")
     ax.set_xscale("log", base=2)
     ax.xaxis.set_major_formatter(mticker.ScalarFormatter())
     ax.xaxis.set_minor_formatter(mticker.NullFormatter())
     ax.set_xticks(all_values)
 
 
-def _plot_categorical(ax, by_algorithm: dict[str, list[tuple[float, float, float]]]):
+def _plot_categorical(
+    ax, by_algorithm: dict[str, list[tuple[float, float, float]]], colors
+):
     xs = list(range(len(ALGORITHMS)))
     for x, algorithm in zip(xs, ALGORITHMS, strict=True):
         ((_, mean, ci95),) = by_algorithm[algorithm]
@@ -121,7 +123,7 @@ def _plot_categorical(ax, by_algorithm: dict[str, list[tuple[float, float, float
             [mean],
             yerr=[ci95],
             fmt="o",
-            color=ALGORITHM_COLORS[algorithm],
+            color=colors[algorithm],
             label=ALGORITHM_LABELS[algorithm],
             markersize=6,
             elinewidth=1.5,
@@ -136,7 +138,7 @@ def _plot_categorical(ax, by_algorithm: dict[str, list[tuple[float, float, float
 
 
 def _plot_source(
-    ax, source: str, by_algorithm: dict[str, list[tuple[float, float, float]]]
+    ax, source: str, by_algorithm: dict[str, list[tuple[float, float, float]]], colors
 ):
     all_values = sorted(
         {point[0] for points in by_algorithm.values() for point in points}
@@ -144,9 +146,9 @@ def _plot_source(
     is_sweep = len(all_values) > 1
 
     if is_sweep:
-        _plot_sweep(ax, by_algorithm, all_values)
+        _plot_sweep(ax, by_algorithm, all_values, colors)
     else:
-        _plot_categorical(ax, by_algorithm)
+        _plot_categorical(ax, by_algorithm, colors)
 
     ax.yaxis.set_major_locator(mticker.MultipleLocator(base=0.5))
 
@@ -172,9 +174,9 @@ def _add_grid_dividers(fig, axes) -> None:
     )
 
 
-def plot_summary_row(axes, records, sources=SOURCES) -> None:
+def plot_summary_row(axes, records, sources=SOURCES, colors=ALGORITHM_COLORS) -> None:
     for ax, source in zip(axes, sources, strict=True):
-        _plot_source(ax, source, records.get(source, {}))
+        _plot_source(ax, source, records.get(source, {}), colors)
 
 
 def plot_summary(records, sources=SOURCES, filename="summary_panel.png"):

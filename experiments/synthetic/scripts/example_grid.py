@@ -38,10 +38,10 @@ from non_parametric_pro.data.synthetic.well_specified import (
 
 FIGURES_DIR = Path(__file__).resolve().parents[1] / "figures"
 
-GP_COLOR = "#3f8f5f"
-PRO_COLOR = "#3a76c4"
-GP_CMAP = LinearSegmentedColormap.from_list("gp_density", ["#e8f4ec", GP_COLOR])
-PRO_CMAP = LinearSegmentedColormap.from_list("pro_density", ["#e6eef8", PRO_COLOR])
+GP_COLOR = "#4c3a8e"
+PRO_COLOR = "#e8974e"
+GP_CMAP = LinearSegmentedColormap.from_list("gp_density", ["#eeeaf7", GP_COLOR])
+PRO_CMAP = LinearSegmentedColormap.from_list("pro_density", ["#fbecdc", PRO_COLOR])
 PRO_ALPHA = 0.7
 
 plt.rcParams.update(
@@ -97,11 +97,12 @@ _SOURCES = [
         make_heteroskedastic_instance,
         plot_heteroskedastic_case,
         {
-            "num_regions": 2,
+            "num_regions": 1,
             "min_width": 0.3,
             "max_width": 0.8,
             "ell_range": (0.5, 1.0),
-            "noise_std_frac": 0.15,
+            "noise_std_frac": 0.1,
+            "amplitude_frac": 0.9,
         },
         {"show_curve": False, "show_noise_bands": False, "show_train": False},
         instance_index=4,
@@ -136,7 +137,7 @@ _SOURCES = [
 
 
 _DENSITY_DEFAULTS = {
-    "num_bands": 3,
+    "num_bands": 2,
     "credible_k": 5.0,
     "num_y": 150,
     "min_density_frac": 0.03,
@@ -178,16 +179,6 @@ def _masked_density_bands(
     ax.contourf(
         x_grid, y_mesh, density, levels=levels, cmap=cmap, alpha=alpha, extend="neither"
     )
-    if edge_color is not None:
-        ax.contour(
-            x_grid,
-            y_mesh,
-            density,
-            levels=levels,
-            colors=edge_color,
-            linewidths=0.6,
-            alpha=alpha,
-        )
     ax.plot(
         x_sorted, mean_sorted, color=edge_color or cmap(1.0), linewidth=1.4, alpha=alpha
     )
