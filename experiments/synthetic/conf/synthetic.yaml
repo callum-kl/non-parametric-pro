@@ -14,6 +14,7 @@ kernel:
   lengthscale: 0.3
 
 pro:
+  algorithm: replica_gibbs # 'ula' or 'replica_gibbs'
   step_size: 0.0001
   alpha: 1.0
   sigma_init: 0.3
@@ -21,14 +22,14 @@ pro:
   sigma_max: 1.0
   num_particles: 32
   val_fraction: 0.25
-  num_adapt_steps: 10000
-  warmup_steps: 1000
-  sigma_adapt_steps: 300
-  kernel_adapt_steps: 150
+  num_adapt_steps: 200
+  warmup_steps: 10
+  sigma_adapt_steps: 100
+  kernel_adapt_steps: 100
   sigma_lr: 0.1
   kernel_lr: 0.05
-  num_sample_steps: 30000
-  burn_fraction: 0.9
+  num_sample_steps: 100
+  burn_fraction: 0.5
   thin: 10
 
 panel:

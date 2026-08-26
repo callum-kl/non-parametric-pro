@@ -42,7 +42,7 @@ GP_COLOR = "#3f8f5f"
 PRO_COLOR = "#3a76c4"
 GP_CMAP = LinearSegmentedColormap.from_list("gp_density", ["#e8f4ec", GP_COLOR])
 PRO_DRAW_ALPHA = 0.7
-NUM_PRO_DRAWS = 10
+NUM_PRO_DRAWS = 100
 
 plt.rcParams.update(
     {
@@ -89,7 +89,7 @@ _SOURCES = [
             "color_by_outlier": True,
             "outlier_subsample_frac": 0.3,
         },
-        instance_index=5,
+        instance_index=16,
     ),
     SourceSpec(
         "heteroskedastic",

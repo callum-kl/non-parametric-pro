@@ -10,14 +10,12 @@ import matplotlib
 
 matplotlib.use("Agg")
 
-import jax.numpy as jnp
 import jax.random as jr
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
-from synthetic import FitResult, fit_gp, fit_pro
+from synthetic import fit_gp, fit_pro
 
 from non_parametric_pro.data.synthetic.block_outliers import (
     make_block_outlier_instance,
@@ -38,11 +36,12 @@ from non_parametric_pro.data.synthetic.well_specified import (
 
 FIGURES_DIR = Path(__file__).resolve().parents[1] / "figures"
 
-GP_COLOR = "#4c3a8e"
-PRO_COLOR = "#e8974e"
-GP_CMAP = LinearSegmentedColormap.from_list("gp_density", ["#eeeaf7", GP_COLOR])
-PRO_CMAP = LinearSegmentedColormap.from_list("pro_density", ["#fbecdc", PRO_COLOR])
-PRO_ALPHA = 0.7
+GP_COLOR = "#e8974e"
+PRO_COLOR = "#2ca58d"
+GP_LABEL = "Bayes GP"
+PRO_LABEL = "PrO-GP"
+Z_95 = 1.96
+DATA_ALPHA = 0.35
 
 plt.rcParams.update(
     {
@@ -67,6 +66,7 @@ class SourceSpec(NamedTuple):
     kwargs: dict
     plot_kwargs: dict
     instance_index: int
+    curve_kwarg: str = "show_curve"
 
 
 _SOURCES = [
@@ -84,12 +84,11 @@ _SOURCES = [
             "noise_std_frac": 0.15,
         },
         {
-            "show_curve": False,
             "show_train": False,
             "color_by_outlier": True,
             "outlier_subsample_frac": 0.3,
         },
-        instance_index=3,
+        instance_index=16,
     ),
     SourceSpec(
         "heteroskedastic",
@@ -97,15 +96,16 @@ _SOURCES = [
         make_heteroskedastic_instance,
         plot_heteroskedastic_case,
         {
-            "num_regions": 1,
+            "num_regions": 2,
             "min_width": 0.3,
             "max_width": 0.8,
             "ell_range": (0.5, 1.0),
-            "noise_std_frac": 0.1,
-            "amplitude_frac": 0.9,
+            "noise_std_frac": 0.35,
+            "amplitude_frac": 1.5,
+            "n": 400,
         },
-        {"show_curve": False, "show_noise_bands": False, "show_train": False},
-        instance_index=4,
+        {"show_noise_bands": False, "show_train": False},
+        instance_index=0,
     ),
     SourceSpec(
         "multimodal",
@@ -119,10 +119,11 @@ _SOURCES = [
             "max_width": 0.8,
             "ell_range": (0.5, 1.0),
             "noise_std_frac": 0.1,
-            "n": 300,
+            "n": 400,
         },
-        {"show_curves": False, "color_by_branch": False, "show_train": False},
+        {"color_by_branch": False, "show_train": False},
         instance_index=3,
+        curve_kwarg="show_curves",
     ),
     SourceSpec(
         "well_specified",
@@ -130,150 +131,163 @@ _SOURCES = [
         make_well_specified_instance,
         plot_well_specified_case,
         {"train_fraction": 0.7, "noise_std_frac": 0.2},
-        {"show_curve": False, "show_train": False},
+        {"show_train": False},
         instance_index=2,
     ),
 ]
 
 
-_DENSITY_DEFAULTS = {
-    "num_bands": 2,
-    "credible_k": 5.0,
-    "num_y": 150,
-    "min_density_frac": 0.03,
-}
+def _style_box(ax, *, grid: bool = False) -> None:
+    for spine in ax.spines.values():
+        spine.set_visible(True)
+        spine.set_color("#333333")
+        spine.set_linewidth(0.9)
+    ax.grid(grid)
+    ax.tick_params(labelsize=9, length=3)
 
 
-def _masked_density_bands(
+def _hide_ticks(ax, *, x: bool = False, y: bool = False) -> None:
+    if x:
+        ax.tick_params(axis="x", bottom=False, labelbottom=False)
+    if y:
+        ax.tick_params(axis="y", left=False, labelleft=False)
+
+
+def _gp_band(ax, x_sorted, mean_sorted, std_sorted) -> None:
+    ax.fill_between(
+        x_sorted,
+        mean_sorted - Z_95 * std_sorted,
+        mean_sorted + Z_95 * std_sorted,
+        color=GP_COLOR,
+        alpha=0.3,
+        linewidth=0,
+    )
+    ax.plot(x_sorted, mean_sorted, color=GP_COLOR, linewidth=1.6)
+
+
+def _pro_density_bands(
     ax,
     x_sorted,
     mean_sorted,
     std_sorted,
-    density_fn,
+    particle_predictions_sorted,
+    sigma_eff_sorted,
     *,
-    cmap,
-    num_bands,
-    credible_k,
-    num_y,
-    min_density_frac,
-    alpha=1.0,
-    edge_color=None,
+    credible_k: float = 5.0,
+    num_y: int = 150,
+    outer_frac: float = 0.05,
+    inner_frac: float = 0.3,
 ) -> None:
-    y_lo = float(jnp.min(mean_sorted - credible_k * std_sorted))
-    y_hi = float(jnp.max(mean_sorted + credible_k * std_sorted))
-    y_grid = jnp.linspace(y_lo, y_hi, num_y)
+    """
+    Shade the actual predictive density surface (a per-x mixture of Gaussians, one per
+    particle) rather than a per-x quantile envelope -- a quantile-based fill_between
+    always draws one contiguous band and so can't show genuine multimodality (e.g. two
+    separate branches with a low-density gap between them); contourf over the real 2D
+    density can, since each level set is free to split into disconnected regions.
+    """
+    y_lo = float(np.min(mean_sorted - credible_k * std_sorted))
+    y_hi = float(np.max(mean_sorted + credible_k * std_sorted))
+    y_grid = np.linspace(y_lo, y_hi, num_y)
 
-    density = density_fn(y_grid)
-    in_band = (
-        jnp.abs(y_grid[None, :] - mean_sorted[:, None])
-        <= credible_k * std_sorted[:, None]
+    z = (y_grid[None, :, None] - particle_predictions_sorted[:, None, :]) / (
+        sigma_eff_sorted[:, None, None]
     )
-    density = np.asarray(jnp.where(in_band, density, jnp.nan))
+    normal_pdf = np.exp(-0.5 * z**2) / (sigma_eff_sorted[:, None, None] * np.sqrt(2 * np.pi))
+    density = normal_pdf.mean(axis=2)  # (N_x, num_y)
 
-    peak = np.nanmax(density)
-    levels = np.linspace(min_density_frac, 1.0, num_bands) * peak
-
-    x_grid, y_mesh = np.meshgrid(
-        np.asarray(x_sorted), np.asarray(y_grid), indexing="ij"
-    )
-    ax.contourf(
-        x_grid, y_mesh, density, levels=levels, cmap=cmap, alpha=alpha, extend="neither"
-    )
-    ax.plot(
-        x_sorted, mean_sorted, color=edge_color or cmap(1.0), linewidth=1.4, alpha=alpha
-    )
-
-
-def _overlay_gp_density(
-    ax, x_test, result: FitResult, *, cmap, alpha=1.0, **density_kwargs
-) -> None:
-    order = jnp.argsort(x_test[:, 0])
-    x_sorted = x_test[order, 0]
-    mean_sorted, std_sorted = result.mean[order], result.std[order]
-
-    def density_fn(y_grid):
-        z = (y_grid[None, :] - mean_sorted[:, None]) / std_sorted[:, None]
-        return jnp.exp(-0.5 * z**2) / (std_sorted[:, None] * jnp.sqrt(2 * jnp.pi))
-
-    _masked_density_bands(
-        ax,
-        x_sorted,
-        mean_sorted,
-        std_sorted,
-        density_fn,
-        cmap=cmap,
-        alpha=alpha,
-        edge_color=GP_COLOR,
-        **{**_DENSITY_DEFAULTS, **density_kwargs},
-    )
-
-
-def _overlay_pro_density(
-    ax, x_test, result: FitResult, *, cmap, alpha=1.0, **density_kwargs
-) -> None:
-    order = jnp.argsort(x_test[:, 0])
-    x_sorted = x_test[order, 0]
-    mean_sorted = result.mean[order]
-    std_sorted = result.std[order]
-    particle_predictions_sorted = result.particle_predictions[order]  # (N_x, J)
-    sigma_eff_sorted = result.sigma_eff[order]  # (N_x,)
-
-    def density_fn(y_grid):
-        z = (
-            y_grid[None, :, None] - particle_predictions_sorted[:, None, :]
-        ) / sigma_eff_sorted[:, None, None]
-        normal_pdf = jnp.exp(-0.5 * z**2) / (
-            sigma_eff_sorted[:, None, None] * jnp.sqrt(2 * jnp.pi)
+    peak = density.max()
+    x_grid, y_mesh = np.meshgrid(x_sorted, y_grid, indexing="ij")
+    for frac, alpha in ((outer_frac, 0.25), (inner_frac, 0.45)):
+        ax.contourf(
+            x_grid,
+            y_mesh,
+            density,
+            levels=[frac * peak, np.inf],
+            colors=[PRO_COLOR],
+            alpha=alpha,
         )
-        return jnp.mean(normal_pdf, axis=2)
-
-    _masked_density_bands(
-        ax,
-        x_sorted,
-        mean_sorted,
-        std_sorted,
-        density_fn,
-        cmap=cmap,
-        alpha=alpha,
-        edge_color=PRO_COLOR,
-        **{**_DENSITY_DEFAULTS, **density_kwargs},
-    )
 
 
-def plot_example_panel(ax, spec: SourceSpec, instance_key) -> None:
-    """Draw one dataset's fit-overlay panel (data + GP/PRO density bands) into `ax`."""
+def _plot_fit_panel(ax, spec: SourceSpec, instance_key, *, method: str, algorithm: str) -> None:
+    """Draw one dataset's single-method fit panel (truth + data + GP or PrO band) into `ax`."""
     data = spec.make_instance(instance_key, **spec.kwargs)
-    spec.plot_case(ax, data, **spec.plot_kwargs)
+    plot_kwargs = {**spec.plot_kwargs, spec.curve_kwarg: True}
+    spec.plot_case(ax, data, **plot_kwargs)
+    for line in ax.lines:
+        line.set_color("black")
+        line.set_linestyle("--")
+        line.set_linewidth(1.3)
+        line.set_alpha(0.7)
+    if ax.collections:
+        ax.collections[0].set_alpha(DATA_ALPHA)
     kernel_type = getattr(data, "kernel_type", "rbf")
 
-    gp_result = fit_gp(data, kernel_type=kernel_type)
-    _overlay_gp_density(ax, data.x_test, gp_result, cmap=GP_CMAP)
+    order = np.argsort(data.x_test[:, 0])
+    x_sorted = np.asarray(data.x_test[order, 0])
+    gp_key, fit_key = jr.split(instance_key)
 
-    fit_key, _ = jr.split(instance_key)
-    pro_result = fit_pro(data, fit_key, kernel_type=kernel_type)
-    _overlay_pro_density(ax, data.x_test, pro_result, cmap=PRO_CMAP, alpha=PRO_ALPHA)
+    if method == "gp":
+        result = fit_gp(data, gp_key, kernel_type=kernel_type)
+        _gp_band(
+            ax,
+            x_sorted,
+            np.asarray(result.mean)[order],
+            np.asarray(result.std)[order],
+        )
+    else:
+        result = fit_pro(data, fit_key, kernel_type=kernel_type, algorithm=algorithm)
+        _pro_density_bands(
+            ax,
+            x_sorted,
+            np.asarray(result.mean)[order],
+            np.asarray(result.std)[order],
+            np.asarray(result.particle_predictions)[order],
+            np.asarray(result.sigma_eff)[order],
+        )
 
-    ax.set_title(spec.title, fontsize=13)
-    ax.set_xticks([])
-    ax.set_yticks([])
+    _style_box(ax)
 
 
-def plot_examples(
-    axes,
+def plot_fit_grid(
+    fig,
+    gp_axes,
+    pro_axes,
     seed: int,
     num_instances: int,
     index_overrides: dict[str, int] | None = None,
+    *,
+    algorithm: str = "replica_gibbs",
+    sources: list[SourceSpec] = _SOURCES,
 ) -> None:
+    """Fill `gp_axes`/`pro_axes` (each a flat list matching `sources`, one axis per
+    dataset) with the Bayes-GP row and PrO-GP row of a reference-style fit grid."""
     index_overrides = index_overrides or {}
     keys = jr.split(jr.PRNGKey(seed), num_instances)
-    for ax, spec in zip(axes, _SOURCES, strict=True):
+    for col, (ax, spec) in enumerate(zip(gp_axes, sources, strict=True)):
         index = index_overrides.get(spec.name, spec.instance_index)
-        plot_example_panel(ax, spec, keys[index])
+        _plot_fit_panel(ax, spec, keys[index], method="gp", algorithm=algorithm)
+        ax.set_title(GP_LABEL, fontsize=16, color=GP_COLOR)
+        pos = ax.get_position()
+        fig.text(
+            (pos.x0 + pos.x1) / 2,
+            pos.y1 + 0.075,
+            spec.title,
+            ha="center",
+            fontsize=16,
+            color="black",
+        )
+        _hide_ticks(ax, x=True, y=col > 0)
+    for col, (ax, spec) in enumerate(zip(pro_axes, sources, strict=True)):
+        index = index_overrides.get(spec.name, spec.instance_index)
+        _plot_fit_panel(ax, spec, keys[index], method="pro", algorithm=algorithm)
+        ax.set_title(PRO_LABEL, fontsize=16, color=PRO_COLOR)
+        _hide_ticks(ax, y=col > 0)
 
 
-LEGEND_HANDLES = [
-    Patch(color=GP_COLOR, label="Standard GP"),
-    Patch(color=PRO_COLOR, label="PrO-GP"),
+TOP_LEGEND_HANDLES = [
+    Line2D(
+        [0], [0], color="black", linestyle="--", linewidth=1.3, alpha=0.7, label="truth"
+    ),
     Line2D(
         [0],
         [0],
@@ -281,8 +295,10 @@ LEGEND_HANDLES = [
         color="black",
         linestyle="None",
         markersize=6,
-        label="Test data",
+        label="data",
     ),
+    Patch(facecolor=GP_COLOR, alpha=0.3, label=f"{GP_LABEL} (95% central)"),
+    Patch(facecolor=PRO_COLOR, alpha=0.4, label=f"{PRO_LABEL} (50%/95% regions)"),
     Line2D(
         [0],
         [0],
@@ -291,19 +307,37 @@ LEGEND_HANDLES = [
         linestyle="None",
         markersize=8,
         markeredgewidth=1.5,
-        label="Outliers",
+        label="outliers",
     ),
 ]
 
 
-def main(seed: int, num_instances: int, index_overrides: dict[str, int]) -> None:
-    fig, axes = plt.subplots(2, 2, figsize=(12, 9))
-    plot_examples(axes.flat, seed, num_instances, index_overrides)
+def main(
+    seed: int,
+    num_instances: int,
+    index_overrides: dict[str, int],
+    *,
+    algorithm: str = "replica_gibbs",
+) -> None:
+    n = len(_SOURCES)
+    fig = plt.figure(figsize=(6.5 * n, 8.5))
+    gs = fig.add_gridspec(2, n, top=0.78, bottom=0.08, hspace=0.4, wspace=0.08)
+    gp_axes = [fig.add_subplot(gs[0, j]) for j in range(n)]
+    pro_axes = [fig.add_subplot(gs[1, j]) for j in range(n)]
+
+    plot_fit_grid(
+        fig, gp_axes, pro_axes, seed, num_instances, index_overrides, algorithm=algorithm
+    )
 
     fig.legend(
-        handles=LEGEND_HANDLES, loc="lower center", ncol=4, fontsize=10, frameon=False
+        handles=TOP_LEGEND_HANDLES,
+        loc="upper center",
+        bbox_to_anchor=(0.5, 1.0),
+        ncol=5,
+        fontsize=13,
+        frameon=False,
     )
-    fig.tight_layout(rect=(0, 0.04, 1, 1))
+
     out_path = FIGURES_DIR / "example_grid.png"
     fig.savefig(out_path, dpi=150)
     print(f"Saved to {out_path}")
@@ -313,6 +347,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--seed", type=int, default=2421)
     parser.add_argument("--num-instances", type=int, default=20)
+    parser.add_argument(
+        "--algorithm",
+        default="replica_gibbs",
+        choices=["ula", "replica_gibbs"],
+        help="PRO sampler to use for the PrO-GP fits (default: replica_gibbs).",
+    )
     for _spec in _SOURCES:
         parser.add_argument(
             f"--{_spec.name.replace('_', '-')}-index",
@@ -327,4 +367,4 @@ if __name__ == "__main__":
         for spec in _SOURCES
         if getattr(args, f"{spec.name}_index") is not None
     }
-    main(args.seed, args.num_instances, index_overrides)
+    main(args.seed, args.num_instances, index_overrides, algorithm=args.algorithm)

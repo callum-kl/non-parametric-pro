@@ -15,7 +15,7 @@ import paramax as px
 from omegaconf import DictConfig, OmegaConf
 from util import load_gp_state
 
-from non_parametric_pro import ula
+from non_parametric_pro import replica_gibbs, ula
 from non_parametric_pro.data.uci.uci import load_uci_regression_dataset
 from non_parametric_pro.density import ProParameters, pro_logdensity_fn
 from non_parametric_pro.inducing import (
@@ -24,6 +24,7 @@ from non_parametric_pro.inducing import (
     compute_inducing_basis,
 )
 from non_parametric_pro.parameter_adaptation import parameter_adaptation
+from non_parametric_pro.replica_gibbs import parametric_replica_gibbs, validate_r
 from non_parametric_pro.sgld import parametric_sgld, sgld
 from non_parametric_pro.ula import parametric_ula
 from non_parametric_pro.util import (
@@ -52,12 +53,26 @@ def _row_selectable_basis(cfg: DictConfig, inducing_basis, x_train) -> InducingB
     return inducing_basis if cfg.inducing else PointInducingBasis(z=x_train)
 
 
+def _check_replica_gibbs_config(cfg: DictConfig) -> None:
+    if cfg.inducing:
+        msg = (
+            "algorithm='replica_gibbs' only supports the exact case (inducing=false); "
+            "genuine sparse inducing points (M<N) introduce a Nystrom residual the "
+            "conjugate Gaussian block doesn't account for."
+        )
+        raise ValueError(msg)
+    validate_r(cfg.num_particles, cfg.alpha)
+
+
 def _adaptation_algorithm(cfg: DictConfig):
     if cfg.algorithm == "ula":
         return ula
     if cfg.algorithm == "sgld":
         return sgld(batch_size=cfg.sgld_batch_size)
-    msg = f"Unknown algorithm={cfg.algorithm!r}; expected 'ula' or 'sgld'."
+    if cfg.algorithm == "replica_gibbs":
+        _check_replica_gibbs_config(cfg)
+        return replica_gibbs
+    msg = f"Unknown algorithm={cfg.algorithm!r}; expected 'ula', 'sgld', or 'replica_gibbs'."
     raise ValueError(msg)
 
 
@@ -68,7 +83,10 @@ def _sampling_algorithm(cfg: DictConfig, pro_params: ProParameters):
         return parametric_sgld(
             pro_logdensity_fn, pro_params, batch_size=cfg.sgld_batch_size
         )
-    msg = f"Unknown algorithm={cfg.algorithm!r}; expected 'ula' or 'sgld'."
+    if cfg.algorithm == "replica_gibbs":
+        _check_replica_gibbs_config(cfg)
+        return parametric_replica_gibbs(pro_logdensity_fn, pro_params)
+    msg = f"Unknown algorithm={cfg.algorithm!r}; expected 'ula', 'sgld', or 'replica_gibbs'."
     raise ValueError(msg)
 
 
@@ -76,6 +94,9 @@ def _sampling_algorithm(cfg: DictConfig, pro_params: ProParameters):
 def main(cfg: DictConfig) -> None:
     mode = "inducing" if cfg.inducing else "exact GP"
     log.info("PRO (%s): dataset=%s split=%d", mode, cfg.dataset, cfg.split)
+
+    if cfg.algorithm == "replica_gibbs":
+        _check_replica_gibbs_config(cfg)
 
     key = jr.PRNGKey(cfg.seed)
     out_dir = pro_out_dir(cfg)

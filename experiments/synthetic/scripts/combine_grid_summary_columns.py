@@ -8,19 +8,23 @@ import matplotlib
 
 matplotlib.use("Agg")
 
-import jax.random as jr
 import matplotlib.pyplot as plt
-import numpy as np
 from example_grid import _SOURCES as EXAMPLE_SOURCES
+from example_grid import (
+    GP_COLOR,
+    PRO_COLOR,
+    TOP_LEGEND_HANDLES,
+    _hide_ticks,
+    _style_box,
+    plot_fit_grid,
+)
 from matplotlib.lines import Line2D
-from matplotlib.patches import Patch
 from plot_summary import (
     DIVIDER_COLOR,
     SOURCES,
     load_summary,
     plot_summary_row,
 )
-from synthetic import fit_gp, fit_pro
 
 FIGURES_DIR = Path(__file__).resolve().parents[1] / "figures"
 
@@ -32,44 +36,7 @@ if _EXAMPLE_ORDER != SOURCES:
     )
     raise ValueError(msg)
 
-GP_COLOR = "#e8974e"
-PRO_COLOR = "#2ca58d"
 SUMMARY_COLORS = {"standard_gp": GP_COLOR, "pro_gp": PRO_COLOR}
-
-GP_LABEL = "Bayes GP"
-PRO_LABEL = "PrO-GP"
-NUM_QUANTILE_DRAWS = 200
-Z_90 = 1.6448536269514722
-DATA_ALPHA = 0.35
-
-_CURVE_KWARG_NAME = {"multimodal": "show_curves"}
-
-TOP_LEGEND_HANDLES = [
-    Line2D(
-        [0], [0], color="black", linestyle="--", linewidth=1.3, alpha=0.7, label="truth"
-    ),
-    Line2D(
-        [0],
-        [0],
-        marker="o",
-        color="black",
-        linestyle="None",
-        markersize=6,
-        label="data",
-    ),
-    Patch(facecolor=GP_COLOR, alpha=0.3, label=f"{GP_LABEL} (90% central)"),
-    Patch(facecolor=PRO_COLOR, alpha=0.4, label=f"{PRO_LABEL} (50%/90% regions)"),
-    Line2D(
-        [0],
-        [0],
-        marker="x",
-        color="maroon",
-        linestyle="None",
-        markersize=8,
-        markeredgewidth=1.5,
-        label="outliers",
-    ),
-]
 
 TITLE_FONTSIZE = 16
 LEGEND_FONTSIZE = 13
@@ -80,106 +47,6 @@ FIT_COL_WIDTH = (FIT_RIGHT - FIT_LEFT) / FIT_NCOLS
 SUMMARY_LEFT = FIT_RIGHT + 0.035
 SUMMARY_RIGHT = SUMMARY_LEFT + FIT_COL_WIDTH
 GRID_TOP, GRID_BOTTOM = 0.80, 0.08
-
-
-def _style_box(ax, *, grid: bool = False) -> None:
-    for spine in ax.spines.values():
-        spine.set_visible(True)
-        spine.set_color("#333333")
-        spine.set_linewidth(0.9)
-    ax.grid(grid)
-    ax.tick_params(labelsize=AXIS_FONTSIZE - 3, length=3)
-
-
-def _hide_ticks(ax, *, x: bool = False, y: bool = False) -> None:
-    if x:
-        ax.tick_params(axis="x", bottom=False, labelbottom=False)
-    if y:
-        ax.tick_params(axis="y", left=False, labelleft=False)
-
-
-def _gp_band(ax, x_sorted, mean_sorted, std_sorted) -> None:
-    ax.fill_between(
-        x_sorted,
-        mean_sorted - Z_90 * std_sorted,
-        mean_sorted + Z_90 * std_sorted,
-        color=GP_COLOR,
-        alpha=0.3,
-        linewidth=0,
-    )
-    ax.plot(x_sorted, mean_sorted, color=GP_COLOR, linewidth=1.6)
-
-
-def _pro_bands(ax, x_sorted, draws_sorted) -> None:
-    lo90, hi90 = np.quantile(draws_sorted, [0.05, 0.95], axis=1)
-    lo50, hi50 = np.quantile(draws_sorted, [0.25, 0.75], axis=1)
-    ax.fill_between(x_sorted, lo90, hi90, color=PRO_COLOR, alpha=0.25, linewidth=0)
-    ax.fill_between(x_sorted, lo50, hi50, color=PRO_COLOR, alpha=0.45, linewidth=0)
-
-
-def _plot_fit_panel(ax, spec, instance_key, *, method: str) -> None:
-    data = spec.make_instance(instance_key, **spec.kwargs)
-    curve_kwarg = _CURVE_KWARG_NAME.get(spec.name, "show_curve")
-    plot_kwargs = {**spec.plot_kwargs, curve_kwarg: True}
-    spec.plot_case(ax, data, **plot_kwargs)
-    for line in ax.lines:
-        line.set_color("black")
-        line.set_linestyle("--")
-        line.set_linewidth(1.3)
-        line.set_alpha(0.7)
-    ax.collections[0].set_alpha(DATA_ALPHA)
-    kernel_type = getattr(data, "kernel_type", "rbf")
-
-    order = np.argsort(data.x_test[:, 0])
-    x_sorted = np.asarray(data.x_test[order, 0])
-    gp_key, fit_key = jr.split(instance_key)
-
-    if method == "gp":
-        result = fit_gp(data, gp_key, kernel_type=kernel_type)
-        _gp_band(
-            ax,
-            x_sorted,
-            np.asarray(result.mean)[order],
-            np.asarray(result.std)[order],
-        )
-    else:
-        result = fit_pro(
-            data, fit_key, kernel_type=kernel_type, num_function_draws=NUM_QUANTILE_DRAWS
-        )
-        _pro_bands(ax, x_sorted, np.asarray(result.function_draws)[order])
-
-    _style_box(ax)
-
-
-def plot_fit_grid(
-    fig,
-    gp_axes,
-    pro_axes,
-    seed: int,
-    num_instances: int,
-    index_overrides: dict[str, int] | None = None,
-) -> None:
-    index_overrides = index_overrides or {}
-    keys = jr.split(jr.PRNGKey(seed), num_instances)
-    for col, (ax, spec) in enumerate(zip(gp_axes, EXAMPLE_SOURCES, strict=True)):
-        index = index_overrides.get(spec.name, spec.instance_index)
-        _plot_fit_panel(ax, spec, keys[index], method="gp")
-        ax.set_title(GP_LABEL, fontsize=TITLE_FONTSIZE, color=GP_COLOR)
-        pos = ax.get_position()
-        fig.text(
-            (pos.x0 + pos.x1) / 2,
-            pos.y1 + 0.075,
-            spec.title,
-            ha="center",
-            fontsize=TITLE_FONTSIZE,
-            color="black",
-        )
-        _hide_ticks(ax, x=True, y=col > 0)
-    for col, (ax, spec) in enumerate(zip(pro_axes, EXAMPLE_SOURCES, strict=True)):
-        index = index_overrides.get(spec.name, spec.instance_index)
-        _plot_fit_panel(ax, spec, keys[index], method="pro")
-        ax.set_title(PRO_LABEL, fontsize=TITLE_FONTSIZE, color=PRO_COLOR)
-        _hide_ticks(ax, y=col > 0)
 
 
 def _add_dividers(fig, fit_axes, summary_axes) -> None:
@@ -193,7 +60,13 @@ def _add_dividers(fig, fit_axes, summary_axes) -> None:
     fig.add_artist(Line2D([v_x, v_x], [bottom, top], color=DIVIDER_COLOR, linewidth=1.2))
 
 
-def main(seed: int, num_instances: int, index_overrides: dict[str, int]) -> None:
+def main(
+    seed: int,
+    num_instances: int,
+    index_overrides: dict[str, int],
+    *,
+    algorithm: str = "replica_gibbs",
+) -> None:
     plt.rcParams.update({"font.size": AXIS_FONTSIZE})
 
     fig = plt.figure(figsize=(26, 8.5))
@@ -220,7 +93,9 @@ def main(seed: int, num_instances: int, index_overrides: dict[str, int]) -> None
     pro_axes = [fig.add_subplot(fit_gs[1, j]) for j in range(4)]
     summary_axes = [fig.add_subplot(summary_gs[i, 0]) for i in range(4)]
 
-    plot_fit_grid(fig, gp_axes, pro_axes, seed, num_instances, index_overrides)
+    plot_fit_grid(
+        fig, gp_axes, pro_axes, seed, num_instances, index_overrides, algorithm=algorithm
+    )
 
     records = load_summary()
     plot_summary_row(summary_axes, records, SOURCES, colors=SUMMARY_COLORS)
@@ -260,6 +135,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--seed", type=int, default=2421)
     parser.add_argument("--num-instances", type=int, default=20)
+    parser.add_argument(
+        "--algorithm",
+        default="replica_gibbs",
+        choices=["ula", "replica_gibbs"],
+        help="PRO sampler to use for the PrO-GP fits (default: replica_gibbs).",
+    )
     for _spec in EXAMPLE_SOURCES:
         parser.add_argument(
             f"--{_spec.name.replace('_', '-')}-index",
@@ -274,4 +155,4 @@ if __name__ == "__main__":
         for spec in EXAMPLE_SOURCES
         if getattr(args, f"{spec.name}_index") is not None
     }
-    main(args.seed, args.num_instances, index_overrides)
+    main(args.seed, args.num_instances, index_overrides, algorithm=args.algorithm)

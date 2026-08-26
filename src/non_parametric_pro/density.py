@@ -4,6 +4,7 @@ import jax
 import jax.numpy as jnp
 import paramax
 from jax.scipy.special import logsumexp
+from jax.random import multinomial
 
 
 class ProParameters(NamedTuple):
@@ -78,6 +79,18 @@ def pro_score_fn(
     log_marginal = jnp.maximum(log_marginal, jnp.log(parameters.tolerance))
     score = num_particles * parameters.alpha * scale * jnp.sum(log_marginal)
     return score
+
+
+def pro_replica_fn(
+    u: jax.Array,
+    parameters: ProParameters,
+) -> jax.Array:
+    sigma = _effective_sigma(parameters)
+    log_density = normal_logpdf(parameters.y, u, sigma)
+    log_marginal = logsumexp(log_density, axis=1)
+    log_weights = log_density - log_marginal[:, None]
+    
+    return log_weights
 
 
 def predictive_score(
