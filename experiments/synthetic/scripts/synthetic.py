@@ -38,7 +38,6 @@ from non_parametric_pro.data.synthetic.heteroskedastic import (
 from non_parametric_pro.data.synthetic.multimodal import (
     MULTIMODAL_KWARGS,
     make_multimodal_instance,
-    multimodal_region_mask,
     plot_multimodal_case,
 )
 from non_parametric_pro.data.synthetic.well_specified import (
@@ -204,7 +203,7 @@ def fit_pro(
     sigma_init=0.2,
     sigma_min=0.1,
     sigma_max=1.0,
-    num_particles=50,
+    num_particles=32,
     val_fraction=0.25,
     num_adapt_steps=200,
     warmup_steps=20,
@@ -389,14 +388,9 @@ def _heteroskedastic_region_mask_fn(data):
     return heteroskedastic_region_mask(data.x_test[:, 0], data.regions)
 
 
-def _multimodal_region_mask_fn(data):
-    return multimodal_region_mask(data.x_test[:, 0], data.regions)
-
-
 _REGION_MASK_FNS = {
     "block_outliers": _block_outliers_region_mask_fn,
     "heteroskedastic": _heteroskedastic_region_mask_fn,
-    "multimodal": _multimodal_region_mask_fn,
 }
 
 

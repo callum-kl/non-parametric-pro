@@ -112,16 +112,13 @@ _SOURCES = [
         make_multimodal_instance,
         plot_multimodal_case,
         {
-            "num_regions": 1,
             "mix_prob": 0.5,
-            "min_width": 0.3,
-            "max_width": 0.8,
             "ell_range": (0.5, 1.0),
             "noise_std_frac": 0.1,
             "n": 300,
         },
         {"show_curves": False, "color_by_branch": False, "show_train": False},
-        instance_index=3,
+        instance_index=16,
     ),
     SourceSpec(
         "well_specified",

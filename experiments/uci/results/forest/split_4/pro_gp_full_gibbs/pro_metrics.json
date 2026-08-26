@@ -1,0 +1,8 @@
+{
+  "dataset": "forest",
+  "split": 4,
+  "inducing": false,
+  "gp_sigma": 0.39950685697774047,
+  "pro_sigma": 0.48234151298591854,
+  "pro_nlpd": 1.407216832220644
+}

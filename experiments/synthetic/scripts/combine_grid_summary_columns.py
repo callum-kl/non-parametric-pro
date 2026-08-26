@@ -41,10 +41,15 @@ SUMMARY_COLORS = {"standard_gp": GP_COLOR, "pro_gp": PRO_COLOR}
 TITLE_FONTSIZE = 16
 LEGEND_FONTSIZE = 13
 AXIS_FONTSIZE = 13
-FIT_LEFT, FIT_RIGHT = 0.03, 0.68
+FIT_LEFT = 0.03
+RIGHT_MARGIN = 0.02
+GAP = 0.035
 FIT_NCOLS = 4
-FIT_COL_WIDTH = (FIT_RIGHT - FIT_LEFT) / FIT_NCOLS
-SUMMARY_LEFT = FIT_RIGHT + 0.035
+# Fit columns and the summary column share one width, filling [FIT_LEFT, 1 - RIGHT_MARGIN]
+# with `GAP` between the fit block and the summary block.
+FIT_COL_WIDTH = (1.0 - RIGHT_MARGIN - FIT_LEFT - GAP) / (FIT_NCOLS + 1)
+FIT_RIGHT = FIT_LEFT + FIT_NCOLS * FIT_COL_WIDTH
+SUMMARY_LEFT = FIT_RIGHT + GAP
 SUMMARY_RIGHT = SUMMARY_LEFT + FIT_COL_WIDTH
 GRID_TOP, GRID_BOTTOM = 0.80, 0.08
 
@@ -77,7 +82,7 @@ def main(
         right=FIT_RIGHT,
         top=GRID_TOP,
         bottom=GRID_BOTTOM,
-        hspace=0.4,
+        hspace=0.15,
         wspace=0.08,
     )
     summary_gs = fig.add_gridspec(

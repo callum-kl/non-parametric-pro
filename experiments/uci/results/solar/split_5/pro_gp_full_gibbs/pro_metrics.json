@@ -1,0 +1,8 @@
+{
+  "dataset": "solar",
+  "split": 5,
+  "inducing": false,
+  "gp_sigma": 0.9282092834079124,
+  "pro_sigma": 0.6778875591081129,
+  "pro_nlpd": 1.2512478278693038
+}

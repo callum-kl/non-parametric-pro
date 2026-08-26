@@ -113,16 +113,13 @@ _SOURCES = [
         make_multimodal_instance,
         plot_multimodal_case,
         {
-            "num_regions": 1,
             "mix_prob": 0.5,
-            "min_width": 0.3,
-            "max_width": 0.8,
             "ell_range": (0.5, 1.0),
-            "noise_std_frac": 0.1,
+            "noise_std_frac": 0.2,
             "n": 400,
         },
         {"color_by_branch": False, "show_train": False},
-        instance_index=3,
+        instance_index=10,
         curve_kwarg="show_curves",
     ),
     SourceSpec(
@@ -137,12 +134,12 @@ _SOURCES = [
 ]
 
 
-def _style_box(ax, *, grid: bool = False) -> None:
+def _style_box(ax, *, grid: bool = False, grid_axis: str = "both") -> None:
     for spine in ax.spines.values():
         spine.set_visible(True)
         spine.set_color("#333333")
         spine.set_linewidth(0.9)
-    ax.grid(grid)
+    ax.grid(grid, axis=grid_axis)
     ax.tick_params(labelsize=9, length=3)
 
 
@@ -245,7 +242,7 @@ def _plot_fit_panel(ax, spec: SourceSpec, instance_key, *, method: str, algorith
             np.asarray(result.sigma_eff)[order],
         )
 
-    _style_box(ax)
+    _style_box(ax, grid=True, grid_axis="y")
 
 
 def plot_fit_grid(
@@ -282,6 +279,12 @@ def plot_fit_grid(
         _plot_fit_panel(ax, spec, keys[index], method="pro", algorithm=algorithm)
         ax.set_title(PRO_LABEL, fontsize=16, color=PRO_COLOR)
         _hide_ticks(ax, y=col > 0)
+
+    for gp_ax, pro_ax in zip(gp_axes, pro_axes, strict=True):
+        lo = min(gp_ax.get_ylim()[0], pro_ax.get_ylim()[0])
+        hi = max(gp_ax.get_ylim()[1], pro_ax.get_ylim()[1])
+        gp_ax.set_ylim(lo, hi)
+        pro_ax.set_ylim(lo, hi)
 
 
 TOP_LEGEND_HANDLES = [
@@ -321,7 +324,7 @@ def main(
 ) -> None:
     n = len(_SOURCES)
     fig = plt.figure(figsize=(6.5 * n, 8.5))
-    gs = fig.add_gridspec(2, n, top=0.78, bottom=0.08, hspace=0.4, wspace=0.08)
+    gs = fig.add_gridspec(2, n, top=0.78, bottom=0.08, hspace=0.15, wspace=0.08)
     gp_axes = [fig.add_subplot(gs[0, j]) for j in range(n)]
     pro_axes = [fig.add_subplot(gs[1, j]) for j in range(n)]
 

@@ -26,9 +26,9 @@ SOURCE_TITLES = {
 ALGORITHMS = ("pro_gp", "standard_gp")
 ALGORITHM_LABELS = {"pro_gp": "PrO-GP", "standard_gp": "Standard GP"}
 ALGORITHM_COLORS = {"pro_gp": "#e8974e", "standard_gp": "#4c3a8e"}
+ALGORITHM_MARKERS = {"pro_gp": "^", "standard_gp": "o"}
 
 N_MIN = 100
-DODGE_FRAC = 0.03
 
 DIVIDER_COLOR = "#cccac0"
 
@@ -79,23 +79,23 @@ def _plot_sweep(
     ax, by_algorithm: dict[str, list[tuple[float, float, float]]], all_values, colors
 ):
     """
-    Per-algorithm line+error-bar series across the swept `n` values -- dodged apart
-    so nearby points' error bars stay legible, log2-scaled (`n` doubles each step) so
-    the ticks stay evenly spaced, with the actual tested values as ticks.
+    Per-algorithm line+error-bar series across the swept `n` values, log2-scaled
+    (`n` doubles each step) so the ticks stay evenly spaced, with the actual tested
+    values as ticks.
     """
     for algorithm in ALGORITHMS:
         points = by_algorithm.get(algorithm)
         if not points:
             continue
-        dodge = 1 - DODGE_FRAC if algorithm == "pro_gp" else 1 + DODGE_FRAC
-        x = [point[0] * dodge for point in points]
+        x = [point[0] for point in points]
         mean = [point[1] for point in points]
         ci95 = [point[2] for point in points]
         ax.errorbar(
             x,
             mean,
             yerr=ci95,
-            fmt="o-",
+            marker=ALGORITHM_MARKERS[algorithm],
+            linestyle="-",
             color=colors[algorithm],
             label=ALGORITHM_LABELS[algorithm],
             markersize=6,
@@ -122,7 +122,8 @@ def _plot_categorical(
             [x],
             [mean],
             yerr=[ci95],
-            fmt="o",
+            marker=ALGORITHM_MARKERS[algorithm],
+            linestyle="None",
             color=colors[algorithm],
             label=ALGORITHM_LABELS[algorithm],
             markersize=6,
