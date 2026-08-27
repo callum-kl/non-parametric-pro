@@ -8,6 +8,7 @@ os.environ.setdefault("JAX_ENABLE_X64", "1")
 import gpjax as gpx
 import hydra
 import jax
+import jax.numpy as jnp
 import jax.random as jr
 import numpy as np
 import optax as ox
@@ -104,6 +105,17 @@ def main(cfg: DictConfig) -> None:
 
     # --- Load GP state -- fixed kernel, never adapted here -------------------
     kernel, gp_sigma_val, inducing_basis, scaler_x, scaler_y = load_gp_state(cfg)
+    if cfg.default_kernel_init:
+        num_features = px.unwrap(kernel.lengthscale).shape[0]
+        kernel = type(kernel)(
+            lengthscale=jnp.sqrt(num_features) * jnp.ones((num_features,)),
+            variance=jnp.array(1.0),
+        )
+        log.info(
+            "default_kernel_init=true -- ignoring fitted GP kernel, starting from "
+            "lengthscale=sqrt(%d), variance=1.0",
+            num_features,
+        )
     sigma_init_val = gp_sigma_val if cfg.sigma_init is None else cfg.sigma_init
     log.info(
         "Loaded %s state: kernel fixed, gp_sigma=%.4f, sigma starts at %.4f",
