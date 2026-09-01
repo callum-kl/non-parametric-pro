@@ -48,8 +48,11 @@ dependencies = [
     "hydra-core>=1.3.3",
     "hydra-joblib-launcher>=1.2.0",
     "matplotlib>=3.11.0",
+    "networkx>=3.0",
     "pip>=26.1.2",
+    "pyproj>=3.0", # needed to unpickle the PeMS road-network graph's CRS attribute
     "scikit-learn>=1.9.0",
+    "shapely>=2.0", # needed to unpickle the PeMS road-network graph's edge geometries
     "tqdm>=4.68.3",
 ]
 description = "Sampling Predictively Oriented Posteriors for Gaussian Processes"

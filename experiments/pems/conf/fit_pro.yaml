@@ -1,0 +1,52 @@
+split: 1
+seed: 0
+gp_name: null
+name: null
+
+num_train: 250 # must match the value used by fit_exact_gp.py for this split
+
+default_kernel_init: false # if true, ignore the fitted GP's kernel and start from lengthscale/smoothness inits below
+
+results_root: ${script_dir:}/results
+
+num_particles: 50
+alpha: 1.43
+step_size: 0.0001 # unused when algorithm=replica_gibbs
+
+sigma_min: 0.1
+sigma_max: 100.0
+sigma_init: null # defaults to the exact GP's fitted sigma when null
+sigma_lr: 0.1
+
+algorithm: ula
+sgld_batch_size: 128
+
+val_fraction: 0.2 # carves the 250-train pool into 200 train / 50 val for sigma/kernel adaptation
+adapt_target: null
+
+# parameter_adaptation()'s scan stacks a full copy of the (fixed) kernel's pytree
+# -- including GraphKernel's (num_nodes, num_nodes) eigenvector array -- into its
+# `info` output at *every* adaptation step, regardless of kernel_adapt_steps. UCI's
+# num_adapt_steps=20000 (cheap for RBF's scalar-sized kernel) would allocate ~150GB
+# here, so num_adapt_steps is kept small; kernel_adapt_steps stays 0 (kernel is
+# fixed from the exact GP fit, never adapted) since adapting it would additionally
+# require differentiating through that same (num_nodes, num_nodes) eigendecomposition.
+num_adapt_steps: 800
+warmup_steps: 100
+sigma_adapt_steps: 200
+kernel_adapt_steps: 0
+kernel_lr: 0.05
+
+num_sample_steps: 3000
+burn_fraction: 0.5
+thin: 50
+
+energy_score_draws: 256 # joint predictive samples used to estimate the energy score
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: ${script_dir:}/.hydra_logs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: ${script_dir:}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}

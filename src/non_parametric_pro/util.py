@@ -137,6 +137,41 @@ def prediction_basis(
     return test_basis, test_covariance
 
 
+def rmse(
+    y_true: jax.Array,
+    y_pred: jax.Array,
+    *,
+    return_per_point: bool = False,
+) -> jax.Array:
+    y_true = y_true.squeeze()
+    y_pred = y_pred.squeeze()
+    squared_error = (y_true - y_pred) ** 2
+    if return_per_point:
+        return jnp.sqrt(squared_error)
+    return jnp.sqrt(jnp.mean(squared_error))
+
+
+def energy_score(
+    draws: jax.Array,
+    y: jax.Array,
+) -> jax.Array:
+    """Energy score (Gneiting & Raftery, 2007) of joint predictive draws against y.
+
+    ES = E||X - y|| - 0.5*E||X - X'||, estimated from `draws` (shape (n, M): M iid
+    draws of the n-dimensional joint predictive distribution, e.g. from
+    posterior_function_draws or a Gaussian's Cholesky factor). A strictly proper
+    scoring rule for the *entire* joint predictive distribution -- computed directly
+    from samples, so it needs no Gaussian/parametric assumption and no single draw
+    has to exactly explain y (unlike a mixture log-score). Lower is better.
+    Generalizes univariate CRPS to joint/multivariate predictive distributions.
+    """
+    diff_to_y = draws - y[:, None]
+    term1 = jnp.mean(jnp.linalg.norm(diff_to_y, axis=0))
+    diff_pairs = draws[:, :, None] - draws[:, None, :]
+    term2 = jnp.mean(jnp.linalg.norm(diff_pairs, axis=0))
+    return term1 - 0.5 * term2
+
+
 def nlpd_gp(
     y_test: jax.Array,
     predictive_mean: jax.Array,

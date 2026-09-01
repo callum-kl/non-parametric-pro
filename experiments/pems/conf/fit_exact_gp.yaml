@@ -1,0 +1,41 @@
+split: 1
+seed: 0
+name: null # optional suffix for the results dir, e.g. name=untuned -> exact_gp_untuned
+
+num_train: 250 # sensors used for training; the rest (75 of 325) are held out as test
+
+lengthscale_init: 5.0 # small inits (~1) collapse to a near-white-noise local optimum; >=5 finds the good basin
+lengthscale_min: 1.0e-2
+lengthscale_max: 1.0e2
+
+smoothness_init: 3.0
+smoothness_min: 0.5
+smoothness_max: 20.0
+
+objective: mll # "mll" (conjugate_mll) | "loocv" (conjugate_loocv, Rasmussen & Williams sec. 5.4.2)
+
+# GraphKernel carries its full (num_nodes, num_nodes) eigenvector/eigenvalue/laplacian
+# arrays as non-trainable leaves; gpx.fit_scipy's default dense-Hessian BFGS blows up
+# on a parameter vector that size, so we fit with Adam instead (gpx.fit).
+num_iters: 3000
+kernel_lr: 0.05
+
+# Adam multi-start: restart 0 uses the deterministic init above; restarts 1..N-1
+# jitter both log-lengthscale and log-smoothness (std=restart_jitter_std) from
+# cfg.seed, keeping whichever restart reaches the best negative MLL. The graph
+# Matern MLL surface is multimodal (a near-white-noise local optimum competes
+# with the genuinely smooth one), so multiple restarts matter here.
+num_restarts: 3
+restart_jitter_std: 0.75
+
+energy_score_draws: 256 # joint predictive samples used to estimate the energy score
+
+results_root: ${script_dir:}/results
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: ${script_dir:}/.hydra_logs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: ${script_dir:}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
