@@ -21,6 +21,8 @@ from util import load_gp_state, pro_out_dir
 
 from non_parametric_pro import replica_gibbs, ula
 from non_parametric_pro.data.pems.pems import (
+    apply_regime_shift,
+    road_segment_nodes,
     load_pems_graph_data,
     pems_regression_split,
 )
@@ -32,8 +34,11 @@ from non_parametric_pro.sgld import parametric_sgld, sgld
 from non_parametric_pro.ula import parametric_ula
 from non_parametric_pro.util import (
     cholesky_basis,
+    crps,
     energy_score,
+    gaussian_nll,
     nlpd_pro,
+    pit_values,
     posterior_function_draws,
     prediction_basis,
     predictive_moments,
@@ -41,6 +46,7 @@ from non_parametric_pro.util import (
     rmse,
     run_inference_algorithm_with_burn_in,
     train_val_split,
+    variogram_score,
 )
 
 log = logging.getLogger(__name__)
@@ -75,17 +81,6 @@ def _mixture_joint_nll(
     return -(jax.nn.logsumexp(log_dens) - jnp.log(num_particles))
 
 
-def _gaussian_joint_nll(
-    y: jax.Array, mean: jax.Array, cov: jax.Array, jitter: float = 1e-6
-) -> jax.Array:
-    """-log N(y; mean, cov) -- a single (non-mixture) joint Gaussian NLL."""
-    n = cov.shape[0]
-    chol = jnp.linalg.cholesky(cov + jitter * jnp.eye(n))
-    alpha = solve_triangular(chol, y - mean, lower=True)
-    log_det = 2.0 * jnp.sum(jnp.log(jnp.diag(chol)))
-    return 0.5 * (n * jnp.log(2.0 * jnp.pi) + log_det + jnp.sum(alpha**2))
-
-
 def _moment_matched_mean_and_between_cov(
     mean_per_particle: jax.Array,
 ) -> tuple[jax.Array, jax.Array]:
@@ -102,6 +97,72 @@ def _moment_matched_mean_and_between_cov(
     num_particles = mean_per_particle.shape[1]
     between_cov = (centered @ centered.T) / num_particles
     return mean, between_cov
+
+
+def _region_metrics(
+    mask: np.ndarray,
+    *,
+    y_test: jax.Array,
+    test_basis: jax.Array,
+    test_cov: jax.Array,
+    particles: jax.Array,
+    pro_params: ProParameters,
+    projected: jax.Array,
+    diag_cov: jax.Array,
+    full_cov: jax.Array,
+    gauss_mean: jax.Array,
+    gauss_diag_cov: jax.Array,
+    gauss_full_cov: jax.Array,
+    y_draws: jax.Array,
+    y_test_flat: jax.Array,
+    mean_raw: np.ndarray,
+    y_raw: np.ndarray,
+) -> dict:
+    """Metrics restricted to a boolean test-point mask (empty dict if mask is empty).
+
+    Mirrors fit_exact_gp.py's _region_metrics: every quantity here is already a
+    per-test-point array/matrix, so a region is just a row/column slice -- no
+    refitting, resampling, or re-running the sampler.
+    """
+    if not mask.any():
+        return {}
+    sub_test_basis = test_basis[mask]
+    sub_test_cov = test_cov[mask][:, mask]
+    sub_y_test = y_test[mask]
+    sub_y_flat = y_test_flat[mask]
+    sub_projected = projected[mask]
+    sub_diag_cov = diag_cov[mask][:, mask]
+    sub_full_cov = full_cov[mask][:, mask]
+    sub_gauss_mean = gauss_mean[mask]
+    sub_gauss_diag_cov = gauss_diag_cov[mask][:, mask]
+    sub_gauss_full_cov = gauss_full_cov[mask][:, mask]
+    sub_draws = y_draws[mask]
+
+    return {
+        "nlpd": float(
+            nlpd_pro(
+                sub_y_test,
+                sub_test_basis,
+                sub_test_cov,
+                particles,
+                parameters=pro_params,
+            )
+        ),
+        "diag_nll": float(_mixture_joint_nll(sub_y_flat, sub_projected, sub_diag_cov)),
+        "full_nll": float(_mixture_joint_nll(sub_y_flat, sub_projected, sub_full_cov)),
+        "diag_nll_gauss": float(
+            gaussian_nll(sub_y_flat, sub_gauss_mean, sub_gauss_diag_cov)
+        ),
+        "full_nll_gauss": float(
+            gaussian_nll(sub_y_flat, sub_gauss_mean, sub_gauss_full_cov)
+        ),
+        "energy_score": float(energy_score(sub_draws, sub_y_flat)),
+        "crps": float(crps(sub_draws, sub_y_flat)),
+        "variogram_score": float(variogram_score(sub_draws, sub_y_flat)),
+        "pit": [float(v) for v in pit_values(sub_draws, sub_y_flat)],
+        "rmse": float(rmse(jnp.asarray(y_raw[mask]), jnp.asarray(mean_raw[mask]))),
+        "n_test": int(mask.sum()),
+    }
 
 
 def _check_replica_gibbs_config(cfg: DictConfig) -> None:
@@ -150,6 +211,19 @@ def main(cfg: DictConfig) -> None:
 
     # --- Data ------------------------------------------------------------------
     graph_data = load_pems_graph_data()
+    affected_nodes = None
+    if cfg.regime_shift.enabled:
+        affected_nodes = road_segment_nodes(
+            graph_data.graph, cfg.regime_shift.seed_node, cfg.regime_shift.radius_m
+        )
+        graph_data = apply_regime_shift(
+            graph_data, affected_nodes, cfg.regime_shift.shift_factor
+        )
+        log.info(
+            "regime_shift enabled: %d affected nodes, shift_factor=%.2f",
+            len(affected_nodes),
+            cfg.regime_shift.shift_factor,
+        )
     if cfg.default_kernel_init:
         kernel = gpx.kernels.GraphKernel(
             laplacian=graph_data.laplacian,
@@ -165,7 +239,9 @@ def main(cfg: DictConfig) -> None:
         sigma_init_val,
     )
 
-    split = pems_regression_split(graph_data, cfg.split, num_train=cfg.num_train)
+    split = pems_regression_split(
+        graph_data, cfg.split, num_train=cfg.num_train, affected_nodes=affected_nodes
+    )
     x_train = jnp.asarray(split.x_train)
     y_train = jnp.asarray(scaler_y.transform(split.y_train))
     x_test = jnp.asarray(split.x_test)
@@ -300,12 +376,8 @@ def main(cfg: DictConfig) -> None:
     gauss_mean, between_cov = _moment_matched_mean_and_between_cov(projected)
     gauss_full_cov = within_cov + between_cov
     gauss_diag_cov = jnp.diag(jnp.diag(gauss_full_cov))
-    pro_diag_nll_gauss = float(
-        _gaussian_joint_nll(y_test_flat, gauss_mean, gauss_diag_cov)
-    )
-    pro_full_nll_gauss = float(
-        _gaussian_joint_nll(y_test_flat, gauss_mean, gauss_full_cov)
-    )
+    pro_diag_nll_gauss = float(gaussian_nll(y_test_flat, gauss_mean, gauss_diag_cov))
+    pro_full_nll_gauss = float(gaussian_nll(y_test_flat, gauss_mean, gauss_full_cov))
 
     # Energy score: a proper scoring rule computed directly from joint predictive
     # *samples* -- draws each use one particle's mean plus a correlated GP-conditional
@@ -318,6 +390,9 @@ def main(cfg: DictConfig) -> None:
     )
     y_draws = latent_draws + sigma_val * jr.normal(noise_key, latent_draws.shape)
     pro_energy_score = float(energy_score(y_draws, y_test_flat))
+    pro_crps = float(crps(y_draws, y_test_flat))
+    pro_variogram = float(variogram_score(y_draws, y_test_flat))
+    pro_pit = pit_values(y_draws, y_test_flat)
 
     metrics = {
         "split": cfg.split,
@@ -331,11 +406,15 @@ def main(cfg: DictConfig) -> None:
         "pro_diag_nll_gauss": pro_diag_nll_gauss,
         "pro_full_nll_gauss": pro_full_nll_gauss,
         "pro_energy_score": pro_energy_score,
+        "pro_crps": pro_crps,
+        "pro_variogram_score": pro_variogram,
+        "pro_pit": [float(v) for v in pro_pit],
         "pro_rmse": float(rmse(jnp.asarray(split.y_test), jnp.asarray(mean_raw))),
     }
     log.info(
         "PRO  NLPD=%.4f  RMSE=%.4f  diag-NLL=%.4f  full-NLL=%.4f  "
-        "diag-NLL(gauss)=%.4f  full-NLL(gauss)=%.4f  energy=%.4f",
+        "diag-NLL(gauss)=%.4f  full-NLL(gauss)=%.4f  energy=%.4f  "
+        "crps=%.4f  variogram=%.4f",
         metrics["pro_nlpd"],
         metrics["pro_rmse"],
         pro_diag_nll,
@@ -343,7 +422,42 @@ def main(cfg: DictConfig) -> None:
         pro_diag_nll_gauss,
         pro_full_nll_gauss,
         pro_energy_score,
+        pro_crps,
+        pro_variogram,
     )
+
+    # Misspecification test: region-conditional metrics, re-using the already
+    # computed full-test-set arrays (see _region_metrics's docstring).
+    if cfg.regime_shift.enabled:
+        for region, mask in (
+            ("in_region", np.asarray(split.test_affected)),
+            ("out_region", ~np.asarray(split.test_affected)),
+        ):
+            region_metrics = _region_metrics(
+                mask,
+                y_test=y_test,
+                test_basis=test_basis,
+                test_cov=test_cov,
+                particles=particles,
+                pro_params=pro_params,
+                projected=projected,
+                diag_cov=diag_cov,
+                full_cov=full_cov,
+                gauss_mean=gauss_mean,
+                gauss_diag_cov=gauss_diag_cov,
+                gauss_full_cov=gauss_full_cov,
+                y_draws=y_draws,
+                y_test_flat=y_test_flat,
+                mean_raw=mean_raw,
+                y_raw=np.asarray(split.y_test).squeeze(),
+            )
+            for name, value in region_metrics.items():
+                metrics[f"pro_{name}_{region}"] = value
+        log.info(
+            "regime_shift: %d in-region / %d out-of-region test sensors",
+            int(split.test_affected.sum()),
+            int((~split.test_affected).sum()),
+        )
 
     # --- Save ----------------------------------------------------------------
     with open(out_dir / "pro_metrics.json", "w") as f:

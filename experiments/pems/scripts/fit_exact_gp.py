@@ -18,10 +18,20 @@ from omegaconf import DictConfig, OmegaConf
 from sklearn.preprocessing import StandardScaler
 
 from non_parametric_pro.data.pems.pems import (
+    apply_regime_shift,
+    road_segment_nodes,
     load_pems_graph_data,
     pems_regression_split,
 )
-from non_parametric_pro.util import energy_score, nlpd_gp, rmse
+from non_parametric_pro.util import (
+    crps,
+    energy_score,
+    gaussian_nll,
+    nlpd_gp,
+    pit_values,
+    rmse,
+    variogram_score,
+)
 
 log = logging.getLogger(__name__)
 
@@ -44,6 +54,43 @@ def _objective_fn(name: str):
     raise ValueError(msg)
 
 
+def _region_metrics(
+    mask: np.ndarray,
+    *,
+    mean: jnp.ndarray,
+    std: jnp.ndarray,
+    cov: jnp.ndarray,
+    draws: jnp.ndarray,
+    y_std: jnp.ndarray,
+    mean_raw: np.ndarray,
+    y_raw: np.ndarray,
+) -> dict:
+    """Metrics restricted to a boolean test-point mask (empty dict if mask is empty).
+
+    A region's mean/std/covariance/draws are just row/column slices of the
+    already-computed full-test-set arrays -- a marginal/joint sub-selection of a
+    (sampled) multivariate Gaussian needs no refitting or re-drawing.
+    """
+    if not mask.any():
+        return {}
+    sub_mean, sub_std, sub_y = mean[mask], std[mask], y_std[mask]
+    sub_cov = cov[mask][:, mask]
+    sub_draws = draws[mask]
+    return {
+        "nlpd": float(nlpd_gp(sub_y, sub_mean, sub_std)),
+        "diag_nll": float(
+            jnp.sum(nlpd_gp(sub_y, sub_mean, sub_std, return_per_point=True))
+        ),
+        "full_nll": float(gaussian_nll(sub_y, sub_mean, sub_cov)),
+        "energy_score": float(energy_score(sub_draws, sub_y)),
+        "crps": float(crps(sub_draws, sub_y)),
+        "variogram_score": float(variogram_score(sub_draws, sub_y)),
+        "pit": [float(v) for v in pit_values(sub_draws, sub_y)],
+        "rmse": float(rmse(jnp.asarray(y_raw[mask]), jnp.asarray(mean_raw[mask]))),
+        "n_test": int(mask.sum()),
+    }
+
+
 @hydra.main(version_base=None, config_path="../conf", config_name="fit_exact_gp")
 def main(cfg: DictConfig) -> None:
     log.info("Fitting exact graph GP: split=%d", cfg.split)
@@ -53,7 +100,22 @@ def main(cfg: DictConfig) -> None:
 
     # --- Data ----------------------------------------------------------------
     graph_data = load_pems_graph_data()
-    split = pems_regression_split(graph_data, cfg.split, num_train=cfg.num_train)
+    affected_nodes = None
+    if cfg.regime_shift.enabled:
+        affected_nodes = road_segment_nodes(
+            graph_data.graph, cfg.regime_shift.seed_node, cfg.regime_shift.radius_m
+        )
+        graph_data = apply_regime_shift(
+            graph_data, affected_nodes, cfg.regime_shift.shift_factor
+        )
+        log.info(
+            "regime_shift enabled: %d affected nodes, shift_factor=%.2f",
+            len(affected_nodes),
+            cfg.regime_shift.shift_factor,
+        )
+    split = pems_regression_split(
+        graph_data, cfg.split, num_train=cfg.num_train, affected_nodes=affected_nodes
+    )
 
     scaler_y = StandardScaler()
     x_train = jnp.asarray(split.x_train)
@@ -167,8 +229,9 @@ def main(cfg: DictConfig) -> None:
     # These exist for direct comparison against that notebook; gp_nlpd (mean
     # per-point) stays the primary metric, matching this repo's other experiments.
     y_test_flat = jnp.asarray(y_test).squeeze()
+    cov_full = predictive.covariance()
     gp_diag_nll = float(jnp.sum(nlpd_gp(y_test, mean, std, return_per_point=True)))
-    gp_full_nll = float(-predictive.log_prob(y_test_flat))
+    gp_full_nll = float(gaussian_nll(y_test_flat, mean, cov_full))
 
     # Energy score, for direct comparison against PrO's energy score: a single
     # Gaussian has no particle disagreement to expose, but scoring it via samples
@@ -177,6 +240,9 @@ def main(cfg: DictConfig) -> None:
     draw_key = jr.fold_in(key, 0)
     gp_draws = jnp.transpose(predictive.sample(draw_key, (cfg.energy_score_draws,)))
     gp_energy_score = float(energy_score(gp_draws, y_test_flat))
+    gp_crps = float(crps(gp_draws, y_test_flat))
+    gp_variogram = float(variogram_score(gp_draws, y_test_flat))
+    gp_pit = pit_values(gp_draws, y_test_flat)
 
     metrics = {
         "split": cfg.split,
@@ -184,17 +250,49 @@ def main(cfg: DictConfig) -> None:
         "gp_diag_nll": gp_diag_nll,
         "gp_full_nll": gp_full_nll,
         "gp_energy_score": gp_energy_score,
+        "gp_crps": gp_crps,
+        "gp_variogram_score": gp_variogram,
+        "gp_pit": [float(v) for v in gp_pit],
         "gp_rmse": float(rmse(jnp.asarray(split.y_test), jnp.asarray(mean_raw))),
         "gp_sigma": float(np.array(px.unwrap(opt_sigma)).reshape(())),
         "objective": cfg.objective,
     }
+
+    # Misspecification test: region-conditional metrics, re-using the already
+    # computed full-test-set arrays (see _region_metrics's docstring).
+    if cfg.regime_shift.enabled:
+        for region, mask in (
+            ("in_region", np.asarray(split.test_affected)),
+            ("out_region", ~np.asarray(split.test_affected)),
+        ):
+            region_metrics = _region_metrics(
+                mask,
+                mean=mean,
+                std=std,
+                cov=cov_full,
+                draws=gp_draws,
+                y_std=y_test_flat,
+                mean_raw=mean_raw,
+                y_raw=np.asarray(split.y_test).squeeze(),
+            )
+            for name, value in region_metrics.items():
+                metrics[f"gp_{name}_{region}"] = value
+        log.info(
+            "regime_shift: %d in-region / %d out-of-region test sensors",
+            int(split.test_affected.sum()),
+            int((~split.test_affected).sum()),
+        )
+
     log.info(
-        "GP  NLPD=%.4f  RMSE=%.4f  diag-NLL=%.4f  full-NLL=%.4f  energy=%.4f",
+        "GP  NLPD=%.4f  RMSE=%.4f  diag-NLL=%.4f  full-NLL=%.4f  energy=%.4f  "
+        "crps=%.4f  variogram=%.4f",
         metrics["gp_nlpd"],
         metrics["gp_rmse"],
         gp_diag_nll,
         gp_full_nll,
         gp_energy_score,
+        gp_crps,
+        gp_variogram,
     )
 
     # --- Save ----------------------------------------------------------------

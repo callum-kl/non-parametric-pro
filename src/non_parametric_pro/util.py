@@ -172,6 +172,96 @@ def energy_score(
     return term1 - 0.5 * term2
 
 
+def crps(
+    draws: jax.Array,
+    y: jax.Array,
+    *,
+    return_per_point: bool = False,
+) -> jax.Array:
+    """CRPS (Continuous Ranked Probability Score) at each test point, from samples.
+
+    CRPS_i = E|X_i - y_i| - 0.5*E|X_i - X_i'|, the univariate special case of
+    energy_score applied independently per point (no cross-point/joint structure,
+    unlike energy_score). A proper scoring rule with no 1/sigma^2 term, so it's more
+    robust to tail misspecification than a log-density score (nlpd_gp/nlpd_pro).
+    `draws` has shape (n, M): the same per-point marginals used for energy_score
+    work directly here. Lower is better.
+    """
+    term1 = jnp.mean(jnp.abs(draws - y[:, None]), axis=1)
+    diff_pairs = draws[:, :, None] - draws[:, None, :]
+    term2 = jnp.mean(jnp.abs(diff_pairs), axis=(1, 2))
+    per_point = term1 - 0.5 * term2
+    if return_per_point:
+        return per_point
+    return jnp.mean(per_point)
+
+
+def variogram_score(
+    draws: jax.Array,
+    y: jax.Array,
+    *,
+    p: float = 1.0,
+    standardize: bool = True,
+) -> jax.Array:
+    """Variogram score (Scheuerer & Hamill, 2015), order `p`, uniform pair weights.
+
+    VS = sum_{i,j} (|y_i - y_j|^p - E_F|X_i - X_j|^p)^2, estimated from `draws`
+    (shape (n, M)). Scores *pairwise relative* differences rather than absolute
+    levels -- suited to spatial/graph fields, where getting the relative pattern
+    right (which points are higher/lower than which) matters independently of a
+    uniform bias in overall level. Lower is better.
+
+    The raw sum scales with the number of pairs (~n^2), so it isn't comparable
+    across test sets of different sizes -- e.g. a handful of in-region points vs.
+    dozens out-of-region. `standardize=True` (default) divides by the number of
+    off-diagonal pairs n*(n-1), giving the *mean* squared discrepancy per pair
+    instead, which is directly comparable across n. Returns 0 (no off-diagonal
+    pairs to average) rather than dividing by zero when n<=1.
+    """
+    n = y.shape[0]
+    y_diff = jnp.abs(y[:, None] - y[None, :]) ** p
+    draw_diff = jnp.abs(draws[:, None, :] - draws[None, :, :]) ** p
+    expected_diff = jnp.mean(draw_diff, axis=2)
+    total = jnp.sum((y_diff - expected_diff) ** 2)
+    if not standardize:
+        return total
+    return total / (n * (n - 1)) if n > 1 else jnp.asarray(0.0)
+
+
+def pit_values(draws: jax.Array, y: jax.Array) -> jax.Array:
+    """Empirical PIT (probability integral transform) at each test point.
+
+    PIT_i = (1/M) * sum_m 1[draws[i, m] <= y_i] -- the empirical predictive CDF
+    evaluated at the observation. Should be ~Uniform(0,1) across test points if the
+    (marginal, per-point) predictive distribution is calibrated: values clustering
+    near 0/1 indicate under-dispersion (overconfident), a hump in the middle
+    indicates over-dispersion. `draws` has shape (n, M). Meant to be pooled across
+    many test points/splits and viewed as a histogram, not read as a single number.
+    """
+    return jnp.mean(draws <= y[:, None], axis=1)
+
+
+def gaussian_nll(
+    y: jax.Array,
+    mean: jax.Array,
+    cov: jax.Array,
+    *,
+    jitter: float = 1e-6,
+) -> jax.Array:
+    """-log N(y; mean, cov) -- a single (non-mixture) joint Gaussian NLL.
+
+    Shared by exact-GP scripts (full predictive covariance) and PrO's mixture
+    machinery (per-particle / moment-matched covariance) so both use the exact same
+    formula -- including for region-subset evaluation, where `cov` is just a
+    row/column slice of an already-computed full covariance matrix.
+    """
+    n = cov.shape[0]
+    chol = jnp.linalg.cholesky(cov + jitter * jnp.eye(n))
+    alpha = solve_triangular(chol, y - mean, lower=True)
+    log_det = 2.0 * jnp.sum(jnp.log(jnp.diag(chol)))
+    return 0.5 * (n * jnp.log(2.0 * jnp.pi) + log_det + jnp.sum(alpha**2))
+
+
 def nlpd_gp(
     y_test: jax.Array,
     predictive_mean: jax.Array,

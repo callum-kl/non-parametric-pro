@@ -25,5 +25,11 @@
   "num_sample_steps": 30,
   "burn_fraction": 0.5,
   "thin": 2,
-  "energy_score_draws": 256
+  "energy_score_draws": 256,
+  "regime_shift": {
+    "enabled": false,
+    "bridge_u": 679,
+    "bridge_v": 680,
+    "shift_factor": 0.6
+  }
 }

@@ -1,0 +1,25 @@
+{
+  "split": 5,
+  "seed": 0,
+  "name": "train175",
+  "num_train": 175,
+  "lengthscale_init": 5.0,
+  "lengthscale_min": 0.01,
+  "lengthscale_max": 100.0,
+  "smoothness_init": 3.0,
+  "smoothness_min": 0.5,
+  "smoothness_max": 20.0,
+  "objective": "mll",
+  "num_iters": 3000,
+  "kernel_lr": 0.05,
+  "num_restarts": 3,
+  "restart_jitter_std": 0.75,
+  "energy_score_draws": 256,
+  "regime_shift": {
+    "enabled": false,
+    "seed_node": 415,
+    "radius_m": 3000,
+    "shift_factor": 0.29
+  },
+  "results_root": "${script_dir:}/results"
+}

@@ -36,6 +36,16 @@ thin: 2
 
 energy_score_draws: 256
 
+# See fit_exact_gp.yaml's comment -- must match whatever that script used to
+# produce the loaded gp_state, so the same sensors are shifted here too. Also set
+# gp_name to match fit_exact_gp.py's name= for this run (e.g. both =regime_shift),
+# otherwise this loads the *unshifted* baseline exact-GP state instead.
+regime_shift:
+  enabled: false
+  seed_node: 415
+  radius_m: 3000
+  shift_factor: 0.29 # ~71% slowdown -- severe congestion (e.g. ~27.5mph -> ~8mph)
+
 hydra:
   job:
     chdir: false

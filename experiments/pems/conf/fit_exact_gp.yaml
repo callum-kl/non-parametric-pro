@@ -30,6 +30,31 @@ restart_jitter_std: 0.75
 
 energy_score_draws: 256 # joint predictive samples used to estimate the energy score
 
+# Misspecification test: multiply speeds for every sensor (train + test) within
+# radius_m driving distance of seed_node by shift_factor, simulating a persistent
+# localized event (e.g. an accident) the smooth graph kernel isn't built to
+# represent as a sharp boundary. Multiplicative (not an additive mph offset) so it
+# stays physically plausible across regions with very different baseline speeds --
+# see apply_regime_shift's docstring. seed_node/radius_m traces a real contiguous
+# highway corridor via road distance (see pems.py's road_segment_nodes) -- unlike
+# a graph-cut, which this network's topology restricts to small dead-end spurs
+# (see bridge_region_nodes' docstring).
+#
+# seed_node must sit inside the graph's single 876-node biconnected core -- the
+# mesh of alternate carriageways/ramps/frontage roads that carries every real
+# "through" corridor (300 of 325 sensors) -- not one of the small dead-end
+# appendages nx.bridges finds. A seed just outside the core (e.g. node 821) can
+# reproduce an old bridge-cut spur exactly, silently defeating the point.
+# Defaults: seed_node=415 sits on I-880 (in-core), radius_m=3000 -> 11 sensors,
+# 100% nearest to I-880. Alternate corridor for a second sweep: seed_node=378
+# (US-101, in-core), radius_m=3000 -> 12 sensors, 92% purity. Disabled by default
+# so normal runs are unaffected.
+regime_shift:
+  enabled: false
+  seed_node: 415
+  radius_m: 3000
+  shift_factor: 0.29 # ~71% slowdown -- severe congestion (e.g. ~27.5mph -> ~8mph)
+
 results_root: ${script_dir:}/results
 
 hydra:
