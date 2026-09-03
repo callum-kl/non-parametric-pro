@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - ds@_global_: yacht # override with: "ds@_global_=<name>"
+  - ds@_global_: servo # override with: "ds@_global_=<name>"
 
 split: 1
 seed: 0

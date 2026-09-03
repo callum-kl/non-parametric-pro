@@ -6,6 +6,8 @@ from pathlib import Path
 
 import numpy as np
 
+from non_parametric_pro.data.uci.uci import UCI_REGRESSION_DATASET_SIZES
+
 RESULTS_ROOT = Path(__file__).resolve().parents[1] / "results"
 
 METHOD_METRICS = {
@@ -121,24 +123,39 @@ def summarise(records):
     return summary
 
 
+def _dataset_size(dataset: str) -> int | None:
+    sizes = UCI_REGRESSION_DATASET_SIZES.get(dataset)
+    return sizes[0] if sizes is not None else None
+
+
+def _datasets_by_size(summary) -> list[str]:
+    return sorted(
+        summary, key=lambda ds: (_dataset_size(ds) is None, _dataset_size(ds) or 0, ds)
+    )
+
+
 def print_table(summary):
-    datasets = sorted(summary)
+    datasets = _datasets_by_size(summary)
     methods = sorted({m for ds in summary.values() for m in ds})
-    row_label_width = max(20, max((len(m) for m in methods), default=0) + 1)
+    n_lens = [len(f"{_dataset_size(ds):,}") for ds in datasets if _dataset_size(ds)]
+    n_width = max([len("n"), *n_lens])
+    ds_width = max(20, max((len(ds) for ds in datasets), default=0) + 1)
+    col_width = max(16, max((len(m) for m in methods), default=0) + 1)
 
     for metric in SUMMARY_METRICS:
         print(f"\n{'─' * 72}")
         print(f"  {metric.upper()}")
         print(f"{'─' * 72}")
-        col_width = max(16, max((len(ds) for ds in datasets), default=0) + 1)
-        header = f"{'model':<{row_label_width}}" + "".join(
-            f"{ds:>{col_width}}" for ds in datasets
+        header = f"{'n':>{n_width}}  {'dataset':<{ds_width}}" + "".join(
+            f"{m:>{col_width}}" for m in methods
         )
         print(header)
         print("─" * len(header))
-        for method in methods:
-            row = f"{method:<{row_label_width}}"
-            for ds in datasets:
+        for ds in datasets:
+            n = _dataset_size(ds)
+            n_str = f"{n:,}" if n is not None else "?"
+            row = f"{n_str:>{n_width}}  {ds:<{ds_width}}"
+            for method in methods:
                 entry = summary[ds].get(method, {}).get(metric)
                 if entry is None:
                     row += f"{'—':>{col_width}}"
@@ -151,10 +168,10 @@ def print_table(summary):
 def save_csv(summary, path: Path):
     import csv
 
-    datasets = sorted(summary)
+    datasets = _datasets_by_size(summary)
     methods = sorted({m for ds in summary.values() for m in ds})
 
-    fieldnames = ["dataset"] + [
+    fieldnames = ["n", "dataset"] + [
         f"{method}_{metric}_{stat}"
         for method in methods
         for metric in SUMMARY_METRICS
@@ -165,7 +182,7 @@ def save_csv(summary, path: Path):
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for ds in datasets:
-            row = {"dataset": ds}
+            row = {"n": _dataset_size(ds), "dataset": ds}
             for method in methods:
                 for metric in SUMMARY_METRICS:
                     entry = summary[ds].get(method, {}).get(metric)

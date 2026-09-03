@@ -16,7 +16,7 @@ import paramax as px
 from omegaconf import DictConfig, OmegaConf
 from util import load_gp_state
 
-from non_parametric_pro import ula
+from non_parametric_pro import replica_gibbs, ula
 from non_parametric_pro.data.uci.uci import load_uci_regression_dataset
 from non_parametric_pro.density import ProParameters, pro_logdensity_fn
 from non_parametric_pro.inducing import (
@@ -25,6 +25,7 @@ from non_parametric_pro.inducing import (
     compute_inducing_basis,
 )
 from non_parametric_pro.parameter_adaptation import parameter_adaptation
+from non_parametric_pro.replica_gibbs import parametric_replica_gibbs, validate_r
 from non_parametric_pro.sgld import parametric_sgld, sgld
 from non_parametric_pro.ula import parametric_ula
 from non_parametric_pro.util import (
@@ -58,12 +59,34 @@ def _row_selectable_basis(cfg: DictConfig, inducing_basis, x_train) -> InducingB
     return inducing_basis if cfg.inducing else PointInducingBasis(z=x_train)
 
 
+def _alpha_grid(cfg: DictConfig, n: int) -> list[tuple[float, float, float]]:
+    """
+    (alpha, c_eff, c_requested) per grid point. replica_gibbs needs r = num_particles *
+    alpha integral, which alpha = c/sqrt(n) almost never is, so it snaps to the nearest
+    feasible alpha, reports the realised c_eff = alpha*sqrt(n), and de-duplicates.
+    """
+    grid: dict[float, tuple[float, float, float]] = {}
+    for c in cfg.c_grid:
+        alpha = float(c) / math.sqrt(n)
+        if cfg.algorithm == "replica_gibbs":
+            r = max(1, round(cfg.num_particles * alpha))
+            alpha = r / cfg.num_particles
+            validate_r(cfg.num_particles, alpha)
+        grid.setdefault(round(alpha, 12), (alpha, alpha * math.sqrt(n), float(c)))
+    return [entry for _, entry in sorted(grid.items())]
+
+
 def _adaptation_algorithm(cfg: DictConfig):
     if cfg.algorithm == "ula":
         return ula
     if cfg.algorithm == "sgld":
         return sgld(batch_size=cfg.sgld_batch_size)
-    msg = f"Unknown algorithm={cfg.algorithm!r}; expected 'ula' or 'sgld'."
+    if cfg.algorithm == "replica_gibbs":
+        return replica_gibbs
+    msg = (
+        f"Unknown algorithm={cfg.algorithm!r}; expected 'ula', 'sgld', or "
+        "'replica_gibbs'."
+    )
     raise ValueError(msg)
 
 
@@ -74,7 +97,12 @@ def _sampling_algorithm(cfg: DictConfig, pro_params: ProParameters):
         return parametric_sgld(
             pro_logdensity_fn, pro_params, batch_size=cfg.sgld_batch_size
         )
-    msg = f"Unknown algorithm={cfg.algorithm!r}; expected 'ula' or 'sgld'."
+    if cfg.algorithm == "replica_gibbs":
+        return parametric_replica_gibbs(pro_logdensity_fn, pro_params)
+    msg = (
+        f"Unknown algorithm={cfg.algorithm!r}; expected 'ula', 'sgld', or "
+        "'replica_gibbs'."
+    )
     raise ValueError(msg)
 
 
@@ -125,10 +153,24 @@ def main(cfg: DictConfig) -> None:
     row_selectable_basis = _row_selectable_basis(cfg, inducing_basis, x_train)
 
     # --- Cross-validate c (alpha = c / sqrt(n)) --------------------------------
+    alpha_grid = _alpha_grid(cfg, n)
+    if len(alpha_grid) != len(cfg.c_grid):
+        log.info(
+            "c_grid=%s collapsed to %d distinct alpha (snapped so r=K*alpha is integral)",
+            list(cfg.c_grid),
+            len(alpha_grid),
+        )
     c_val_nlpd = []
     c_results = []
-    for c in cfg.c_grid:
-        alpha = float(c) / math.sqrt(n)
+    for alpha, c, c_requested in alpha_grid:
+        if abs(c - c_requested) > 1e-6:
+            log.info(
+                "  c=%.6g snapped to c=%.6g (alpha=%.6g, r=%d)",
+                c_requested,
+                c,
+                alpha,
+                round(cfg.num_particles * alpha),
+            )
         key, split_key, pos_key, adapt_key = jr.split(key, 4)
         split = train_val_split(
             split_key, x_train, y_train, val_fraction=cfg.val_fraction
@@ -199,8 +241,7 @@ def main(cfg: DictConfig) -> None:
         c_results.append((adaptation_results, adapted_kernel_c))
 
     best_idx = int(np.argmin(c_val_nlpd))
-    best_c = float(cfg.c_grid[best_idx])
-    best_alpha = best_c / math.sqrt(n)
+    best_alpha, best_c, _ = alpha_grid[best_idx]
     adaptation_results, adapted_kernel = c_results[best_idx]
     adapted_sigma_val = float(np.array(px.unwrap(adaptation_results.parameters.sigma)))
     log.info(
@@ -263,8 +304,9 @@ def main(cfg: DictConfig) -> None:
         "gp_sigma": float(gp_sigma_val),
         "pro_sigma": adapted_sigma_val,
         "n_train": n,
-        "c_grid": [float(c) for c in cfg.c_grid],
-        "alpha_grid": [float(c) / math.sqrt(n) for c in cfg.c_grid],
+        "c_grid": [c for _, c, _ in alpha_grid],
+        "c_grid_requested": [float(c) for c in cfg.c_grid],
+        "alpha_grid": [alpha for alpha, _, _ in alpha_grid],
         "c_val_nlpd": c_val_nlpd,
         "best_c": best_c,
         "best_alpha": best_alpha,

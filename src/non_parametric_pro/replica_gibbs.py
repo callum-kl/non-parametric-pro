@@ -108,9 +108,6 @@ def one_step(
     state: ReplicaGibbsState,
     parameters: ProParameters,
 ) -> ReplicaGibbsState:
-    """One full replica-Gibbs sweep: an allocation block (Eq. 4-5) followed by a
-    Gaussian block (Eq. 6), reformulated in the whitened z-space (see
-    src/non_parametric_pro/replica_gibbs.py's design notes / the accompanying plan)."""
     alloc_key, gibbs_key = jr.split(rng_key)
 
     z = state.position

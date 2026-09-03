@@ -3,5 +3,5 @@ dataset: abalone
 vgp_variant: collapsed
 collapsed: true
 inducing: true
-algorithm: sgld
+algorithm: replica_gibbs
 num_folds: 1

@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - ds@_global_: yacht # override with: "ds@_global_=<name>"
+  - ds@_global_: servo # override with: "ds@_global_=<name>"
 
 split: 1
 seed: 0
@@ -13,7 +13,7 @@ name: null
 results_root: ${script_dir:}/results
 
 num_particles: 50
-step_size: 0.0001
+step_size: 0.0001 # unused when algorithm=replica_gibbs
 
 sigma_min: 0.1
 sigma_max: 100.0
@@ -21,6 +21,7 @@ sigma_init: null # if set, used as the initial sigma instead of the loaded GP st
 sigma_lr: 0.1
 
 algorithm: ula # "ula" (exact, full-batch) | "sgld" (minibatched -- non_parametric_pro.sgld)
+# | "replica_gibbs" (exact blocked Gibbs; alpha is snapped so r=num_particles*alpha is integral)
 sgld_batch_size: 512 # only used when algorithm=sgld; must be < the train fold's size
 
 # alpha = c / sqrt(n), n = size of the training set -- cross-validate over c, not alpha

@@ -55,13 +55,8 @@ def _row_selectable_basis(cfg: DictConfig, inducing_basis, x_train) -> InducingB
 
 
 def _check_replica_gibbs_config(cfg: DictConfig) -> None:
-    if cfg.inducing:
-        msg = (
-            "algorithm='replica_gibbs' only supports the exact case (inducing=false); "
-            "genuine sparse inducing points (M<N) introduce a Nystrom residual the "
-            "conjugate Gaussian block doesn't account for."
-        )
-        raise ValueError(msg)
+    # inducing=true is exact too: `_effective_sigma` folds the Nystrom residual into a
+    # per-datapoint variance, which leaves both Gibbs blocks conjugate.
     validate_r(cfg.num_particles, cfg.alpha)
 
 

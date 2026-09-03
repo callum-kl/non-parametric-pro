@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - ds@_global_: yacht
+  - ds@_global_: servo
 
 split: 1
 seed: 0
