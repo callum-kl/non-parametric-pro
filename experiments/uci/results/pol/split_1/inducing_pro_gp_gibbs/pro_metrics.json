@@ -1,0 +1,8 @@
+{
+  "dataset": "pol",
+  "split": 1,
+  "inducing": true,
+  "gp_sigma": 0.1923483411991416,
+  "pro_sigma": 0.01673570056430799,
+  "pro_nlpd": -0.9582861710453691
+}
