@@ -1,0 +1,21 @@
+{
+  "split": 5,
+  "seed": 0,
+  "name": null,
+  "gp_num_iters": 10000,
+  "kernel_lr": 0.01,
+  "lengthscale_min": 0.001,
+  "lengthscale_max": 1000.0,
+  "vgp_batch_size": 512,
+  "num_inducing": 200,
+  "collapsed": false,
+  "natural_gradients": false,
+  "natural_lr": 0.5,
+  "results_root": "${script_dir:}/results",
+  "dataset": "pol",
+  "vgp_variant": "collapsed",
+  "inducing": true,
+  "algorithm": "replica_gibbs",
+  "num_folds": 1,
+  "kernel_adapt_steps": 0
+}

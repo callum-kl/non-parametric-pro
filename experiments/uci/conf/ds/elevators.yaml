@@ -1,0 +1,8 @@
+dataset: elevators
+vgp_batch_size: 512
+vgp_variant: collapsed
+collapsed: false
+inducing: true
+algorithm: replica_gibbs
+num_folds: 1
+kernel_adapt_steps: 0

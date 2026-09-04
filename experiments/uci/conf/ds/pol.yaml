@@ -5,3 +5,4 @@ collapsed: true
 inducing: true
 algorithm: replica_gibbs
 num_folds: 1
+kernel_adapt_steps: 0

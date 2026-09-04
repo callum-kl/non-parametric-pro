@@ -24,6 +24,7 @@ OmegaConf.register_new_resolver(
 _VGP_VARIANT_SUBDIRS = {
     "collapsed": "vgp",
     "noncollapsed": "vgp_noncollapsed",
+    "ppgpr": "ppgpr"
 }
 
 

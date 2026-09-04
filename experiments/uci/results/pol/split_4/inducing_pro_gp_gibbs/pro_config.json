@@ -2,7 +2,7 @@
   "split": 4,
   "seed": 0,
   "inducing": true,
-  "vgp_variant": "collapsed",
+  "vgp_variant": "ppgpr",
   "vgp_name": null,
   "gp_name": null,
   "name": "gibbs",
