@@ -10,15 +10,29 @@ import argparse
 import json
 from typing import NamedTuple
 
-from aggregate_results import RESULTS_ROOT, _resolve_method
-
-_ALPHA_CV_BASES = ("pro_gp_alpha_cv", "inducing_pro_gp_alpha_cv")
+import numpy as np
+from aggregate_results import RESULTS_ROOT
 
 
 class AlphaCVRun(NamedTuple):
+    c_grid: list[str]
     alpha_grid: list[float]
-    alpha_val_nlpd: list[float]
+    val_nlpd: list[float]
     best_alpha: float | None
+
+
+def _c_labels(data: dict) -> list[str]:
+    if "c_grid_spec" in data:
+        return [str(c) for c in data["c_grid_spec"]]
+    src = data.get("c_grid_requested", data["c_grid"])
+    return [f"{c:.4g}" for c in src]
+
+
+def _label_sort_key(label: str) -> tuple[int, float, str]:
+    try:
+        return (0, float(label), "")
+    except ValueError:
+        return (1, 0.0, label)
 
 
 def collect_alpha_nlpd(dataset: str | None = None):
@@ -39,20 +53,23 @@ def collect_alpha_nlpd(dataset: str | None = None):
             for method_dir in sorted(split_dir.iterdir()):
                 if not method_dir.is_dir():
                     continue
-                resolved = _resolve_method(method_dir.name)
-                if resolved is None or resolved[0] not in _ALPHA_CV_BASES:
-                    continue
                 path = method_dir / "pro_metrics.json"
                 if not path.exists():
                     continue
                 data = json.loads(path.read_text())
-                if "alpha_grid" not in data or "alpha_val_nlpd" not in data:
+                # Identify alpha-CV runs by the keys fit_pro_alpha_cv.py writes rather
+                # than by directory name, which renames have repeatedly invalidated.
+                if "alpha_grid" not in data or "c_val_nlpd" not in data:
                     continue
                 records.setdefault(ds_dir.name, {}).setdefault(method_dir.name, {})[
                     split
                 ] = AlphaCVRun(
+                    # Column key is the symbolic c spec, not alpha or a resolved c:
+                    # alpha = c/sqrt(n) and n varies by split, and `sqrt_n` resolves to a
+                    # different number per split, so neither would line up.
+                    c_grid=_c_labels(data),
                     alpha_grid=data["alpha_grid"],
-                    alpha_val_nlpd=data["alpha_val_nlpd"],
+                    val_nlpd=data["c_val_nlpd"],
                     best_alpha=data.get("best_alpha"),
                 )
 
@@ -65,38 +82,44 @@ def print_table(records: dict[str, dict[str, dict[int, AlphaCVRun]]]):
             runs = records[dataset][method]
             splits = sorted(runs)
 
-            # Union of alpha values seen across splits, in first-seen order -- normally
-            # every split shares the same alpha_grid, but this stays correct even if not.
-            alphas: list[float] = []
-            for split in splits:
-                for a in runs[split].alpha_grid:
-                    if a not in alphas:
-                        alphas.append(a)
+            cs = sorted(
+                {c for split in splits for c in runs[split].c_grid},
+                key=_label_sort_key,
+            )
 
-            col_width = max(12, 10)
+            # alpha differs slightly per split (n varies); show the mean as a guide.
+            alpha_by_c: dict[str, list[float]] = {c: [] for c in cs}
+            for split in splits:
+                run = runs[split]
+                for c, a in zip(run.c_grid, run.alpha_grid, strict=True):
+                    alpha_by_c[c].append(a)
+
+            col_width = 12
             print(f"\n{'─' * 72}")
-            print(f"  {dataset} — {method} — val NLPD by alpha (* = best)")
+            print(f"  {dataset} — {method} — val NLPD by c (* = best)")
             print(f"{'─' * 72}")
-            header = f"{'split':<10}" + "".join(f"{a:>{col_width}.4g}" for a in alphas)
+            header = f"{'c':<10}" + "".join(f"{c:>{col_width}}" for c in cs)
+            alpha_row = f"{'alpha≈':<10}" + "".join(
+                f"{np.mean(alpha_by_c[c]):>{col_width}.4g}" for c in cs
+            )
             print(header)
+            print(alpha_row)
             print("─" * len(header))
             for split in splits:
                 run = runs[split]
-                nlpd_by_alpha = dict(
-                    zip(run.alpha_grid, run.alpha_val_nlpd, strict=True)
-                )
-                row = f"{split:<10}"
-                for a in alphas:
-                    value = nlpd_by_alpha.get(a)
+                nlpd_by_c = dict(zip(run.c_grid, run.val_nlpd, strict=True))
+                best_c = None
+                if run.best_alpha is not None:
+                    for c, a in zip(run.c_grid, run.alpha_grid, strict=True):
+                        if a == run.best_alpha:
+                            best_c = c
+                row = f"{f'split {split}':<10}"
+                for c in cs:
+                    value = nlpd_by_c.get(c)
                     if value is None:
                         cell = "—"
                     else:
-                        marker = (
-                            "*"
-                            if run.best_alpha is not None and a == run.best_alpha
-                            else ""
-                        )
-                        cell = f"{value:.4f}{marker}"
+                        cell = f"{value:.4f}{'*' if c == best_c else ''}"
                     row += f"{cell:>{col_width}}"
                 print(row)
 

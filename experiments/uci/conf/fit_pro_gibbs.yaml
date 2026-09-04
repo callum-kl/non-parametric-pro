@@ -18,7 +18,7 @@ num_particles: 50
 alpha: 1.4
 step_size: null
 
-sigma_min: 0.1
+sigma_min: 0.01
 sigma_max: 100.0
 sigma_init: 0.4
 sigma_lr: 0.1

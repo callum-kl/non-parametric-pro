@@ -3,6 +3,7 @@ import logging
 import math
 import os
 from pathlib import Path
+from typing import NamedTuple
 
 os.environ.setdefault("JAX_ENABLE_X64", "1")
 
@@ -59,21 +60,48 @@ def _row_selectable_basis(cfg: DictConfig, inducing_basis, x_train) -> InducingB
     return inducing_basis if cfg.inducing else PointInducingBasis(z=x_train)
 
 
-def _alpha_grid(cfg: DictConfig, n: int) -> list[tuple[float, float, float]]:
+_SQRT_N_SPECS = {"sqrt_n", "sqrt(n)", "sqrtn"}
+
+
+class AlphaGridPoint(NamedTuple):
+    alpha: float
+    c: float  # realised c = alpha*sqrt(n), which snapping can shift off c_requested
+    c_requested: float
+    spec: str  # the c_grid entry as written in config; stable across splits
+
+
+def _resolve_c(entry, n: int) -> float:
+    if isinstance(entry, str):
+        if entry.strip().lower() in _SQRT_N_SPECS:
+            return math.sqrt(n)
+        msg = (
+            f"Unrecognised c_grid entry {entry!r}; expected a number or one of "
+            f"{sorted(_SQRT_N_SPECS)} (which gives alpha=1)."
+        )
+        raise ValueError(msg)
+    return float(entry)
+
+
+def _alpha_grid(cfg: DictConfig, n: int) -> list[AlphaGridPoint]:
     """
-    (alpha, c_eff, c_requested) per grid point. replica_gibbs needs r = num_particles *
-    alpha integral, which alpha = c/sqrt(n) almost never is, so it snaps to the nearest
-    feasible alpha, reports the realised c_eff = alpha*sqrt(n), and de-duplicates.
+    One point per c_grid entry. `sqrt_n` resolves to sqrt(n), i.e. alpha=1. replica_gibbs
+    needs r = num_particles * alpha integral, which alpha = c/sqrt(n) almost never is, so
+    it snaps to the nearest feasible alpha, reports the realised c = alpha*sqrt(n), and
+    de-duplicates points that collapse onto the same alpha.
     """
-    grid: dict[float, tuple[float, float, float]] = {}
-    for c in cfg.c_grid:
-        alpha = float(c) / math.sqrt(n)
+    grid: dict[float, AlphaGridPoint] = {}
+    for entry in cfg.c_grid:
+        c_requested = _resolve_c(entry, n)
+        alpha = c_requested / math.sqrt(n)
         if cfg.algorithm == "replica_gibbs":
             r = max(1, round(cfg.num_particles * alpha))
             alpha = r / cfg.num_particles
             validate_r(cfg.num_particles, alpha)
-        grid.setdefault(round(alpha, 12), (alpha, alpha * math.sqrt(n), float(c)))
-    return [entry for _, entry in sorted(grid.items())]
+        grid.setdefault(
+            round(alpha, 12),
+            AlphaGridPoint(alpha, alpha * math.sqrt(n), c_requested, str(entry)),
+        )
+    return [point for _, point in sorted(grid.items())]
 
 
 def _adaptation_algorithm(cfg: DictConfig):
@@ -162,7 +190,7 @@ def main(cfg: DictConfig) -> None:
         )
     c_val_nlpd = []
     c_results = []
-    for alpha, c, c_requested in alpha_grid:
+    for alpha, c, c_requested, _spec in alpha_grid:
         if abs(c - c_requested) > 1e-6:
             log.info(
                 "  c=%.6g snapped to c=%.6g (alpha=%.6g, r=%d)",
@@ -241,7 +269,7 @@ def main(cfg: DictConfig) -> None:
         c_results.append((adaptation_results, adapted_kernel_c))
 
     best_idx = int(np.argmin(c_val_nlpd))
-    best_alpha, best_c, _ = alpha_grid[best_idx]
+    best_alpha, best_c, _, _ = alpha_grid[best_idx]
     adaptation_results, adapted_kernel = c_results[best_idx]
     adapted_sigma_val = float(np.array(px.unwrap(adaptation_results.parameters.sigma)))
     log.info(
@@ -304,9 +332,10 @@ def main(cfg: DictConfig) -> None:
         "gp_sigma": float(gp_sigma_val),
         "pro_sigma": adapted_sigma_val,
         "n_train": n,
-        "c_grid": [c for _, c, _ in alpha_grid],
-        "c_grid_requested": [float(c) for c in cfg.c_grid],
-        "alpha_grid": [alpha for alpha, _, _ in alpha_grid],
+        "c_grid": [p.c for p in alpha_grid],
+        "c_grid_requested": [p.c_requested for p in alpha_grid],
+        "c_grid_spec": [p.spec for p in alpha_grid],
+        "alpha_grid": [p.alpha for p in alpha_grid],
         "c_val_nlpd": c_val_nlpd,
         "best_c": best_c,
         "best_alpha": best_alpha,

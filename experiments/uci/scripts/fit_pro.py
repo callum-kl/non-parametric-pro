@@ -44,7 +44,7 @@ OmegaConf.register_new_resolver(
 
 
 def pro_out_dir(cfg: DictConfig) -> Path:
-    subdir = "inducing_pro_gp_full" if cfg.inducing else "pro_gp_full"
+    subdir = "inducing_pro_gp" if cfg.inducing else "pro_gp"
     if cfg.name:
         subdir = f"{subdir}_{cfg.name}"
     return Path(cfg.results_root) / cfg.dataset / f"split_{cfg.split}" / subdir

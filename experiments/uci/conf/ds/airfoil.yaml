@@ -1,10 +1,6 @@
 dataset: airfoil
-num_inducing: 300
-vgp_batch_size: 512
+vgp_variant: collapsed
+collapsed: true
 inducing: true
-sigma_adapt_steps: 900
-kernel_adapt_steps: 0
-sigma_lr: 0.1
-kernel_lr: 0.01
+algorithm: replica_gibbs
 num_folds: 1
-seed: 1

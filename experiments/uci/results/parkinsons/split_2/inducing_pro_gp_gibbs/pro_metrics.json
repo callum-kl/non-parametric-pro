@@ -1,0 +1,8 @@
+{
+  "dataset": "parkinsons",
+  "split": 2,
+  "inducing": true,
+  "gp_sigma": 0.07242243369895722,
+  "pro_sigma": 0.014078997252096031,
+  "pro_nlpd": -1.976264213276007
+}

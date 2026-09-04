@@ -68,7 +68,7 @@ def main() -> None:
     parser.add_argument(
         "--name",
         default=None,
-        help="override cfg.name -- results dir suffix, e.g. name=untuned -> pro_gp_full_untuned "
+        help="override cfg.name -- results dir suffix, e.g. name=untuned -> pro_gp_untuned "
         "(default: fit_pro.yaml's own default, i.e. no suffix)",
     )
     args = parser.parse_args()
