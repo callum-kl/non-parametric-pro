@@ -7,6 +7,7 @@ seed: 0
 name: null # optional suffix for the results dir, e.g. name=untuned -> exact_gp_untuned
 
 kernel_lr: 0.1
+train_kernel_variance: true # learn the RBF outputscale; false pins it to 1.0
 lengthscale_min: 1.0e-3
 lengthscale_max: 1.0e3
 

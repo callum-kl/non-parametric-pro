@@ -1,9 +1,0 @@
-{
-  "dataset": "machine",
-  "split": 1,
-  "inducing": false,
-  "gp_sigma": 0.3803664719124478,
-  "pro_sigma": 0.41426429480065097,
-  "pro_nlpd": 0.5649370996557904,
-  "pro_crps": 0.26181577265939376
-}

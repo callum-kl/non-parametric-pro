@@ -1,0 +1,8 @@
+{
+  "dataset": "sml",
+  "split": 5,
+  "inducing": true,
+  "gp_sigma": 0.05612203137480583,
+  "pro_sigma": 0.01606028051172579,
+  "pro_nlpd": -1.86504441661053
+}

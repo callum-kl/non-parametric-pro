@@ -1,8 +1,0 @@
-{
-  "dataset": "concrete",
-  "split": 4,
-  "inducing": false,
-  "gp_sigma": 0.2140547311487597,
-  "pro_sigma": 0.12671084948457173,
-  "pro_nlpd": 0.37502597585189545
-}

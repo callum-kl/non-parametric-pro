@@ -62,9 +62,12 @@ def main(cfg: DictConfig) -> None:
     lengthscale = gpx.parameters.SigmoidBounded(
         jnp.sqrt(D) * jnp.ones((D,)), low=cfg.lengthscale_min, high=cfg.lengthscale_max
     )
-    kernel = gpx.kernels.RBF(
-        lengthscale=lengthscale, variance=px.NonTrainable(jnp.array(1.0))
+    variance = (
+        gpx.parameters.PositiveReal(jnp.array(1.0))
+        if cfg.train_kernel_variance
+        else px.NonTrainable(jnp.array(1.0))
     )
+    kernel = gpx.kernels.RBF(lengthscale=lengthscale, variance=variance)
     prior = gpx.gps.Prior(mean_function=gpx.mean_functions.Zero(), kernel=kernel)
     likelihood = gpx.likelihoods.Gaussian(
         num_datapoints=data.n, obs_stddev=jnp.sqrt(0.01)
@@ -100,7 +103,7 @@ def main(cfg: DictConfig) -> None:
             progress_bar=True,
         )
     else:
-        variational_family = gpx.variational_families.VariationalGaussian(
+        variational_family = gpx.variational_families.WhitenedVariationalGaussian(
             posterior=posterior,
             inducing_inputs=z_init,
         )
@@ -133,6 +136,7 @@ def main(cfg: DictConfig) -> None:
     metrics = {
         "vgp_nlpd": float(nlpd_gp(y_test, mean, std)),
         "gp_sigma": float(np.array(px.unwrap(opt_sigma)).reshape(())),
+        "gp_variance": float(np.array(px.unwrap(opt_kernel.variance)).reshape(())),
         "collapsed": bool(cfg.collapsed),
         "natural_gradients": bool(cfg.natural_gradients),
     }

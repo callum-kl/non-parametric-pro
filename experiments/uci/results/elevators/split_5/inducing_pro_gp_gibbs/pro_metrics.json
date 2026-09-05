@@ -1,0 +1,8 @@
+{
+  "dataset": "elevators",
+  "split": 5,
+  "inducing": true,
+  "gp_sigma": 0.0006706139038780279,
+  "pro_sigma": 0.17751874158604072,
+  "pro_nlpd": 0.33482414845186226
+}
