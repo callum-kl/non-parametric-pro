@@ -1,0 +1,8 @@
+{
+  "dataset": "protein",
+  "split": 1,
+  "inducing": true,
+  "gp_sigma": 0.0005242460672874448,
+  "pro_sigma": 0.03447399593750206,
+  "pro_nlpd": 0.6462704325514643
+}

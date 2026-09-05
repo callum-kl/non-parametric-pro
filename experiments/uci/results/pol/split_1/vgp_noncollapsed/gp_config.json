@@ -7,6 +7,8 @@
   "train_kernel_variance": true,
   "lengthscale_min": 0.001,
   "lengthscale_max": 1000.0,
+  "variance_min": 0.1,
+  "variance_max": 10.0,
   "vgp_batch_size": 512,
   "num_inducing": 200,
   "collapsed": false,

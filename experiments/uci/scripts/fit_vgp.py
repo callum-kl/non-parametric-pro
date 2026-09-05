@@ -63,7 +63,9 @@ def main(cfg: DictConfig) -> None:
         jnp.sqrt(D) * jnp.ones((D,)), low=cfg.lengthscale_min, high=cfg.lengthscale_max
     )
     variance = (
-        gpx.parameters.PositiveReal(jnp.array(1.0))
+        gpx.parameters.SigmoidBounded(
+            jnp.array(1.0), low=cfg.variance_min, high=cfg.variance_max
+        )
         if cfg.train_kernel_variance
         else px.NonTrainable(jnp.array(1.0))
     )
@@ -103,7 +105,7 @@ def main(cfg: DictConfig) -> None:
             progress_bar=True,
         )
     else:
-        variational_family = gpx.variational_families.WhitenedVariationalGaussian(
+        variational_family = gpx.variational_families.VariationalGaussian(
             posterior=posterior,
             inducing_inputs=z_init,
         )

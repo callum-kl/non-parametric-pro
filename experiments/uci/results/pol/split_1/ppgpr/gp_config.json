@@ -4,6 +4,7 @@
   "name": null,
   "gp_num_iters": 10000,
   "kernel_lr": 0.01,
+  "train_kernel_variance": true,
   "grad_clip_norm": 1.0,
   "lengthscale_min": 0.001,
   "lengthscale_max": 1000.0,
@@ -17,7 +18,7 @@
   "vgp_variant": "collapsed",
   "collapsed": true,
   "inducing": true,
-  "algorithm": "sgld",
+  "algorithm": "replica_gibbs",
   "num_folds": 1,
-  "num_particles": 20
+  "kernel_adapt_steps": 20
 }

@@ -1,2 +1,11 @@
 # N=45730, D=9
 dataset: protein
+vgp_batch_size: 512
+vgp_variant: collapsed
+collapsed: true
+inducing: true
+algorithm: replica_gibbs
+num_folds: 1
+num_inducing: 500
+num_adapt_steps: 40
+sigma_adapt_steps: 35

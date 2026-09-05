@@ -8,9 +8,11 @@ name: null
 
 gp_num_iters: 10000
 kernel_lr: 0.01
-train_kernel_variance: true # learn the RBF outputscale; false pins it to 1.0
+train_kernel_variance: true
 lengthscale_min: 1.0e-3
 lengthscale_max: 1.0e3
+variance_min: 0.1
+variance_max: 10.0
 vgp_batch_size: 512
 num_inducing: 200
 collapsed: true
