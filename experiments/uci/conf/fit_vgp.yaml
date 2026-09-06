@@ -15,7 +15,7 @@ variance_min: 0.1
 variance_max: 10.0
 vgp_batch_size: 512
 num_inducing: 200
-collapsed: true
+collapsed: false
 natural_gradients: false
 natural_lr: 0.5
 

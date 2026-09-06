@@ -2,7 +2,7 @@
   "dataset": "skillcraft",
   "split": 5,
   "inducing": true,
-  "gp_sigma": 0.00034456438148511894,
-  "pro_sigma": 0.46041776336809054,
-  "pro_nlpd": 0.9744001429827902
+  "gp_sigma": 0.0003481652308654276,
+  "pro_sigma": 0.4158648815454801,
+  "pro_nlpd": 0.9787024936671497
 }

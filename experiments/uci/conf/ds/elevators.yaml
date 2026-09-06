@@ -1,6 +1,6 @@
 dataset: elevators
 vgp_batch_size: 512
-vgp_variant: collapsed
+vgp_variant: noncollapsed
 collapsed: false
 inducing: true
 algorithm: replica_gibbs

@@ -27,6 +27,6 @@
   "burn_fraction": 0.5,
   "thin": 2,
   "dataset": "wine",
-  "collapsed": true,
+  "collapsed": false,
   "num_folds": 1
 }

@@ -1,6 +1,6 @@
 dataset: airfoil
-vgp_variant: collapsed
-collapsed: true
+vgp_variant: noncollapsed
+collapsed: false
 inducing: true
 algorithm: replica_gibbs
 num_folds: 1

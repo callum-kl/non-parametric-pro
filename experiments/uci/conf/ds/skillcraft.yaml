@@ -1,8 +1,8 @@
 # N=3338, D=19
 dataset: skillcraft
 vgp_batch_size: 512
-vgp_variant: collapsed
-collapsed: true
+vgp_variant: noncollapsed
+collapsed: false
 inducing: true
 algorithm: replica_gibbs
 num_folds: 1

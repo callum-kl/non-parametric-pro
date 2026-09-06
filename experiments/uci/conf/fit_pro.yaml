@@ -5,7 +5,7 @@ defaults:
 split: 1
 seed: 0
 inducing: false
-vgp_variant: collapsed
+vgp_variant: noncollapsed
 vgp_name: null
 gp_name: null
 name: null

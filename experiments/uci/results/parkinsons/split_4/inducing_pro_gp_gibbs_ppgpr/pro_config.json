@@ -28,6 +28,6 @@
   "thin": 2,
   "dataset": "parkinsons",
   "vgp_batch_size": 512,
-  "collapsed": true,
+  "collapsed": false,
   "num_folds": 1
 }

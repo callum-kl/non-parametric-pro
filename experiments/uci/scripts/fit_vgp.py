@@ -59,16 +59,10 @@ def main(cfg: DictConfig) -> None:
 
     # --- Sparse GP fit -------------------------------------------------------
     data = gpx.Dataset(X=x_train, y=y_train)
-    lengthscale = gpx.parameters.SigmoidBounded(
+    lengthscale = gpx.parameters.SigmoidBounded( 
         jnp.sqrt(D) * jnp.ones((D,)), low=cfg.lengthscale_min, high=cfg.lengthscale_max
     )
-    variance = (
-        gpx.parameters.SigmoidBounded(
-            jnp.array(1.0), low=cfg.variance_min, high=cfg.variance_max
-        )
-        if cfg.train_kernel_variance
-        else px.NonTrainable(jnp.array(1.0))
-    )
+    variance = gpx.parameters.PositiveReal(jnp.array([1.0]))
     kernel = gpx.kernels.RBF(lengthscale=lengthscale, variance=variance)
     prior = gpx.gps.Prior(mean_function=gpx.mean_functions.Zero(), kernel=kernel)
     likelihood = gpx.likelihoods.Gaussian(
