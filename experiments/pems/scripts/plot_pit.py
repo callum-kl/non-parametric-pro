@@ -1,4 +1,4 @@
-"""Overlaid PIT density histograms, exact GP vs PrO, one panel per condition."""
+"""Overlaid PIT density histograms, exact GP vs PrO-GP, one panel per dataset size."""
 
 import sys
 from pathlib import Path
@@ -14,19 +14,9 @@ from aggregate_results import collect
 
 FIGURES_DIR = Path(__file__).resolve().parents[1] / "figures"
 
-CONDITIONS = [
-    ("Baseline", "exact_gp", "pro_gp_gibbs"),
-    (
-        "Regime shift (679, 680)",
-        "exact_gp_regime_shift_679_680",
-        "pro_gp_regime_shift_679_680",
-    ),
-    (
-        "Regime shift (343, 346)",
-        "exact_gp_regime_shift_343_346",
-        "pro_gp_regime_shift_343_346",
-    ),
-]
+NUM_TRAINS = [200, 250, 300]
+GP_METHOD = "exact_gp"
+PRO_METHOD = "pro_gp_gibbs"
 
 METHOD_COLORS = {"gp": "#4c3a8e", "pro": "#e8974e"}
 METHOD_LABELS = {"gp": "Exact GP", "pro": "PrO-GP"}
@@ -45,13 +35,13 @@ plt.rcParams.update(
 
 
 def plot_pit_overlay(pit_records, out_path: Path, *, num_bins: int = 10):
-    fig, axes = plt.subplots(1, len(CONDITIONS), figsize=(15, 4.2), sharey=True)
+    fig, axes = plt.subplots(1, len(NUM_TRAINS), figsize=(15, 4.2), sharey=True)
     bins = [i / num_bins for i in range(num_bins + 1)]
 
-    for ax, (title, gp_key, pro_key) in zip(axes, CONDITIONS, strict=True):
+    for ax, num_train in zip(axes, NUM_TRAINS, strict=True):
         ax.axhline(1.0, color="#999891", linewidth=1.0, linestyle="--", zorder=1)
-        for method, key in (("gp", gp_key), ("pro", pro_key)):
-            values = pit_records.get(key)
+        for method, key in (("gp", GP_METHOD), ("pro", PRO_METHOD)):
+            values = pit_records.get((num_train, key))
             if not values:
                 continue
             ax.hist(
@@ -63,7 +53,7 @@ def plot_pit_overlay(pit_records, out_path: Path, *, num_bins: int = 10):
                 color=METHOD_COLORS[method],
                 label=f"{METHOD_LABELS[method]} (n={len(values)})",
             )
-        ax.set_title(title)
+        ax.set_title(f"num_train={num_train}")
         ax.set_xlabel("PIT value")
         ax.set_xlim(0.0, 1.0)
         ax.legend(loc="upper right", fontsize=9)

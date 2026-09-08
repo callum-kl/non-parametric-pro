@@ -15,17 +15,11 @@ import jax.random as jr
 import numpy as np
 import optax as ox
 import paramax as px
-from jax.scipy.linalg import solve_triangular
 from omegaconf import DictConfig, OmegaConf
 from util import load_gp_state, pro_out_dir
 
 from non_parametric_pro import replica_gibbs, ula
-from non_parametric_pro.data.pems.pems import (
-    apply_regime_shift,
-    road_segment_nodes,
-    load_pems_graph_data,
-    pems_regression_split,
-)
+from non_parametric_pro.data.pems.pems import load_pems_graph_data, pems_regression_split
 from non_parametric_pro.density import ProParameters, pro_logdensity_fn
 from non_parametric_pro.inducing import PointInducingBasis
 from non_parametric_pro.parameter_adaptation import parameter_adaptation
@@ -34,16 +28,10 @@ from non_parametric_pro.sgld import parametric_sgld, sgld
 from non_parametric_pro.ula import parametric_ula
 from non_parametric_pro.util import (
     cholesky_basis,
-    crps,
-    energy_score,
-    gaussian_nll,
     nlpd_pro,
     pit_values,
     posterior_function_draws,
     prediction_basis,
-    predictive_moments,
-    project_particles,
-    rmse,
     run_inference_algorithm_with_burn_in,
     train_val_split,
     variogram_score,
@@ -54,115 +42,6 @@ log = logging.getLogger(__name__)
 OmegaConf.register_new_resolver(
     "script_dir", lambda: str(Path(__file__).resolve().parents[1]), replace=True
 )
-
-
-def _mixture_joint_nll(
-    y: jax.Array, mean_per_particle: jax.Array, cov: jax.Array, jitter: float = 1e-6
-) -> jax.Array:
-    """-log[ (1/K) sum_k N(y; mean_per_particle[:, k], cov) ].
-
-    The *joint* NLL of the whole test vector under the particle mixture -- each
-    particle is treated as one coherent explanation of every test point at once,
-    then particles are mixed -- as opposed to nlpd_pro's per-point marginal mixture
-    (used for pro_nlpd). Matches the pems-regression notebook's diag_cov_nll/
-    full_cov_nll semantics (a single MultivariateNormal.log_prob), generalized to a
-    mixture. `cov` diagonal-only gives the diag-NLL variant; full gives full-NLL.
-    """
-    n = cov.shape[0]
-    chol = jnp.linalg.cholesky(cov + jitter * jnp.eye(n))
-    log_det = 2.0 * jnp.sum(jnp.log(jnp.diag(chol)))
-
-    def logpdf(mean_k: jax.Array) -> jax.Array:
-        alpha = solve_triangular(chol, y - mean_k, lower=True)
-        return -0.5 * (n * jnp.log(2.0 * jnp.pi) + log_det + jnp.sum(alpha**2))
-
-    log_dens = jax.vmap(logpdf, in_axes=1)(mean_per_particle)
-    num_particles = mean_per_particle.shape[1]
-    return -(jax.nn.logsumexp(log_dens) - jnp.log(num_particles))
-
-
-def _moment_matched_mean_and_between_cov(
-    mean_per_particle: jax.Array,
-) -> tuple[jax.Array, jax.Array]:
-    """Mean and between-particle covariance of the particle ensemble (law of total
-    covariance's second term): Cov[y] = E_k[Cov[y|k]] + Cov_k[E[y|k]]. Combined with
-    the shared within-particle covariance, this moment-matches the *entire* PrO
-    mixture to a single Gaussian -- as opposed to _mixture_joint_nll, which scores
-    each particle's own coherent joint explanation and mixes via logsumexp. This
-    folds particle disagreement into predictive variance instead of requiring any
-    one particle to explain the whole test vector well.
-    """
-    mean = jnp.mean(mean_per_particle, axis=1)
-    centered = mean_per_particle - mean[:, None]
-    num_particles = mean_per_particle.shape[1]
-    between_cov = (centered @ centered.T) / num_particles
-    return mean, between_cov
-
-
-def _region_metrics(
-    mask: np.ndarray,
-    *,
-    y_test: jax.Array,
-    test_basis: jax.Array,
-    test_cov: jax.Array,
-    particles: jax.Array,
-    pro_params: ProParameters,
-    projected: jax.Array,
-    diag_cov: jax.Array,
-    full_cov: jax.Array,
-    gauss_mean: jax.Array,
-    gauss_diag_cov: jax.Array,
-    gauss_full_cov: jax.Array,
-    y_draws: jax.Array,
-    y_test_flat: jax.Array,
-    mean_raw: np.ndarray,
-    y_raw: np.ndarray,
-) -> dict:
-    """Metrics restricted to a boolean test-point mask (empty dict if mask is empty).
-
-    Mirrors fit_exact_gp.py's _region_metrics: every quantity here is already a
-    per-test-point array/matrix, so a region is just a row/column slice -- no
-    refitting, resampling, or re-running the sampler.
-    """
-    if not mask.any():
-        return {}
-    sub_test_basis = test_basis[mask]
-    sub_test_cov = test_cov[mask][:, mask]
-    sub_y_test = y_test[mask]
-    sub_y_flat = y_test_flat[mask]
-    sub_projected = projected[mask]
-    sub_diag_cov = diag_cov[mask][:, mask]
-    sub_full_cov = full_cov[mask][:, mask]
-    sub_gauss_mean = gauss_mean[mask]
-    sub_gauss_diag_cov = gauss_diag_cov[mask][:, mask]
-    sub_gauss_full_cov = gauss_full_cov[mask][:, mask]
-    sub_draws = y_draws[mask]
-
-    return {
-        "nlpd": float(
-            nlpd_pro(
-                sub_y_test,
-                sub_test_basis,
-                sub_test_cov,
-                particles,
-                parameters=pro_params,
-            )
-        ),
-        "diag_nll": float(_mixture_joint_nll(sub_y_flat, sub_projected, sub_diag_cov)),
-        "full_nll": float(_mixture_joint_nll(sub_y_flat, sub_projected, sub_full_cov)),
-        "diag_nll_gauss": float(
-            gaussian_nll(sub_y_flat, sub_gauss_mean, sub_gauss_diag_cov)
-        ),
-        "full_nll_gauss": float(
-            gaussian_nll(sub_y_flat, sub_gauss_mean, sub_gauss_full_cov)
-        ),
-        "energy_score": float(energy_score(sub_draws, sub_y_flat)),
-        "crps": float(crps(sub_draws, sub_y_flat)),
-        "variogram_score": float(variogram_score(sub_draws, sub_y_flat)),
-        "pit": [float(v) for v in pit_values(sub_draws, sub_y_flat)],
-        "rmse": float(rmse(jnp.asarray(y_raw[mask]), jnp.asarray(mean_raw[mask]))),
-        "n_test": int(mask.sum()),
-    }
 
 
 def _check_replica_gibbs_config(cfg: DictConfig) -> None:
@@ -197,7 +76,7 @@ def _sampling_algorithm(cfg: DictConfig, pro_params: ProParameters):
 
 @hydra.main(version_base=None, config_path="../conf", config_name="fit_pro")
 def main(cfg: DictConfig) -> None:
-    log.info("PRO (graph GP): split=%d", cfg.split)
+    log.info("PRO (graph GP): split=%d num_train=%d", cfg.split, cfg.num_train)
 
     if cfg.algorithm == "replica_gibbs":
         _check_replica_gibbs_config(cfg)
@@ -211,19 +90,6 @@ def main(cfg: DictConfig) -> None:
 
     # --- Data ------------------------------------------------------------------
     graph_data = load_pems_graph_data()
-    affected_nodes = None
-    if cfg.regime_shift.enabled:
-        affected_nodes = road_segment_nodes(
-            graph_data.graph, cfg.regime_shift.seed_node, cfg.regime_shift.radius_m
-        )
-        graph_data = apply_regime_shift(
-            graph_data, affected_nodes, cfg.regime_shift.shift_factor
-        )
-        log.info(
-            "regime_shift enabled: %d affected nodes, shift_factor=%.2f",
-            len(affected_nodes),
-            cfg.regime_shift.shift_factor,
-        )
     if cfg.default_kernel_init:
         kernel = gpx.kernels.GraphKernel(
             laplacian=graph_data.laplacian,
@@ -240,7 +106,7 @@ def main(cfg: DictConfig) -> None:
     )
 
     split = pems_regression_split(
-        graph_data, cfg.split, num_train=cfg.num_train, affected_nodes=affected_nodes
+        graph_data, cfg.split, num_train=cfg.num_train, seed=cfg.split + cfg.split_seed_offset
     )
     x_train = jnp.asarray(split.x_train)
     y_train = jnp.asarray(scaler_y.transform(split.y_train))
@@ -340,124 +206,31 @@ def main(cfg: DictConfig) -> None:
 
     # --- Evaluation ------------------------------------------------------------
     test_basis, test_cov = prediction_basis(adapted_kernel, x_train, x_test, pro_params)
-    pred_mean, _ = predictive_moments(
-        test_basis, particles, noise_std=px.unwrap(pro_params.sigma)
-    )
-    mean_raw = scaler_y.inverse_transform(
-        np.asarray(pred_mean).reshape(-1, 1)
-    ).squeeze()
-
-    # diag/full NLL: see _mixture_joint_nll's docstring -- these exist for direct
-    # comparison against the pems-regression notebook; pro_nlpd (per-point marginal
-    # mixture, mean) stays the primary metric, matching this repo's other experiments.
-    #
-    # Two joint-vector variants are reported:
-    #   *_nll       -- exact discrete mixture (_mixture_joint_nll): each particle must
-    #                  coherently explain the *whole* test vector; particles are mixed
-    #                  via logsumexp. Penalizes particle-to-particle disagreement hard.
-    #   *_nll_gauss -- the entire PrO ensemble collapsed to one Gaussian via moment
-    #                  matching (_moment_matched_mean_and_between_cov): between-particle
-    #                  disagreement becomes predictive variance instead of a coherence
-    #                  requirement. Directly comparable to the notebook's single-Gaussian
-    #                  full_cov_nll in spirit, since both score one Gaussian jointly.
     sigma_val = px.unwrap(pro_params.sigma)
-    n_test = test_cov.shape[0]
-    conditional_covariance = test_cov - test_basis @ test_basis.T
-    conditional_covariance = 0.5 * (conditional_covariance + conditional_covariance.T)
-    within_cov = conditional_covariance + sigma_val**2 * jnp.eye(n_test)
-    full_cov = within_cov
-    diag_cov = jnp.diag(jnp.diag(full_cov))
-    projected = project_particles(test_basis, particles)
     y_test_flat = jnp.asarray(y_test).squeeze()
 
-    pro_diag_nll = float(_mixture_joint_nll(y_test_flat, projected, diag_cov))
-    pro_full_nll = float(_mixture_joint_nll(y_test_flat, projected, full_cov))
-
-    gauss_mean, between_cov = _moment_matched_mean_and_between_cov(projected)
-    gauss_full_cov = within_cov + between_cov
-    gauss_diag_cov = jnp.diag(jnp.diag(gauss_full_cov))
-    pro_diag_nll_gauss = float(gaussian_nll(y_test_flat, gauss_mean, gauss_diag_cov))
-    pro_full_nll_gauss = float(gaussian_nll(y_test_flat, gauss_mean, gauss_full_cov))
-
-    # Energy score: a proper scoring rule computed directly from joint predictive
-    # *samples* -- draws each use one particle's mean plus a correlated GP-conditional
-    # residual (posterior_function_draws) and observation noise on top, so it uses the
-    # full particle ensemble as-is (no forced single-particle coherence, no Gaussian
-    # moment-matching away of multimodal structure). See energy_score's docstring.
     key, draw_key, noise_key = jr.split(key, 3)
     latent_draws = posterior_function_draws(
-        draw_key, test_basis, test_cov, particles, num_draws=cfg.energy_score_draws
+        draw_key, test_basis, test_cov, particles, num_draws=cfg.num_predictive_draws
     )
     y_draws = latent_draws + sigma_val * jr.normal(noise_key, latent_draws.shape)
-    pro_energy_score = float(energy_score(y_draws, y_test_flat))
-    pro_crps = float(crps(y_draws, y_test_flat))
     pro_variogram = float(variogram_score(y_draws, y_test_flat))
     pro_pit = pit_values(y_draws, y_test_flat)
 
     metrics = {
         "split": cfg.split,
-        "gp_sigma": float(gp_sigma_val),
-        "pro_sigma": adapted_sigma_val,
+        "num_train": cfg.num_train,
         "pro_nlpd": float(
             nlpd_pro(y_test, test_basis, test_cov, particles, parameters=pro_params)
         ),
-        "pro_diag_nll": pro_diag_nll,
-        "pro_full_nll": pro_full_nll,
-        "pro_diag_nll_gauss": pro_diag_nll_gauss,
-        "pro_full_nll_gauss": pro_full_nll_gauss,
-        "pro_energy_score": pro_energy_score,
-        "pro_crps": pro_crps,
         "pro_variogram_score": pro_variogram,
         "pro_pit": [float(v) for v in pro_pit],
-        "pro_rmse": float(rmse(jnp.asarray(split.y_test), jnp.asarray(mean_raw))),
     }
     log.info(
-        "PRO  NLPD=%.4f  RMSE=%.4f  diag-NLL=%.4f  full-NLL=%.4f  "
-        "diag-NLL(gauss)=%.4f  full-NLL(gauss)=%.4f  energy=%.4f  "
-        "crps=%.4f  variogram=%.4f",
+        "PRO  NLPD=%.4f  variogram=%.4f",
         metrics["pro_nlpd"],
-        metrics["pro_rmse"],
-        pro_diag_nll,
-        pro_full_nll,
-        pro_diag_nll_gauss,
-        pro_full_nll_gauss,
-        pro_energy_score,
-        pro_crps,
         pro_variogram,
     )
-
-    # Misspecification test: region-conditional metrics, re-using the already
-    # computed full-test-set arrays (see _region_metrics's docstring).
-    if cfg.regime_shift.enabled:
-        for region, mask in (
-            ("in_region", np.asarray(split.test_affected)),
-            ("out_region", ~np.asarray(split.test_affected)),
-        ):
-            region_metrics = _region_metrics(
-                mask,
-                y_test=y_test,
-                test_basis=test_basis,
-                test_cov=test_cov,
-                particles=particles,
-                pro_params=pro_params,
-                projected=projected,
-                diag_cov=diag_cov,
-                full_cov=full_cov,
-                gauss_mean=gauss_mean,
-                gauss_diag_cov=gauss_diag_cov,
-                gauss_full_cov=gauss_full_cov,
-                y_draws=y_draws,
-                y_test_flat=y_test_flat,
-                mean_raw=mean_raw,
-                y_raw=np.asarray(split.y_test).squeeze(),
-            )
-            for name, value in region_metrics.items():
-                metrics[f"pro_{name}_{region}"] = value
-        log.info(
-            "regime_shift: %d in-region / %d out-of-region test sensors",
-            int(split.test_affected.sum()),
-            int((~split.test_affected).sum()),
-        )
 
     # --- Save ----------------------------------------------------------------
     with open(out_dir / "pro_metrics.json", "w") as f:

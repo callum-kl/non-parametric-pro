@@ -16,12 +16,12 @@ OmegaConf.register_new_resolver(
 
 def gp_state_dir(cfg: DictConfig) -> Path:
     subdir = f"exact_gp_{cfg.gp_name}" if cfg.gp_name else "exact_gp"
-    return Path(cfg.results_root) / f"split_{cfg.split}" / subdir
+    return Path(cfg.results_root) / f"num_train_{cfg.num_train}" / f"split_{cfg.split}" / subdir
 
 
 def pro_out_dir(cfg: DictConfig) -> Path:
     subdir = f"pro_gp_{cfg.name}" if cfg.name else "pro_gp"
-    return Path(cfg.results_root) / f"split_{cfg.split}" / subdir
+    return Path(cfg.results_root) / f"num_train_{cfg.num_train}" / f"split_{cfg.split}" / subdir
 
 
 def load_gp_state(cfg: DictConfig):

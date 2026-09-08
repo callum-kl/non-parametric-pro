@@ -1,0 +1,20 @@
+{
+  "split": 1,
+  "seed": 0,
+  "name": null,
+  "split_seed_offset": 1000,
+  "num_train": 225,
+  "lengthscale_init": 5.0,
+  "lengthscale_min": 0.01,
+  "lengthscale_max": 100.0,
+  "smoothness_init": 3.0,
+  "smoothness_min": 0.5,
+  "smoothness_max": 20.0,
+  "objective": "mll",
+  "num_iters": 3000,
+  "kernel_lr": 0.05,
+  "num_restarts": 1,
+  "restart_jitter_std": 0.75,
+  "num_predictive_draws": 256,
+  "results_root": "${script_dir:}/results"
+}

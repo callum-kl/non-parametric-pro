@@ -1,4 +1,4 @@
-"""Run exact-GP fitting followed by PRO sampling across several splits, in sequence."""
+"""Run exact-GP fitting followed by PRO sampling across dataset sizes and splits, in sequence."""
 
 import argparse
 import subprocess
@@ -18,9 +18,14 @@ def main() -> None:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument(
+        "--num-trains",
+        default="200,250,300",
+        help="comma-separated dataset sizes to sweep (default: 200,250,300)",
+    )
+    parser.add_argument(
         "--splits",
-        default="1,2,3,4,5",
-        help="comma-separated split list (default: 1,2,3,4,5)",
+        default="1,2,3,4,5,6,7,8,9,10",
+        help="comma-separated split list (default: 1,2,3,4,5,6,7,8,9,10)",
     )
     parser.add_argument(
         "--n-jobs",
@@ -39,19 +44,19 @@ def main() -> None:
     args = parser.parse_args()
 
     launcher = ["-m", "hydra/launcher=joblib", f"hydra.launcher.n_jobs={args.n_jobs}"]
-    splits = f"split={args.splits}"
+    overrides = [f"split={args.splits}", f"num_train={args.num_trains}"]
 
     exact_gp = str(SCRIPT_DIR / "fit_exact_gp.py")
     pro_gp = str(SCRIPT_DIR / "fit_pro.py")
 
     runs = [
-        [sys.executable, exact_gp, *launcher, splits],
+        [sys.executable, exact_gp, *launcher, *overrides],
         [
             sys.executable,
             pro_gp,
             f"--config-name={args.pro_config}",
             *launcher,
-            splits,
+            *overrides,
         ],
     ]
 

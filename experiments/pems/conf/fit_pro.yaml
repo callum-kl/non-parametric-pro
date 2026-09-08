@@ -2,8 +2,9 @@ split: 1
 seed: 0
 gp_name: null
 name: null
+split_seed_offset: 0 # must match the value used by fit_exact_gp.py for this split -- picks the same partition as the loaded gp_state
 
-num_train: 250 # must match the value used by fit_exact_gp.py for this split
+num_train: 250 # must match the value used by fit_exact_gp.py for this split (dataset size)
 
 default_kernel_init: false # if true, ignore the fitted GP's kernel and start from lengthscale/smoothness inits below
 
@@ -13,7 +14,7 @@ num_particles: 50
 alpha: 1.43
 step_size: 0.0001 # unused when algorithm=replica_gibbs
 
-sigma_min: 0.1
+sigma_min: 0.01
 sigma_max: 100.0
 sigma_init: null # defaults to the exact GP's fitted sigma when null
 sigma_lr: 0.1
@@ -41,17 +42,7 @@ num_sample_steps: 3000
 burn_fraction: 0.5
 thin: 50
 
-energy_score_draws: 256 # joint predictive samples used to estimate the energy score
-
-# See fit_exact_gp.yaml's comment -- must match whatever that script used to
-# produce the loaded gp_state, so the same sensors are shifted here too. Also set
-# gp_name to match fit_exact_gp.py's name= for this run (e.g. both =regime_shift),
-# otherwise this loads the *unshifted* baseline exact-GP state instead.
-regime_shift:
-  enabled: false
-  seed_node: 415
-  radius_m: 3000
-  shift_factor: 0.29 # ~71% slowdown -- severe congestion (e.g. ~27.5mph -> ~8mph)
+num_predictive_draws: 256 # joint predictive samples used for the variogram score / PIT
 
 hydra:
   job:

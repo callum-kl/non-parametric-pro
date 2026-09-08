@@ -1,10 +1,11 @@
 split: 1
 seed: 0
-name: null # optional suffix for the results dir, e.g. name=untuned -> exact_gp_untuned
+name: null
+split_seed_offset: 0 # partition RNG seed = split + split_seed_offset; split alone still labels the results dir
 
-num_train: 250 # sensors used for training; the rest (75 of 325) are held out as test
+num_train: 250
 
-lengthscale_init: 5.0 # small inits (~1) collapse to a near-white-noise local optimum; >=5 finds the good basin
+lengthscale_init: 5.0
 lengthscale_min: 1.0e-2
 lengthscale_max: 1.0e2
 
@@ -12,48 +13,15 @@ smoothness_init: 3.0
 smoothness_min: 0.5
 smoothness_max: 20.0
 
-objective: mll # "mll" (conjugate_mll) | "loocv" (conjugate_loocv, Rasmussen & Williams sec. 5.4.2)
+objective: mll
 
-# GraphKernel carries its full (num_nodes, num_nodes) eigenvector/eigenvalue/laplacian
-# arrays as non-trainable leaves; gpx.fit_scipy's default dense-Hessian BFGS blows up
-# on a parameter vector that size, so we fit with Adam instead (gpx.fit).
 num_iters: 3000
 kernel_lr: 0.05
 
-# Adam multi-start: restart 0 uses the deterministic init above; restarts 1..N-1
-# jitter both log-lengthscale and log-smoothness (std=restart_jitter_std) from
-# cfg.seed, keeping whichever restart reaches the best negative MLL. The graph
-# Matern MLL surface is multimodal (a near-white-noise local optimum competes
-# with the genuinely smooth one), so multiple restarts matter here.
-num_restarts: 3
+num_restarts: 1
 restart_jitter_std: 0.75
 
-energy_score_draws: 256 # joint predictive samples used to estimate the energy score
-
-# Misspecification test: multiply speeds for every sensor (train + test) within
-# radius_m driving distance of seed_node by shift_factor, simulating a persistent
-# localized event (e.g. an accident) the smooth graph kernel isn't built to
-# represent as a sharp boundary. Multiplicative (not an additive mph offset) so it
-# stays physically plausible across regions with very different baseline speeds --
-# see apply_regime_shift's docstring. seed_node/radius_m traces a real contiguous
-# highway corridor via road distance (see pems.py's road_segment_nodes) -- unlike
-# a graph-cut, which this network's topology restricts to small dead-end spurs
-# (see bridge_region_nodes' docstring).
-#
-# seed_node must sit inside the graph's single 876-node biconnected core -- the
-# mesh of alternate carriageways/ramps/frontage roads that carries every real
-# "through" corridor (300 of 325 sensors) -- not one of the small dead-end
-# appendages nx.bridges finds. A seed just outside the core (e.g. node 821) can
-# reproduce an old bridge-cut spur exactly, silently defeating the point.
-# Defaults: seed_node=415 sits on I-880 (in-core), radius_m=3000 -> 11 sensors,
-# 100% nearest to I-880. Alternate corridor for a second sweep: seed_node=378
-# (US-101, in-core), radius_m=3000 -> 12 sensors, 92% purity. Disabled by default
-# so normal runs are unaffected.
-regime_shift:
-  enabled: false
-  seed_node: 415
-  radius_m: 3000
-  shift_factor: 0.29 # ~71% slowdown -- severe congestion (e.g. ~27.5mph -> ~8mph)
+num_predictive_draws: 256
 
 results_root: ${script_dir:}/results
 

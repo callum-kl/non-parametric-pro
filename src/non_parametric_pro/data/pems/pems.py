@@ -81,67 +81,12 @@ def load_pems_graph_data(*, force: bool = False) -> PemsGraphData:
     )
 
 
-def bridge_region_nodes(graph: nx.Graph, edge: tuple[int, int]) -> set[int]:
-    """Nodes in the smaller component obtained by cutting a bridge edge.
-
-    `edge` must be a bridge (its removal disconnects the graph) -- used to isolate
-    a single, graph-contiguous road segment as a "localized region" for
-    misspecification testing, e.g. simulating an accident affecting one road.
-
-    Only ever isolates small dead-end spurs: this graph's sensor-bearing roads sit
-    in one 876-node/300-sensor biconnected core (opposite carriageways, ramps, and
-    frontage roads all give an alternate path around any single edge), so no bridge
-    cut can carve out a stretch of an actual highway corridor -- see
-    `road_segment_nodes` for that.
-    """
-    without_edge = graph.copy()
-    without_edge.remove_edge(*edge)
-    components = list(nx.connected_components(without_edge))
-    return {int(v) for v in min(components, key=len)}
-
-
-def road_segment_nodes(
-    graph: nx.Graph, seed_node: int, radius_m: float, *, weight: str = "length"
-) -> set[int]:
-    """Nodes within `radius_m` driving distance of `seed_node`.
-
-    A physically meaningful "stretch of road" for misspecification testing: unlike
-    `bridge_region_nodes` (which only reaches small dead-end spurs), this follows
-    real road distance (edge `length` in metres) outward from a seed, so it traces
-    a contiguous corridor along the actual highway network -- e.g. a segment of
-    I-680 or US-101 -- rather than requiring a graph-disconnecting cut.
-    """
-    distances = nx.single_source_dijkstra_path_length(graph, seed_node, weight=weight)
-    return {int(n) for n, d in distances.items() if d <= radius_m}
-
-
-def apply_regime_shift(
-    data: PemsGraphData, affected_nodes: set[int], shift_factor: float
-) -> PemsGraphData:
-    """Multiply the speed of every sensor whose node is in `affected_nodes` by
-    `shift_factor` (e.g. 0.6 for a 40% congestion-scale slowdown).
-
-    Simulates a persistent, localized event (e.g. an accident) that a smooth graph
-    kernel isn't built to represent as a sharp boundary. Multiplicative rather than
-    an additive mph offset so it stays physically plausible (speeds can't go
-    negative) regardless of a region's baseline speed -- an additive -25mph shift
-    is a mild congestion-scale change on a ~64mph free-flowing segment but can push
-    an already-slow ~27mph arterial segment negative.
-    """
-    affected_mask = np.isin(data.node_index.reshape(-1), list(affected_nodes))
-    speed = data.speed.copy()
-    speed[affected_mask] *= shift_factor
-    return data._replace(speed=speed)
-
-
 class PemsRegressionSplit(NamedTuple):
     x_train: np.ndarray
     y_train: np.ndarray
     x_test: np.ndarray
     y_test: np.ndarray
     split: int
-    train_affected: np.ndarray
-    test_affected: np.ndarray
 
 
 def pems_regression_split(
@@ -149,22 +94,18 @@ def pems_regression_split(
     split: int,
     *,
     num_train: int = 250,
-    affected_nodes: set[int] | None = None,
+    seed: int | None = None,
 ) -> PemsRegressionSplit:
-    """Random train/test split of the 325 sensors, reproducible via `split`.
+    """Random train/test split of the 325 sensors.
 
-    `affected_nodes`, if given, marks sensors inside a misspecification-test region
-    (see `bridge_region_nodes`/`apply_regime_shift`) via the returned boolean
-    `train_affected`/`test_affected` masks; all-`False` when `None`.
+    Reproducible via `seed` (defaults to `split` when not given). `seed` is
+    decoupled from `split` so callers can hold the output directory labeling
+    (`split`) fixed while generating a different partition (`seed`) -- e.g. to
+    rerun the same nominal splits with an independent set of random partitions.
     """
-    rng = np.random.default_rng(split)
+    rng = np.random.default_rng(seed if seed is not None else split)
     perm = rng.permutation(data.num_sensors)
     train_idx, test_idx = perm[:num_train], perm[num_train:]
-
-    if affected_nodes:
-        affected = np.isin(data.node_index.reshape(-1), list(affected_nodes))
-    else:
-        affected = np.zeros(data.num_sensors, dtype=bool)
 
     return PemsRegressionSplit(
         x_train=data.node_index[train_idx],
@@ -172,6 +113,4 @@ def pems_regression_split(
         x_test=data.node_index[test_idx],
         y_test=data.speed[test_idx],
         split=split,
-        train_affected=affected[train_idx],
-        test_affected=affected[test_idx],
     )
