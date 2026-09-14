@@ -1,4 +1,3 @@
-import math
 from collections import defaultdict
 from pathlib import Path
 
@@ -28,8 +27,6 @@ ALGORITHM_COLORS = {"pro_gp": "#e8974e", "standard_gp": "#4c3a8e"}
 ALGORITHM_MARKERS = {"pro_gp": "^", "standard_gp": "o"}
 
 X_PAD_FRAC = 0.14
-# horizontal dodge between the two series, as a fraction of one log2 step
-DODGE_FRAC = 0.06
 
 DIVIDER_COLOR = "#cccac0"
 
@@ -49,7 +46,7 @@ plt.rcParams.update(
 
 
 def load_summary(path: Path = SUMMARY_CSV):
-    """{source: {algorithm: [(n, nlpd_mean, nlpd_ci95), ...]}}, each list sorted by `n`."""
+    """{source: {algorithm: [(n, nlpd_mean, nlpd_sem), ...]}}, each list sorted by `n`."""
     records: dict[str, dict[str, list[tuple[float, float, float]]]] = defaultdict(
         lambda: defaultdict(list)
     )
@@ -59,7 +56,7 @@ def load_summary(path: Path = SUMMARY_CSV):
                 (
                     float(row["param_value"]),
                     float(row["nlpd_mean"]),
-                    float(row["nlpd_ci95"]),
+                    float(row["nlpd_sem"]),
                 )
             )
 
@@ -70,32 +67,26 @@ def load_summary(path: Path = SUMMARY_CSV):
     return records
 
 
-def _dodge_offsets(n: int) -> list[float]:
-    """Symmetric log2-space offsets so the series' error bars sit side by side."""
-    return [(i - (n - 1) / 2) * DODGE_FRAC for i in range(n)]
-
-
 def _plot_sweep(
     ax, by_algorithm: dict[str, list[tuple[float, float, float]]], all_values, colors
 ):
     """
-    Per-algorithm line+error-bar series across the swept `n` values, log2-scaled
-    (`n` doubles each step) so the ticks stay evenly spaced, with the actual tested
-    values as ticks.
+    Per-algorithm line+error-bar series across the swept `n` values on a linear axis,
+    so the spacing reflects the actual differences in `n` (50->100 is half the gap of
+    100->200), with the tested values as ticks.
     """
-    offsets = _dodge_offsets(len(ALGORITHMS))
-    for algorithm, offset in zip(ALGORITHMS, offsets, strict=True):
+    span = max(all_values) - min(all_values)
+    for algorithm in ALGORITHMS:
         points = by_algorithm.get(algorithm)
         if not points:
             continue
-        # dodge in log2 space so the shift is even across the axis
-        x = [2 ** (math.log2(point[0]) + offset) for point in points]
+        x = [point[0] for point in points]
         mean = [point[1] for point in points]
-        ci95 = [point[2] for point in points]
+        sem = [point[2] for point in points]
         ax.errorbar(
             x,
             mean,
-            yerr=ci95,
+            yerr=sem,
             marker=ALGORITHM_MARKERS[algorithm],
             linestyle="-",
             color=colors[algorithm],
@@ -108,14 +99,11 @@ def _plot_sweep(
         )
 
     ax.set_xlabel("training size n")
-    ax.set_xscale("log", base=2)
     ax.xaxis.set_major_formatter(mticker.ScalarFormatter())
-    ax.xaxis.set_minor_formatter(mticker.NullFormatter())
     ax.set_xticks(all_values)
 
-    lo, hi = math.log2(min(all_values)), math.log2(max(all_values))
-    pad = X_PAD_FRAC * (hi - lo)
-    ax.set_xlim(2 ** (lo - pad), 2 ** (hi + pad))
+    pad = X_PAD_FRAC * span
+    ax.set_xlim(min(all_values) - pad, max(all_values) + pad)
 
 
 def _plot_source(

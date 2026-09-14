@@ -24,15 +24,17 @@ GP_COLOR = "#e8974e"
 PRO_COLOR = "#2ca58d"
 GP_LABEL = "Bayes GP"
 PRO_LABEL = "PrO-GP"
-Z_90 = 1.645
-DATA_ALPHA = 0.8
-# replica_gibbs needs r = num_particles * alpha to be a positive integer, so the
-# particle count and alpha have to be chosen together: at 50 particles alpha is a
-# multiple of 1/50, which 1.4 satisfies (r=70).
+Z_90 = 1.96
+DATA_ALPHA = 0.45
 PANEL_ALPHA = 1.4
 PANEL_NUM_PARTICLES = 50
-PANEL_ADAPT_STEPS = 100
-PANEL_KERNEL_ADAPT_STEPS = 30
+# From the tuning study in ../tuning: kernel adaptation is robust to its initial
+# lengthscale only at a large learning rate, with kernel updates spaced a handful of
+# sampler iterations apart -- both a tiny lr and a near-every-step schedule fail.
+PANEL_ADAPT_STEPS = 400
+PANEL_KERNEL_ADAPT_STEPS = 400
+PANEL_KERNEL_LR = 0.5
+PANEL_KERNEL_STEPS_PER_ADAPT = 1
 GP_BAND_ALPHA = 0.22
 PRO_BAND_ALPHAS = (0.18, 0.36)
 COLUMN_TITLE_PAD_IN = 0.62
@@ -110,7 +112,7 @@ def _pro_density_bands(
     sigma_eff_sorted,
     *,
     credible_k: float = 5.0,
-    num_y: int = 400,
+    num_y: int = 100,
     # widest first, so the inner region sits on top
     masses: tuple[float, ...] = (0.95, 0.5),
     alphas: tuple[float, ...] = PRO_BAND_ALPHAS,
@@ -210,6 +212,11 @@ def _plot_fit_panel(
             num_particles=PANEL_NUM_PARTICLES,
             num_adapt_steps=PANEL_ADAPT_STEPS,
             kernel_adapt_steps=PANEL_KERNEL_ADAPT_STEPS,
+            kernel_lr=PANEL_KERNEL_LR,
+            kernel_steps_per_adapt=PANEL_KERNEL_STEPS_PER_ADAPT,
+            warmup_steps=4,
+            kernel_lengthscale=0.4,
+            val_fraction=0.3,
         )
         _pro_density_bands(
             ax,
@@ -285,7 +292,7 @@ TOP_LEGEND_HANDLES = [
     Patch(
         facecolor=PRO_COLOR,
         alpha=PRO_BAND_ALPHAS[1],
-        label=f"{PRO_LABEL} (50%/95% regions)",
+        label=f"{PRO_LABEL} (50%/90% regions)",
     ),
     Line2D(
         [0],

@@ -1,0 +1,44 @@
+{
+  "seed": 2421,
+  "algorithm": "pro_gp",
+  "num_instances": 40,
+  "results_root": "${script_dir:}/results",
+  "kernel": {
+    "lengthscale": 1.0
+  },
+  "pro": {
+    "algorithm": "replica_gibbs",
+    "step_size": 0.0001,
+    "alpha": 1.4,
+    "sigma_init": 0.3,
+    "sigma_min": 0.03,
+    "sigma_max": 1.0,
+    "num_particles": 50,
+    "val_fraction": 0.3,
+    "num_adapt_steps": 200,
+    "warmup_steps": 3,
+    "sigma_adapt_steps": 90,
+    "kernel_adapt_steps": 200,
+    "sigma_lr": 0.1,
+    "kernel_lr": 0.5,
+    "kernel_steps_per_adapt": 1,
+    "num_sample_steps": 100,
+    "burn_fraction": 0.75,
+    "thin": 5
+  },
+  "source": "block_outliers",
+  "param_name": "n",
+  "n": 50,
+  "test_fraction": 0.3,
+  "noise_std_frac": 0.15,
+  "outlier_offset_frac": 1.0,
+  "half_width": 0.2,
+  "ell_range": [
+    0.5,
+    1.0
+  ],
+  "alpha_range": [
+    0.5,
+    2.0
+  ]
+}

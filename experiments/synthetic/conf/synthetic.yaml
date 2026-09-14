@@ -15,20 +15,21 @@ kernel:
 pro:
   algorithm: replica_gibbs # 'ula' or 'replica_gibbs'
   step_size: 0.0001
-  alpha: 1.0
+  alpha: 1.4
   sigma_init: 0.3
-  sigma_min: 0.1
+  sigma_min: 0.03
   sigma_max: 1.0
-  num_particles: 32
+  num_particles: 50
   val_fraction: 0.3
-  num_adapt_steps: 100
-  warmup_steps: 10
+  num_adapt_steps: 200
+  warmup_steps: 3
   sigma_adapt_steps: 90
-  kernel_adapt_steps: 90
+  kernel_adapt_steps: 200
   sigma_lr: 0.1
-  kernel_lr: 0.05
-  num_sample_steps: 60
-  burn_fraction: 0.5
+  kernel_lr: 0.5
+  kernel_steps_per_adapt: 1
+  num_sample_steps: 100
+  burn_fraction: 0.75
   thin: 5
 
 hydra:

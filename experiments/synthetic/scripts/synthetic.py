@@ -125,20 +125,21 @@ def fit_pro(
     algorithm="replica_gibbs",
     step_size=0.0001,
     alpha=1.0,
-    sigma_init=0.2,
-    sigma_min=0.01,
+    sigma_init=0.3,
+    sigma_min=0.05,
     sigma_max=1.0,
     num_particles=32,
     val_fraction=0.25,
     num_adapt_steps=200,
-    warmup_steps=20,
+    warmup_steps=5,
     sigma_adapt_steps=90,
     kernel_adapt_steps=90,
     sigma_lr=0.1,
     kernel_lr=0.05,
-    num_sample_steps=50,
-    burn_fraction=0.5,
-    thin=2,
+    kernel_steps_per_adapt=1,
+    num_sample_steps=200,
+    burn_fraction=0.75,
+    thin=5,
 ):
     if algorithm == "replica_gibbs":
         validate_r(num_particles, alpha)
@@ -185,6 +186,7 @@ def fit_pro(
         adapt_target=None,
         sigma_optimizer=ox.adam(sigma_lr),
         kernel_optimizer=ox.adam(kernel_lr),
+        kernel_steps_per_adapt=kernel_steps_per_adapt,
         progress_bar=False,
     )
     adaptation_results, adaptation_info = adaptation.run(
@@ -313,6 +315,7 @@ def _fit_pro_fn(cfg: DictConfig):
         kernel_adapt_steps=cfg.pro.kernel_adapt_steps,
         sigma_lr=cfg.pro.sigma_lr,
         kernel_lr=cfg.pro.kernel_lr,
+        kernel_steps_per_adapt=cfg.pro.kernel_steps_per_adapt,
         num_sample_steps=cfg.pro.num_sample_steps,
         burn_fraction=cfg.pro.burn_fraction,
         thin=cfg.pro.thin,

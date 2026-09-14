@@ -19,22 +19,25 @@ NUM_CURVE_POINTS = 400
 
 WELL_SPECIFIED_NOISE_STD = 0.15
 
-OUTLIER_REGION = (0.4, 0.6)
-OUTLIER_OFFSET = 2.2
-OUTLIER_NOISE_STD = 0.12
+OUTLIER_REGION = (0.4, 0.55)
+OUTLIER_OFFSET = 2.3
+OUTLIER_NOISE_STD = 0.13
 
-# Nearly clean up to the midpoint, then the variance ramps hard.
-HETEROSKEDASTIC_NOISE_STD_RANGE = (0.10, 0.65)
+# Nearly clean up to `RAMP_START`, then the variance ramps hard to a peak at the
+# latent's trough and falls away again, so the noisiest region sits on the minimum
+# rather than at the edge of the domain.
+HETEROSKEDASTIC_NOISE_STD_RANGE = (0.08, 0.58)
 HETEROSKEDASTIC_RAMP_START = 0.5
+HETEROSKEDASTIC_PEAK = 0.65
 
 MULTIMODAL_NOISE_STD = 0.10
-MULTIMODAL_GAP = 0.7
+MULTIMODAL_GAP = 0.8
 MULTIMODAL_MERGE_HALF_WIDTH = 0.1
 MULTIMODAL_TRANSITION_WIDTH = 0.15
 
 DATA_COLOR = "#707070"
 # Bands are drawn over every test input, but that many dots obscures them.
-MAX_PLOTTED_POINTS = 100
+MAX_PLOTTED_POINTS = 150
 
 
 class IllustrativeCase(NamedTuple):
@@ -60,13 +63,14 @@ def _jittered_grid(key: PRNGKey, n: int) -> jax.Array:
 
 def _heteroskedastic_noise_std(x: jax.Array) -> jax.Array:
     """Flat at `low` up to `HETEROSKEDASTIC_RAMP_START`, then the *variance* ramps
-    linearly to `high**2` at `X_MAX`."""
+    linearly to `high**2` at `HETEROSKEDASTIC_PEAK` and back down to `low**2` at
+    `X_MAX`."""
     low, high = HETEROSKEDASTIC_NOISE_STD_RANGE
-    ramp = jnp.clip(
-        (x - HETEROSKEDASTIC_RAMP_START) / (X_MAX - HETEROSKEDASTIC_RAMP_START),
-        0.0,
-        1.0,
+    rising = (x - HETEROSKEDASTIC_RAMP_START) / (
+        HETEROSKEDASTIC_PEAK - HETEROSKEDASTIC_RAMP_START
     )
+    falling = (X_MAX - x) / (X_MAX - HETEROSKEDASTIC_PEAK)
+    ramp = jnp.clip(jnp.minimum(rising, falling), 0.0, 1.0)
     return jnp.sqrt(low**2 + (high**2 - low**2) * ramp)
 
 
@@ -76,8 +80,9 @@ def _branch_gap(x: jax.Array) -> jax.Array:
     return MULTIMODAL_GAP * jnp.clip(distance / MULTIMODAL_TRANSITION_WIDTH, 0.0, 1.0)
 
 
-def _well_specified(key, x_train, x_test, x_curve):
-    train_key, test_key = jr.split(key)
+def _well_specified(key, x_train, x_test, x_curve, test_key=None):
+    train_key, derived_test_key = jr.split(key)
+    test_key = derived_test_key if test_key is None else test_key
     y_train = latent(x_train) + WELL_SPECIFIED_NOISE_STD * jr.normal(
         train_key, x_train.shape
     )
@@ -87,8 +92,9 @@ def _well_specified(key, x_train, x_test, x_curve):
     return y_train, y_test, latent(x_curve)[None, :], jnp.zeros_like(x_train, bool)
 
 
-def _block_outliers(key, x_train, x_test, x_curve):
-    train_key, test_key = jr.split(key)
+def _block_outliers(key, x_train, x_test, x_curve, test_key=None):
+    train_key, derived_test_key = jr.split(key)
+    test_key = derived_test_key if test_key is None else test_key
     lo, hi = OUTLIER_REGION
     is_outlier = (x_train > lo) & (x_train < hi)
     y_train = (
@@ -100,8 +106,9 @@ def _block_outliers(key, x_train, x_test, x_curve):
     return y_train, y_test, latent(x_curve)[None, :], is_outlier
 
 
-def _heteroskedastic(key, x_train, x_test, x_curve):
-    train_key, test_key = jr.split(key)
+def _heteroskedastic(key, x_train, x_test, x_curve, test_key=None):
+    train_key, derived_test_key = jr.split(key)
+    test_key = derived_test_key if test_key is None else test_key
     y_train = latent(x_train) + _heteroskedastic_noise_std(x_train) * jr.normal(
         train_key, x_train.shape
     )
@@ -111,8 +118,13 @@ def _heteroskedastic(key, x_train, x_test, x_curve):
     return y_train, y_test, latent(x_curve)[None, :], jnp.zeros_like(x_train, bool)
 
 
-def _multimodal(key, x_train, x_test, x_curve):
-    train_key, test_key, train_branch_key, test_branch_key = jr.split(key, 4)
+def _multimodal(key, x_train, x_test, x_curve, test_key=None):
+    train_key, derived_test_key, train_branch_key, derived_branch_key = jr.split(key, 4)
+    test_key, test_branch_key = (
+        (derived_test_key, derived_branch_key)
+        if test_key is None
+        else jr.split(test_key)
+    )
 
     def branch(x, branch_key, noise_key):
         sign = jnp.where(jr.bernoulli(branch_key, 0.5, x.shape), 1.0, -1.0)
@@ -136,8 +148,16 @@ _REGIME_FNS = {
 
 
 def make_illustrative_instance(
-    key: PRNGKey, *, regime: str, n_train: int = 100, n_test: int = 250
+    key: PRNGKey,
+    *,
+    regime: str,
+    n_train: int = 100,
+    n_test: int = 400,
+    test_key: PRNGKey | None = None,
 ) -> IllustrativeCase:
+    """`test_key` rerolls the held-out set -- its inputs and its noise -- while leaving
+    the training data, and so the fit, untouched. Left as None the whole instance comes
+    from `key` alone."""
     try:
         regime_fn = _REGIME_FNS[regime]
     except KeyError:
@@ -145,13 +165,16 @@ def make_illustrative_instance(
         raise ValueError(msg) from None
 
     train_x_key, test_x_key, regime_key = jr.split(key, 3)
+    regime_test_key = None
+    if test_key is not None:
+        test_x_key, regime_test_key = jr.split(test_key)
 
     x_train = _jittered_grid(train_x_key, n_train)
     x_test = jr.uniform(test_x_key, (n_test,), minval=X_MIN, maxval=X_MAX)
     x_curve = jnp.linspace(X_MIN, X_MAX, NUM_CURVE_POINTS)
 
     y_train, y_test, y_curves, is_outlier = regime_fn(
-        regime_key, x_train, x_test, x_curve
+        regime_key, x_train, x_test, x_curve, test_key=regime_test_key
     )
 
     return IllustrativeCase(
@@ -182,7 +205,7 @@ def plot_illustrative_case(
     ax,
     data: IllustrativeCase,
     *,
-    data_alpha: float = 0.8,
+    data_alpha: float = 0.45,
     scale: float = 1.0,
     shift: float = 0.0,
     max_points: int = MAX_PLOTTED_POINTS,
@@ -211,7 +234,7 @@ def plot_illustrative_case(
         x_plot,
         to_display(y_plot),
         color=DATA_COLOR,
-        s=8,
+        s=12,
         alpha=data_alpha,
         zorder=3,
     )

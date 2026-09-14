@@ -11,7 +11,6 @@ import numpy as np
 
 RESULTS_ROOT = Path(__file__).resolve().parents[1] / "results"
 
-Z_95 = 1.96
 
 
 def collect():
@@ -56,7 +55,7 @@ def print_tables(records, param_names):
         header = f"{param_name:<16}" + "".join(f"{a:>{col_width}}" for a in algorithms)
 
         print(f"\n{'─' * len(header)}")
-        print(f"  {source}  (mean±95% CI)")
+        print(f"  {source}  (mean±1 SE)")
         print(f"{'─' * len(header)}")
         print(header)
         print("─" * len(header))
@@ -68,10 +67,10 @@ def print_tables(records, param_names):
                     row += f"{'—':>{col_width}}"
                 else:
                     mean = entry["nlpd_mean"]
-                    ci95 = _nlpd_ci95(entry)
+                    sem = _nlpd_sem(entry)
                     cell = (
-                        f"{mean:.4f}±{ci95:.4f}"
-                        if ci95 is not None
+                        f"{mean:.4f}±{sem:.4f}"
+                        if sem is not None
                         else f"{mean:.4f}±?"
                     )
                     row += f"{cell:>{col_width}}"
@@ -88,7 +87,7 @@ def save_csv(records, param_names, path: Path):
         "algorithm",
         "nlpd_mean",
         "nlpd_std",
-        "nlpd_ci95",
+        "nlpd_sem",
     ]
 
     with path.open("w", newline="") as f:
@@ -105,7 +104,7 @@ def save_csv(records, param_names, path: Path):
                             "algorithm": algorithm,
                             "nlpd_mean": entry["nlpd_mean"],
                             "nlpd_std": entry["nlpd_std"],
-                            "nlpd_ci95": _nlpd_ci95(entry),
+                            "nlpd_sem": _nlpd_sem(entry),
                         }
                     )
 
@@ -116,12 +115,13 @@ def _sample_std(values: list[float]) -> float:
     return float(np.std(values, ddof=1)) if len(values) > 1 else 0.0
 
 
-def _nlpd_ci95(entry: dict) -> float | None:
+def _nlpd_sem(entry: dict) -> float | None:
+    """Standard error of the mean NLPD across instances."""
     num_instances = entry.get("num_instances")
     if not num_instances:
         return None
     std = _sample_std(entry["nlpds"]) if entry.get("nlpds") else entry["nlpd_std"]
-    return Z_95 * std / np.sqrt(num_instances)
+    return std / np.sqrt(num_instances)
 
 
 if __name__ == "__main__":

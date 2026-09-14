@@ -3,7 +3,7 @@ param_name: n
 n: 100
 test_fraction: 0.3
 noise_std_frac: 0.15
-variance_frac: 0.4
+variance_frac: 0.6
 min_width: 0.3
 max_width: 0.8
 ell_range: [0.5, 1.0]

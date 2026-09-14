@@ -43,9 +43,10 @@ TITLE_FONTSIZE = 16
 LEGEND_FONTSIZE = 17
 AXIS_FONTSIZE = 13
 
-# Layout is specified in inches and converted to figure fractions below, so every
-# panel comes out square regardless of how many columns the figure ends up with.
-FIT_PANEL_IN = 3.6  # side of one square fit panel
+# Layout is specified in inches and converted to figure fractions below, so panel
+# proportions are exact regardless of how many columns the figure ends up with.
+FIT_PANEL_W_IN = 3.6
+FIT_PANEL_H_IN = 2.8  # slightly wider than tall
 FIT_COL_GAP_IN = 0.62  # room for each column's own y tick labels
 FIT_ROW_GAP_IN = 0.55  # room for the "PrO-GP" row title
 SUMMARY_NCOLS = 1
@@ -57,12 +58,12 @@ FIT_NCOLS, FIT_NROWS = 4, 2
 SUMMARY_NROWS = 4
 # The NLPD column is as wide as one fit column; its panels are short, their height
 # falling out of sharing the fit block's total height four ways.
-SUMMARY_PANEL_IN = FIT_PANEL_IN
+SUMMARY_PANEL_W_IN = FIT_PANEL_W_IN
 
-FIT_BLOCK_W_IN = FIT_NCOLS * FIT_PANEL_IN + (FIT_NCOLS - 1) * FIT_COL_GAP_IN
-GRID_H_IN = FIT_NROWS * FIT_PANEL_IN + (FIT_NROWS - 1) * FIT_ROW_GAP_IN
+FIT_BLOCK_W_IN = FIT_NCOLS * FIT_PANEL_W_IN + (FIT_NCOLS - 1) * FIT_COL_GAP_IN
+GRID_H_IN = FIT_NROWS * FIT_PANEL_H_IN + (FIT_NROWS - 1) * FIT_ROW_GAP_IN
 SUMMARY_BLOCK_W_IN = (
-    SUMMARY_NCOLS * SUMMARY_PANEL_IN + (SUMMARY_NCOLS - 1) * FIT_COL_GAP_IN
+    SUMMARY_NCOLS * SUMMARY_PANEL_W_IN + (SUMMARY_NCOLS - 1) * FIT_COL_GAP_IN
 )
 SUMMARY_ROW_GAP_IN = 0.42  # room for each NLPD panel's own title
 SUMMARY_PANEL_H_IN = (
@@ -86,8 +87,8 @@ GRID_TOP = 1.0 - MARGIN_TOP_IN / FIG_H
 GRID_BOTTOM = MARGIN_BOTTOM_IN / FIG_H
 
 # gridspec spacing is a fraction of the average panel size
-FIT_WSPACE = FIT_COL_GAP_IN / FIT_PANEL_IN
-FIT_HSPACE = FIT_ROW_GAP_IN / FIT_PANEL_IN
+FIT_WSPACE = FIT_COL_GAP_IN / FIT_PANEL_W_IN
+FIT_HSPACE = FIT_ROW_GAP_IN / FIT_PANEL_H_IN
 SUMMARY_HSPACE = SUMMARY_ROW_GAP_IN / SUMMARY_PANEL_H_IN
 
 

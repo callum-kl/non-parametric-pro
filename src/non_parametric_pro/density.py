@@ -4,7 +4,6 @@ import jax
 import jax.numpy as jnp
 import paramax
 from jax.scipy.special import logsumexp
-from jax.random import multinomial
 
 
 class ProParameters(NamedTuple):
@@ -89,7 +88,7 @@ def pro_replica_fn(
     log_density = normal_logpdf(parameters.y, u, sigma)
     log_marginal = logsumexp(log_density, axis=1)
     log_weights = log_density - log_marginal[:, None]
-    
+
     return log_weights
 
 
