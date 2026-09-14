@@ -1,9 +1,10 @@
 source: heteroskedastic
 param_name: n
-num_regions: 2
-amplitude_frac: 1.0
+n: 100
+test_fraction: 0.3
+noise_std_frac: 0.15
+variance_frac: 0.4
 min_width: 0.3
 max_width: 0.8
 ell_range: [0.5, 1.0]
-noise_std_frac: 0.15
-n: 400
+alpha_range: [0.5, 2.0]

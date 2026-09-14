@@ -32,13 +32,12 @@ def make_multimodal_instance(
     test_fraction: float = 0.3,
     x_min: float = -2.0,
     x_max: float = 2.0,
-    noise_std_frac: float = 0.1,
+    noise_std_frac: float = 0.15,
     mix_prob: float = 0.5,
-    ell_range: tuple[float, float] = (0.15, 0.5),
+    ell_range: tuple[float, float] = (0.5, 1.0),
     alpha_range: tuple[float, float] = (0.5, 2.0),
     shared_width: float = 0.6,
     transition_width: float = 0.8,
-    shared_center_frac_range: tuple[float, float] = (0.35, 0.65),
 ) -> MultimodalCase:
     """
     Two branches, `y_truth_a`/`y_truth_b`, built from a shared GP draw plus two
@@ -64,9 +63,8 @@ def make_multimodal_instance(
 
     ell = jr.uniform(ell_key, (), minval=ell_range[0], maxval=ell_range[1])
     alpha = jr.uniform(alpha_key, (), minval=alpha_range[0], maxval=alpha_range[1])
-    signal_std = jnp.sqrt(alpha)
 
-    kernel = gpx.kernels.RBF(lengthscale=ell, variance=alpha)
+    kernel = gpx.kernels.RBF(lengthscale=ell, variance=alpha**2)
     prior = gpx.gps.Prior(mean_function=gpx.mean_functions.Zero(), kernel=kernel)
 
     x = jr.uniform(x_key, (n, 1), minval=x_min, maxval=x_max)
@@ -75,10 +73,7 @@ def make_multimodal_instance(
     y_div_a = prior.predict(x).sample(a_key)
     y_div_b = prior.predict(x).sample(b_key)
 
-    center_frac = jr.uniform(
-        center_key, (), minval=shared_center_frac_range[0], maxval=shared_center_frac_range[1]
-    )
-    center = x_min + center_frac * (x_max - x_min)
+    center = jr.uniform(center_key, (), minval=x_min, maxval=x_max)
     dist = jnp.abs(x[:, 0] - center)
     branch_weight = jnp.clip((dist - shared_width) / transition_width, 0.0, 1.0)
 
@@ -88,7 +83,7 @@ def make_multimodal_instance(
     z = jr.bernoulli(mode_key, mix_prob, (n,))
     y_truth = jnp.where(z, y_b, y_a)
 
-    noise_std = noise_std_frac * signal_std
+    noise_std = noise_std_frac * alpha
     y_obs = y_truth + noise_std * jr.normal(noise_key, y_truth.shape)
 
     split = train_val_split(split_key, x, y_truth, val_fraction=test_fraction)
@@ -121,8 +116,12 @@ def plot_multimodal_case(
 ) -> None:
     if show_curves:
         x_full = jnp.concatenate([data.x_train[:, 0], data.x_test[:, 0]])
-        y_a_full = jnp.concatenate([data.y_truth_a_train[:, 0], data.y_truth_a_test[:, 0]])
-        y_b_full = jnp.concatenate([data.y_truth_b_train[:, 0], data.y_truth_b_test[:, 0]])
+        y_a_full = jnp.concatenate(
+            [data.y_truth_a_train[:, 0], data.y_truth_a_test[:, 0]]
+        )
+        y_b_full = jnp.concatenate(
+            [data.y_truth_b_train[:, 0], data.y_truth_b_test[:, 0]]
+        )
         order = jnp.argsort(x_full)
         x_sorted = x_full[order]
 
@@ -153,5 +152,4 @@ MULTIMODAL_KWARGS = (
     "alpha_range",
     "shared_width",
     "transition_width",
-    "shared_center_frac_range",
 )

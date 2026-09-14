@@ -171,3 +171,5 @@ experiments/synthetic/multirun/
 experiments/synthetic/.hydra_logs/*
 experiments/pems/multirun/
 experiments/pems/.hydra_logs/*
+
+.DS_Store

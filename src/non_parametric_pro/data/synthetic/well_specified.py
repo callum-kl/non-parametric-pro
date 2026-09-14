@@ -41,7 +41,6 @@ class WellSpecifiedCase(NamedTuple):
     noise_std: float
     ell: float
     alpha: float
-    kernel_type: str
     n: int
 
 
@@ -49,33 +48,28 @@ def make_well_specified_instance(
     key: PRNGKey,
     *,
     n: int = 300,
-    train_fraction: float = 0.2,
+    test_fraction: float = 0.3,
     x_min: float = -2.0,
     x_max: float = 2.0,
-    noise_std_frac: float = 0.1,
-    ell_range: tuple[float, float] = (0.15, 0.5),
+    noise_std_frac: float = 0.15,
+    ell_range: tuple[float, float] = (0.5, 1.0),
     alpha_range: tuple[float, float] = (0.5, 2.0),
-    kernel_types: tuple[str, ...] = KERNEL_TYPES,
 ) -> WellSpecifiedCase:
-    x_key, ell_key, alpha_key, kernel_key, latent_key, split_key, noise_key = jr.split(
-        key, 7
-    )
+    x_key, ell_key, alpha_key, latent_key, split_key, noise_key = jr.split(key, 6)
 
     ell = jr.uniform(ell_key, (), minval=ell_range[0], maxval=ell_range[1])
     alpha = jr.uniform(alpha_key, (), minval=alpha_range[0], maxval=alpha_range[1])
-    kernel_idx = jr.randint(kernel_key, (), 0, len(kernel_types))
-    kernel_type = kernel_types[int(kernel_idx)]
 
-    kernel = build_kernel(kernel_type, lengthscale=ell, variance=alpha)
+    kernel = gpx.kernels.RBF(lengthscale=ell, variance=alpha**2)
     prior = gpx.gps.Prior(mean_function=gpx.mean_functions.Zero(), kernel=kernel)
 
     x = jr.uniform(x_key, (n, 1), minval=x_min, maxval=x_max)
     y_truth = prior.predict(x).sample(latent_key)
 
-    noise_std = noise_std_frac * jnp.sqrt(alpha)
+    noise_std = noise_std_frac * alpha
     y_obs = y_truth + noise_std * jr.normal(noise_key, y_truth.shape)
 
-    split = train_val_split(split_key, x, y_truth, val_fraction=1.0 - train_fraction)
+    split = train_val_split(split_key, x, y_truth, val_fraction=test_fraction)
     train_idx, test_idx = split.train_idx, split.val_idx
 
     return WellSpecifiedCase(
@@ -88,7 +82,6 @@ def make_well_specified_instance(
         noise_std=float(noise_std),
         ell=float(ell),
         alpha=float(alpha),
-        kernel_type=kernel_type,
         n=n,
     )
 
@@ -107,7 +100,7 @@ def plot_well_specified_case(
         x_sorted, y_sorted = x_full[order], y_full[order]
         ax.plot(x_sorted, y_sorted, color="C0", linewidth=1.5)
     ax.set_title(
-        f"{data.kernel_type}  $\\ell$={data.ell:.2f}  $\\alpha$={data.alpha:.2f}  "
+        f"$\\ell$={data.ell:.2f}  $\\alpha$={data.alpha:.2f}  "
         f"n={data.n} (train={data.x_train.shape[0]})",
         fontsize=9,
     )
@@ -115,11 +108,10 @@ def plot_well_specified_case(
 
 WELL_SPECIFIED_KWARGS = (
     "n",
-    "train_fraction",
+    "test_fraction",
     "x_min",
     "x_max",
     "noise_std_frac",
     "ell_range",
     "alpha_range",
-    "kernel_types",
 )

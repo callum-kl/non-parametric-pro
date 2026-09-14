@@ -8,36 +8,7 @@ from blackjax.types import PRNGKey
 
 from non_parametric_pro.util import train_val_split
 
-
-class OutlierBlockRegions(NamedTuple):
-    centers: jax.Array
-    widths: jax.Array
-
-
-def sample_outlier_block_regions(
-    key: PRNGKey,
-    *,
-    x_min: float = -1.0,
-    x_max: float = 1.0,
-    min_width: float = 0.05,
-    max_width: float = 0.3,
-    num_regions: int = 1,
-) -> OutlierBlockRegions:
-    center_key, width_key = jr.split(key)
-
-    centers = jr.uniform(center_key, (num_regions,), minval=x_min, maxval=x_max)
-    widths = jr.uniform(width_key, (num_regions,), minval=min_width, maxval=max_width)
-
-    return OutlierBlockRegions(centers=centers, widths=widths)
-
-
-def block_outlier_region_mask(x: jax.Array, regions: OutlierBlockRegions) -> jax.Array:
-
-    def in_one_region(center, width):
-        return jnp.abs(x - center) <= width
-
-    in_any_region = jax.vmap(in_one_region)(regions.centers, regions.widths)
-    return jnp.any(in_any_region, axis=0)
+OUTLIER_HALF_WIDTH = 0.2
 
 
 class BlockOutlierCase(NamedTuple):
@@ -53,7 +24,7 @@ class BlockOutlierCase(NamedTuple):
     outlier_sign: float
     ell: float
     alpha: float
-    regions: OutlierBlockRegions
+    center: float
 
 
 def make_block_outlier_instance(
@@ -63,20 +34,18 @@ def make_block_outlier_instance(
     test_fraction: float = 0.3,
     x_min: float = -2.0,
     x_max: float = 2.0,
-    noise_std_frac: float = 0.1,
-    outlier_offset_frac: float = 2.0,
-    min_width: float = 0.15,
-    max_width: float = 0.4,
-    ell_range: tuple[float, float] = (0.15, 0.5),
+    noise_std_frac: float = 0.15,
+    outlier_offset_frac: float = 1.0,
+    half_width: float = OUTLIER_HALF_WIDTH,
+    ell_range: tuple[float, float] = (0.5, 1.0),
     alpha_range: tuple[float, float] = (0.5, 2.0),
-    num_regions: int = 1,
 ) -> BlockOutlierCase:
     (
         x_key,
         ell_key,
         alpha_key,
         latent_key,
-        region_key,
+        center_key,
         sign_key,
         noise_key,
         split_key,
@@ -84,33 +53,25 @@ def make_block_outlier_instance(
 
     ell = jr.uniform(ell_key, (), minval=ell_range[0], maxval=ell_range[1])
     alpha = jr.uniform(alpha_key, (), minval=alpha_range[0], maxval=alpha_range[1])
-    signal_std = jnp.sqrt(alpha)
 
-    kernel = gpx.kernels.RBF(lengthscale=ell, variance=alpha)
+    kernel = gpx.kernels.RBF(lengthscale=ell, variance=alpha**2)
     prior = gpx.gps.Prior(mean_function=gpx.mean_functions.Zero(), kernel=kernel)
 
     x = jr.uniform(x_key, (n, 1), minval=x_min, maxval=x_max)
     y_truth = prior.predict(x).sample(latent_key)
 
-    regions = sample_outlier_block_regions(
-        region_key,
-        x_min=x_min,
-        x_max=x_max,
-        min_width=min_width,
-        max_width=max_width,
-        num_regions=num_regions,
-    )
+    center = jr.uniform(center_key, (), minval=x_min, maxval=x_max)
 
-    noise_std = noise_std_frac * signal_std
+    noise_std = noise_std_frac * alpha
     noise = noise_std * jr.normal(noise_key, y_truth.shape)
 
     outlier_sign = jnp.where(jr.bernoulli(sign_key, 0.5), 1.0, -1.0)
-    offset = outlier_sign * outlier_offset_frac * signal_std
+    offset = outlier_sign * outlier_offset_frac * alpha
 
     split = train_val_split(split_key, x, y_truth, val_fraction=test_fraction)
     train_idx, test_idx = split.train_idx, split.val_idx
 
-    in_block = block_outlier_region_mask(x[:, 0], regions)
+    in_block = jnp.abs(x[:, 0] - center) <= half_width
     is_train = jnp.zeros((n,), dtype=bool).at[train_idx].set(True)
     is_outlier = in_block & is_train
 
@@ -129,7 +90,7 @@ def make_block_outlier_instance(
         outlier_sign=float(outlier_sign),
         ell=float(ell),
         alpha=float(alpha),
-        regions=regions,
+        center=float(center),
     )
 
 
@@ -190,9 +151,7 @@ BLOCK_OUTLIERS_KWARGS = (
     "x_max",
     "noise_std_frac",
     "outlier_offset_frac",
-    "min_width",
-    "max_width",
+    "half_width",
     "ell_range",
     "alpha_range",
-    "num_regions",
 )

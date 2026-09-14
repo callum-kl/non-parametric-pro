@@ -6,16 +6,11 @@ from typing import NamedTuple
 
 os.environ.setdefault("JAX_ENABLE_X64", "1")
 
-import matplotlib
-
-matplotlib.use("Agg")
-
 import gpjax as gpx
 import hydra
 import jax
 import jax.numpy as jnp
 import jax.random as jr
-import matplotlib.pyplot as plt
 import numpy as np
 import optax as ox
 import paramax as px
@@ -25,26 +20,20 @@ from omegaconf import DictConfig, OmegaConf
 from non_parametric_pro import replica_gibbs, ula
 from non_parametric_pro.data.synthetic.block_outliers import (
     BLOCK_OUTLIERS_KWARGS,
-    block_outlier_region_mask,
     make_block_outlier_instance,
-    plot_block_outlier_case,
 )
 from non_parametric_pro.data.synthetic.heteroskedastic import (
     HETEROSKEDASTIC_KWARGS,
-    heteroskedastic_region_mask,
     make_heteroskedastic_instance,
-    plot_heteroskedastic_case,
 )
 from non_parametric_pro.data.synthetic.multimodal import (
     MULTIMODAL_KWARGS,
     make_multimodal_instance,
-    plot_multimodal_case,
 )
 from non_parametric_pro.data.synthetic.well_specified import (
     WELL_SPECIFIED_KWARGS,
     build_kernel,
     make_well_specified_instance,
-    plot_well_specified_case,
 )
 from non_parametric_pro.density import (
     ProParameters,
@@ -58,7 +47,6 @@ from non_parametric_pro.util import (
     cholesky_basis,
     nlpd_gp,
     nlpd_pro,
-    posterior_function_draws,
     prediction_basis,
     predictive_moments,
     project_particles,
@@ -72,74 +60,11 @@ OmegaConf.register_new_resolver(
     "script_dir", lambda: str(Path(__file__).resolve().parents[1]), replace=True
 )
 
-FIGURES_DIR = Path(__file__).resolve().parents[1] / "figures"
-
-
-_PLOT_CASE_FNS = {
-    "block_outliers": plot_block_outlier_case,
-    "heteroskedastic": plot_heteroskedastic_case,
-    "multimodal": plot_multimodal_case,
-    "well_specified": plot_well_specified_case,
-}
-
-
-def _get_plot_case_fn(cfg: DictConfig):
-    try:
-        return _PLOT_CASE_FNS[cfg.source]
-    except KeyError:
-        msg = f"No plot function registered for dataset {cfg.source!r}"
-        raise ValueError(msg) from None
-
-
-def make_dataset_panel(
-    key,
-    *,
-    get_instance=make_heteroskedastic_instance,
-    plot_case_fn=plot_heteroskedastic_case,
-    num_instances=20,
-    grid_shape=(5, 4),
-    filename="heteroskedastic_panel.png",
-):
-    keys = jr.split(key, num_instances)
-    nrows, ncols = grid_shape
-    fig, axes = plt.subplots(
-        nrows, ncols, figsize=(4 * ncols, 3 * nrows), sharex=True, sharey=True
-    )
-
-    for ax, instance_key in zip(axes.flat, keys, strict=True):
-        data = get_instance(instance_key)
-        plot_case_fn(ax, data)
-
-    fig.tight_layout()
-    fig.savefig(FIGURES_DIR / filename, dpi=150)
-
-
-def run_dataset_instance(
-    key,
-    *,
-    get_instance=make_heteroskedastic_instance,
-    plot_case_fn=plot_heteroskedastic_case,
-    num_instances=20,
-    filename="heteroskedastic_instance.png",
-):
-    keys = jr.split(key, num_instances)
-
-    fig, ax = plt.subplots()
-
-    all_data = []
-    for instance_key in keys:
-        all_data.append(get_instance(instance_key))
-
-    plot_case_fn(ax, all_data[12])
-    fig.tight_layout()
-    fig.savefig(FIGURES_DIR / filename, dpi=150)
-
 
 class FitResult(NamedTuple):
     mean: jnp.ndarray
     std: jnp.ndarray
     nlpd_per_point: jnp.ndarray
-    function_draws: jnp.ndarray | None = None
     particle_predictions: jnp.ndarray | None = None
     sigma_eff: jnp.ndarray | None = None
 
@@ -201,7 +126,7 @@ def fit_pro(
     step_size=0.0001,
     alpha=1.0,
     sigma_init=0.2,
-    sigma_min=0.1,
+    sigma_min=0.01,
     sigma_max=1.0,
     num_particles=32,
     val_fraction=0.25,
@@ -214,7 +139,6 @@ def fit_pro(
     num_sample_steps=50,
     burn_fraction=0.5,
     thin=2,
-    num_function_draws=100,
 ):
     if algorithm == "replica_gibbs":
         validate_r(num_particles, alpha)
@@ -313,11 +237,6 @@ def fit_pro(
         test_basis, particles, noise_std=sigma_val, residual_std=residual_std
     )
 
-    draw_key, _ = jr.split(key)
-    function_draws = posterior_function_draws(
-        draw_key, test_basis, test_cov, particles, num_draws=num_function_draws
-    )
-
     particle_predictions = project_particles(test_basis, particles)
     sigma_eff = jnp.sqrt(sigma_val**2 + residual_std**2)
 
@@ -325,41 +244,26 @@ def fit_pro(
         mean=mean,
         std=std,
         nlpd_per_point=nlpd_per_point,
-        function_draws=function_draws,
         particle_predictions=particle_predictions,
         sigma_eff=sigma_eff,
     )
 
 
-def evaluate(get_instance, fit_function, key, num_instances, *, region_mask_fn=None):
+def evaluate(get_instance, fit_function, key, num_instances):
     keys = jr.split(key, num_instances)
 
     nlpds = []
-    region_nlpds = (
-        {"region": [], "background": []} if region_mask_fn is not None else None
-    )
-
     for instance_key in progress_bar(keys):
         data = get_instance(instance_key)
         fit_key, instance_key = jr.split(instance_key)
         nlpd_per_point = fit_function(data, fit_key).nlpd_per_point
         nlpds.append(float(jnp.mean(nlpd_per_point)))
 
-        if region_mask_fn is not None:
-            mask = region_mask_fn(data)
-            in_region, out_region = nlpd_per_point[mask], nlpd_per_point[~mask]
-            region_nlpds["region"].append(
-                float(jnp.mean(in_region)) if in_region.size else float("nan")
-            )
-            region_nlpds["background"].append(
-                float(jnp.mean(out_region)) if out_region.size else float("nan")
-            )
-
     mean = float(np.mean(nlpds))
     std = float(np.std(nlpds))
 
     log.info("NLPD: %.4f±%.4f", mean, std)
-    return mean, std, nlpds, region_nlpds
+    return mean, std, nlpds
 
 
 _DATASET_SOURCES = {
@@ -378,24 +282,6 @@ def _instance_fn(make_instance, kwarg_names, cfg: DictConfig):
     """
     kwargs = {k: cfg[k] for k in kwarg_names if k in cfg}
     return lambda key: make_instance(key, **kwargs)
-
-
-def _block_outliers_region_mask_fn(data):
-    return block_outlier_region_mask(data.x_test[:, 0], data.regions)
-
-
-def _heteroskedastic_region_mask_fn(data):
-    return heteroskedastic_region_mask(data.x_test[:, 0], data.regions)
-
-
-_REGION_MASK_FNS = {
-    "block_outliers": _block_outliers_region_mask_fn,
-    "heteroskedastic": _heteroskedastic_region_mask_fn,
-}
-
-
-def _get_region_mask_fn(cfg: DictConfig):
-    return _REGION_MASK_FNS.get(cfg.source)
 
 
 def _fit_gp_fn(cfg: DictConfig):
@@ -457,36 +343,6 @@ def _get_fit_algorithm(cfg: DictConfig):
     return build(cfg)
 
 
-def debug_instance(cfg: DictConfig) -> None:
-    get_instance = _get_instance_fn(cfg)
-    fit_algorithm = _get_fit_algorithm(cfg)
-    plot_case_fn = _get_plot_case_fn(cfg)
-
-    key = jr.PRNGKey(cfg.seed)
-    keys = jr.split(key, cfg.num_instances)
-    instance_key = keys[cfg.instance_index]
-
-    data = get_instance(instance_key)
-    fit_key, _ = jr.split(instance_key)
-    nlpd_per_point = fit_algorithm(data, fit_key).nlpd_per_point
-    nlpd = float(jnp.mean(nlpd_per_point))
-    log.info(
-        "Instance %d/%d (%s, %s=%s): NLPD=%.4f",
-        cfg.instance_index,
-        cfg.num_instances,
-        cfg.algorithm,
-        cfg.param_name,
-        cfg[cfg.param_name],
-        nlpd,
-    )
-
-    fig, ax = plt.subplots()
-    plot_case_fn(ax, data)
-    filename = f"{cfg.source}_instance{cfg.instance_index}.png"
-    fig.savefig(FIGURES_DIR / filename, dpi=150)
-    log.info("Saved instance plot to %s", FIGURES_DIR / filename)
-
-
 def out_dir(cfg: DictConfig, param_value) -> Path:
     return (
         Path(cfg.results_root)
@@ -498,28 +354,9 @@ def out_dir(cfg: DictConfig, param_value) -> Path:
 
 @hydra.main(version_base=None, config_path="../conf", config_name="synthetic")
 def main(cfg: DictConfig) -> None:
-    if cfg.mode == "instance":
-        debug_instance(cfg)
-        return
-
     get_instance = _get_instance_fn(cfg)
-    key = jr.PRNGKey(cfg.seed)
-
-    if cfg.mode == "panel":
-        plot_case_fn = _get_plot_case_fn(cfg)
-        filename = f"{cfg.source}_panel.png"
-        make_dataset_panel(
-            key,
-            get_instance=get_instance,
-            plot_case_fn=plot_case_fn,
-            num_instances=cfg.panel.num_instances,
-            grid_shape=tuple(cfg.panel.grid_shape),
-            filename=filename,
-        )
-        log.info("Saved panel to %s", FIGURES_DIR / filename)
-        return
-
     fit_algorithm = _get_fit_algorithm(cfg)
+    key = jr.PRNGKey(cfg.seed)
     param_value = cfg[cfg.param_name]
 
     log.info(
@@ -529,14 +366,7 @@ def main(cfg: DictConfig) -> None:
         cfg.param_name,
         param_value,
     )
-    region_mask_fn = _get_region_mask_fn(cfg)
-    mean, std, nlpds, region_nlpds = evaluate(
-        get_instance,
-        fit_algorithm,
-        key,
-        cfg.num_instances,
-        region_mask_fn=region_mask_fn,
-    )
+    mean, std, nlpds = evaluate(get_instance, fit_algorithm, key, cfg.num_instances)
 
     metrics = {
         "source": cfg.source,
@@ -549,8 +379,6 @@ def main(cfg: DictConfig) -> None:
         "nlpd_std": std,
         "nlpds": nlpds,
     }
-    if region_nlpds is not None:
-        metrics["region_nlpds"] = region_nlpds
 
     results_dir = out_dir(cfg, param_value)
     results_dir.mkdir(parents=True, exist_ok=True)

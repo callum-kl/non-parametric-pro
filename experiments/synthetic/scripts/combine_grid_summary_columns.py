@@ -11,6 +11,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from example_grid import _SOURCES as EXAMPLE_SOURCES
 from example_grid import (
+    COLUMN_TITLE_PAD_IN,
     GP_COLOR,
     PRO_COLOR,
     TOP_LEGEND_HANDLES,
@@ -28,7 +29,7 @@ from plot_summary import (
 
 FIGURES_DIR = Path(__file__).resolve().parents[1] / "figures"
 
-_EXAMPLE_ORDER = tuple(spec.name for spec in EXAMPLE_SOURCES)
+_EXAMPLE_ORDER = tuple(spec.regime for spec in EXAMPLE_SOURCES)
 if _EXAMPLE_ORDER != SOURCES:
     msg = (
         f"example_grid.py's dataset order {_EXAMPLE_ORDER} doesn't match "
@@ -39,19 +40,55 @@ if _EXAMPLE_ORDER != SOURCES:
 SUMMARY_COLORS = {"standard_gp": GP_COLOR, "pro_gp": PRO_COLOR}
 
 TITLE_FONTSIZE = 16
-LEGEND_FONTSIZE = 13
+LEGEND_FONTSIZE = 17
 AXIS_FONTSIZE = 13
-FIT_LEFT = 0.03
-RIGHT_MARGIN = 0.02
-GAP = 0.035
-FIT_NCOLS = 4
-# Fit columns and the summary column share one width, filling [FIT_LEFT, 1 - RIGHT_MARGIN]
-# with `GAP` between the fit block and the summary block.
-FIT_COL_WIDTH = (1.0 - RIGHT_MARGIN - FIT_LEFT - GAP) / (FIT_NCOLS + 1)
-FIT_RIGHT = FIT_LEFT + FIT_NCOLS * FIT_COL_WIDTH
-SUMMARY_LEFT = FIT_RIGHT + GAP
-SUMMARY_RIGHT = SUMMARY_LEFT + FIT_COL_WIDTH
-GRID_TOP, GRID_BOTTOM = 0.80, 0.08
+
+# Layout is specified in inches and converted to figure fractions below, so every
+# panel comes out square regardless of how many columns the figure ends up with.
+FIT_PANEL_IN = 3.6  # side of one square fit panel
+FIT_COL_GAP_IN = 0.62  # room for each column's own y tick labels
+FIT_ROW_GAP_IN = 0.55  # room for the "PrO-GP" row title
+SUMMARY_NCOLS = 1
+BLOCK_GAP_IN = 0.95  # between the fit block and the summary column
+MARGIN_LEFT_IN, MARGIN_RIGHT_IN = 0.62, 0.25
+MARGIN_TOP_IN, MARGIN_BOTTOM_IN = 1.45, 0.55
+
+FIT_NCOLS, FIT_NROWS = 4, 2
+SUMMARY_NROWS = 4
+# The NLPD column is as wide as one fit column; its panels are short, their height
+# falling out of sharing the fit block's total height four ways.
+SUMMARY_PANEL_IN = FIT_PANEL_IN
+
+FIT_BLOCK_W_IN = FIT_NCOLS * FIT_PANEL_IN + (FIT_NCOLS - 1) * FIT_COL_GAP_IN
+GRID_H_IN = FIT_NROWS * FIT_PANEL_IN + (FIT_NROWS - 1) * FIT_ROW_GAP_IN
+SUMMARY_BLOCK_W_IN = (
+    SUMMARY_NCOLS * SUMMARY_PANEL_IN + (SUMMARY_NCOLS - 1) * FIT_COL_GAP_IN
+)
+SUMMARY_ROW_GAP_IN = 0.42  # room for each NLPD panel's own title
+SUMMARY_PANEL_H_IN = (
+    GRID_H_IN - (SUMMARY_NROWS - 1) * SUMMARY_ROW_GAP_IN
+) / SUMMARY_NROWS
+
+FIG_W = (
+    MARGIN_LEFT_IN
+    + FIT_BLOCK_W_IN
+    + BLOCK_GAP_IN
+    + SUMMARY_BLOCK_W_IN
+    + MARGIN_RIGHT_IN
+)
+FIG_H = MARGIN_TOP_IN + GRID_H_IN + MARGIN_BOTTOM_IN
+
+FIT_LEFT = MARGIN_LEFT_IN / FIG_W
+FIT_RIGHT = (MARGIN_LEFT_IN + FIT_BLOCK_W_IN) / FIG_W
+SUMMARY_LEFT = (MARGIN_LEFT_IN + FIT_BLOCK_W_IN + BLOCK_GAP_IN) / FIG_W
+SUMMARY_RIGHT = SUMMARY_LEFT + SUMMARY_BLOCK_W_IN / FIG_W
+GRID_TOP = 1.0 - MARGIN_TOP_IN / FIG_H
+GRID_BOTTOM = MARGIN_BOTTOM_IN / FIG_H
+
+# gridspec spacing is a fraction of the average panel size
+FIT_WSPACE = FIT_COL_GAP_IN / FIT_PANEL_IN
+FIT_HSPACE = FIT_ROW_GAP_IN / FIT_PANEL_IN
+SUMMARY_HSPACE = SUMMARY_ROW_GAP_IN / SUMMARY_PANEL_H_IN
 
 
 def _add_dividers(fig, fit_axes, summary_axes) -> None:
@@ -62,7 +99,9 @@ def _add_dividers(fig, fit_axes, summary_axes) -> None:
     top = max(*(p.y1 for p in fit_pos), *(p.y1 for p in su_pos))
     bottom = min(*(p.y0 for p in fit_pos), *(p.y0 for p in su_pos))
     v_x = (max(p.x1 for p in fit_pos) + min(p.x0 for p in su_pos)) / 2
-    fig.add_artist(Line2D([v_x, v_x], [bottom, top], color=DIVIDER_COLOR, linewidth=1.2))
+    fig.add_artist(
+        Line2D([v_x, v_x], [bottom, top], color=DIVIDER_COLOR, linewidth=1.2)
+    )
 
 
 def main(
@@ -74,47 +113,57 @@ def main(
 ) -> None:
     plt.rcParams.update({"font.size": AXIS_FONTSIZE})
 
-    fig = plt.figure(figsize=(26, 8.5))
+    fig = plt.figure(figsize=(FIG_W, FIG_H))
     fit_gs = fig.add_gridspec(
-        2,
-        4,
+        FIT_NROWS,
+        FIT_NCOLS,
         left=FIT_LEFT,
         right=FIT_RIGHT,
         top=GRID_TOP,
         bottom=GRID_BOTTOM,
-        hspace=0.15,
-        wspace=0.08,
+        hspace=FIT_HSPACE,
+        wspace=FIT_WSPACE,
     )
     summary_gs = fig.add_gridspec(
-        4,
-        1,
+        SUMMARY_NROWS,
+        SUMMARY_NCOLS,
         left=SUMMARY_LEFT,
         right=SUMMARY_RIGHT,
         top=GRID_TOP,
         bottom=GRID_BOTTOM,
-        hspace=0.7,
+        hspace=SUMMARY_HSPACE,
     )
     gp_axes = [fig.add_subplot(fit_gs[0, j]) for j in range(4)]
     pro_axes = [fig.add_subplot(fit_gs[1, j]) for j in range(4)]
-    summary_axes = [fig.add_subplot(summary_gs[i, 0]) for i in range(4)]
+    summary_axes = [
+        fig.add_subplot(summary_gs[i, j])
+        for i in range(SUMMARY_NROWS)
+        for j in range(SUMMARY_NCOLS)
+    ]
 
     plot_fit_grid(
-        fig, gp_axes, pro_axes, seed, num_instances, index_overrides, algorithm=algorithm
+        fig,
+        gp_axes,
+        pro_axes,
+        seed,
+        num_instances,
+        index_overrides,
+        algorithm=algorithm,
     )
 
     records = load_summary()
     plot_summary_row(summary_axes, records, SOURCES, colors=SUMMARY_COLORS)
-    for ax in summary_axes[:-1]:
+    for ax in summary_axes[:-SUMMARY_NCOLS]:
         ax.set_xlabel("")
         _hide_ticks(ax, x=True)
     for ax in summary_axes:
         ax.set_title(ax.get_title(), fontsize=TITLE_FONTSIZE)
         ax.xaxis.label.set_fontsize(AXIS_FONTSIZE)
-        _style_box(ax, grid=True)
+        _style_box(ax, grid=True, grid_axis="y")
 
     fig.text(
         (SUMMARY_LEFT + SUMMARY_RIGHT) / 2,
-        GRID_TOP + 0.075,
+        GRID_TOP + COLUMN_TITLE_PAD_IN / FIG_H,
         "Held-out NLPD (lower is better)",
         ha="center",
         fontsize=TITLE_FONTSIZE,
@@ -148,7 +197,7 @@ if __name__ == "__main__":
     )
     for _spec in EXAMPLE_SOURCES:
         parser.add_argument(
-            f"--{_spec.name.replace('_', '-')}-index",
+            f"--{_spec.regime.replace('_', '-')}-index",
             type=int,
             default=None,
             help=f"Override this panel's instance index (default from _SOURCES: {_spec.instance_index}).",
@@ -156,8 +205,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     index_overrides = {
-        spec.name: getattr(args, f"{spec.name}_index")
+        spec.regime: getattr(args, f"{spec.regime}_index")
         for spec in EXAMPLE_SOURCES
-        if getattr(args, f"{spec.name}_index") is not None
+        if getattr(args, f"{spec.regime}_index") is not None
     }
     main(args.seed, args.num_instances, index_overrides, algorithm=args.algorithm)

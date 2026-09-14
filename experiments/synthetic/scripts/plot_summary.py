@@ -1,3 +1,4 @@
+import math
 from collections import defaultdict
 from pathlib import Path
 
@@ -9,26 +10,26 @@ import csv
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
-from matplotlib.lines import Line2D
 
 RESULTS_ROOT = Path(__file__).resolve().parents[1] / "results"
-FIGURES_DIR = Path(__file__).resolve().parents[1] / "figures"
 SUMMARY_CSV = RESULTS_ROOT / "summary.csv"
 
 SOURCES = ("block_outliers", "heteroskedastic", "multimodal", "well_specified")
 SOURCE_TITLES = {
-    "multimodal": "Multimodal",
-    "heteroskedastic": "Heteroskedastic",
     "block_outliers": "Block outliers",
+    "heteroskedastic": "Heteroskedastic",
+    "multimodal": "Multimodal",
     "well_specified": "Well-specified",
 }
 
 ALGORITHMS = ("pro_gp", "standard_gp")
-ALGORITHM_LABELS = {"pro_gp": "PrO-GP", "standard_gp": "Standard GP"}
+ALGORITHM_LABELS = {"pro_gp": "PrO-GP", "standard_gp": "Bayes GP"}
 ALGORITHM_COLORS = {"pro_gp": "#e8974e", "standard_gp": "#4c3a8e"}
 ALGORITHM_MARKERS = {"pro_gp": "^", "standard_gp": "o"}
 
-N_MIN = 100
+X_PAD_FRAC = 0.14
+# horizontal dodge between the two series, as a fraction of one log2 step
+DODGE_FRAC = 0.06
 
 DIVIDER_COLOR = "#cccac0"
 
@@ -48,24 +49,18 @@ plt.rcParams.update(
 
 
 def load_summary(path: Path = SUMMARY_CSV):
-    """
-    {source: {algorithm: [(n, nlpd_mean, nlpd_ci95), ...]}}, each algorithm's list
-    sorted by `n`. Only rows whose own `param_name` is `"n"` are kept -- `summary.csv`
-    also holds each dataset's own misspecification-severity sweep (`amplitude_frac`,
-    `outlier_offset_frac`, `noise_skewness`, ...), which isn't what this plot shows.
-    """
+    """{source: {algorithm: [(n, nlpd_mean, nlpd_ci95), ...]}}, each list sorted by `n`."""
     records: dict[str, dict[str, list[tuple[float, float, float]]]] = defaultdict(
         lambda: defaultdict(list)
     )
     with path.open() as f:
         for row in csv.DictReader(f):
-            if row["param_name"] != "n":
-                continue
-            n = float(row["param_value"])
-            if n < N_MIN:
-                continue
             records[row["source"]][row["algorithm"]].append(
-                (n, float(row["nlpd_mean"]), float(row["nlpd_ci95"]))
+                (
+                    float(row["param_value"]),
+                    float(row["nlpd_mean"]),
+                    float(row["nlpd_ci95"]),
+                )
             )
 
     for by_algorithm in records.values():
@@ -73,6 +68,11 @@ def load_summary(path: Path = SUMMARY_CSV):
             points.sort(key=lambda point: point[0])
 
     return records
+
+
+def _dodge_offsets(n: int) -> list[float]:
+    """Symmetric log2-space offsets so the series' error bars sit side by side."""
+    return [(i - (n - 1) / 2) * DODGE_FRAC for i in range(n)]
 
 
 def _plot_sweep(
@@ -83,11 +83,13 @@ def _plot_sweep(
     (`n` doubles each step) so the ticks stay evenly spaced, with the actual tested
     values as ticks.
     """
-    for algorithm in ALGORITHMS:
+    offsets = _dodge_offsets(len(ALGORITHMS))
+    for algorithm, offset in zip(ALGORITHMS, offsets, strict=True):
         points = by_algorithm.get(algorithm)
         if not points:
             continue
-        x = [point[0] for point in points]
+        # dodge in log2 space so the shift is even across the axis
+        x = [2 ** (math.log2(point[0]) + offset) for point in points]
         mean = [point[1] for point in points]
         ci95 = [point[2] for point in points]
         ax.errorbar(
@@ -111,31 +113,9 @@ def _plot_sweep(
     ax.xaxis.set_minor_formatter(mticker.NullFormatter())
     ax.set_xticks(all_values)
 
-
-def _plot_categorical(
-    ax, by_algorithm: dict[str, list[tuple[float, float, float]]], colors
-):
-    xs = list(range(len(ALGORITHMS)))
-    for x, algorithm in zip(xs, ALGORITHMS, strict=True):
-        ((_, mean, ci95),) = by_algorithm[algorithm]
-        ax.errorbar(
-            [x],
-            [mean],
-            yerr=[ci95],
-            marker=ALGORITHM_MARKERS[algorithm],
-            linestyle="None",
-            color=colors[algorithm],
-            label=ALGORITHM_LABELS[algorithm],
-            markersize=6,
-            elinewidth=1.5,
-            capsize=4,
-            capthick=1.5,
-        )
-
-    ax.set_xticks(xs)
-    ax.set_xticklabels([])
-    ax.tick_params(axis="x", length=0)
-    ax.set_xlim(xs[0] - 0.5, xs[-1] + 0.5)
+    lo, hi = math.log2(min(all_values)), math.log2(max(all_values))
+    pad = X_PAD_FRAC * (hi - lo)
+    ax.set_xlim(2 ** (lo - pad), 2 ** (hi + pad))
 
 
 def _plot_source(
@@ -144,67 +124,13 @@ def _plot_source(
     all_values = sorted(
         {point[0] for points in by_algorithm.values() for point in points}
     )
-    is_sweep = len(all_values) > 1
+    _plot_sweep(ax, by_algorithm, all_values, colors)
 
-    if is_sweep:
-        _plot_sweep(ax, by_algorithm, all_values, colors)
-    else:
-        _plot_categorical(ax, by_algorithm, colors)
-
-    ax.yaxis.set_major_locator(mticker.MultipleLocator(base=0.5))
+    ax.yaxis.set_major_locator(mticker.MaxNLocator(nbins=3, steps=[1, 2, 2.5, 5, 10]))
 
     ax.set_title(SOURCE_TITLES[source], fontsize=13)
-
-
-def _add_grid_dividers(fig, axes) -> None:
-    fig.canvas.draw()
-    pos = [[ax.get_position() for ax in row] for row in axes]
-
-    v_x = (pos[0][0].x1 + pos[0][1].x0) / 2
-    h_y = (pos[1][0].y1 + pos[0][0].y0) / 2
-    left = min(pos[0][0].x0, pos[1][0].x0)
-    right = max(pos[0][1].x1, pos[1][1].x1)
-    bottom = min(pos[1][0].y0, pos[1][1].y0)
-    top = max(pos[0][0].y1, pos[0][1].y1)
-
-    fig.add_artist(
-        Line2D([v_x, v_x], [bottom, top], color=DIVIDER_COLOR, linewidth=1.0)
-    )
-    fig.add_artist(
-        Line2D([left, right], [h_y, h_y], color=DIVIDER_COLOR, linewidth=1.0)
-    )
 
 
 def plot_summary_row(axes, records, sources=SOURCES, colors=ALGORITHM_COLORS) -> None:
     for ax, source in zip(axes, sources, strict=True):
         _plot_source(ax, source, records.get(source, {}), colors)
-
-
-def plot_summary(records, sources=SOURCES, filename="summary_panel.png"):
-    fig, axes = plt.subplots(
-        2,
-        2,
-        figsize=(9, 8.5),
-        sharey=True,
-        gridspec_kw={"hspace": 0.45, "wspace": 0.12},
-    )
-
-    plot_summary_row(axes.flat, records, sources)
-
-    for row in axes:
-        row[0].set_ylabel("NLPD")
-
-    handles, labels = axes.flat[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="lower center", ncol=2, fontsize=10, frameon=False)
-
-    fig.tight_layout(rect=(0, 0.04, 1, 1))
-    _add_grid_dividers(fig, axes)
-
-    FIGURES_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = FIGURES_DIR / filename
-    fig.savefig(out_path, dpi=150)
-    print(f"Saved to {out_path}")
-
-
-if __name__ == "__main__":
-    plot_summary(load_summary())
