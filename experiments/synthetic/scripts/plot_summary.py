@@ -98,7 +98,7 @@ def _plot_sweep(
             capthick=1.5,
         )
 
-    ax.set_xlabel("training size n")
+    ax.set_xlabel("training set size")
     ax.xaxis.set_major_formatter(mticker.ScalarFormatter())
     ax.set_xticks(all_values)
 

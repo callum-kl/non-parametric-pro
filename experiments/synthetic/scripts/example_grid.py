@@ -24,7 +24,7 @@ GP_COLOR = "#e8974e"
 PRO_COLOR = "#2ca58d"
 GP_LABEL = "Bayes GP"
 PRO_LABEL = "PrO-GP"
-Z_90 = 1.96
+Z_95 = 1.96
 DATA_ALPHA = 0.45
 PANEL_ALPHA = 1.4
 PANEL_NUM_PARTICLES = 50
@@ -35,14 +35,17 @@ PANEL_ADAPT_STEPS = 400
 PANEL_KERNEL_ADAPT_STEPS = 400
 PANEL_KERNEL_LR = 0.5
 PANEL_KERNEL_STEPS_PER_ADAPT = 1
-GP_BAND_ALPHA = 0.22
-PRO_BAND_ALPHAS = (0.18, 0.36)
+GP_BAND_ALPHA = 0.4
+PRO_BAND_ALPHAS = (0.2, 0.7)
 COLUMN_TITLE_PAD_IN = 0.62
 X_TICKS = (0.0, 0.5, 1.0)
 # Every panel is rescaled onto this window for display (see `_display_affine`), then
 # padded slightly so nothing sits on the spines.
-DISPLAY_YLIM = (-1.5, 1.0)
-DISPLAY_PAD = 0.06
+# Each panel's data is rescaled onto DISPLAY_YLIM (see `_display_affine`); AXIS_YLIM
+# is then what the axes actually span, so the frame can be widened without changing
+# how the data is scaled into it.
+DISPLAY_YLIM = (-1.0, 1.0)
+AXIS_YLIM = (-1.5, 1.5)
 
 plt.rcParams.update(
     {
@@ -94,8 +97,8 @@ def _hide_ticks(ax, *, x: bool = False, y: bool = False) -> None:
 def _gp_band(ax, x_sorted, mean_sorted, std_sorted) -> None:
     ax.fill_between(
         x_sorted,
-        mean_sorted - Z_90 * std_sorted,
-        mean_sorted + Z_90 * std_sorted,
+        mean_sorted - Z_95 * std_sorted,
+        mean_sorted + Z_95 * std_sorted,
         color=GP_COLOR,
         alpha=GP_BAND_ALPHA,
         linewidth=0,
@@ -263,19 +266,14 @@ def plot_fit_grid(
         index = index_overrides.get(spec.regime, spec.instance_index)
         _plot_fit_panel(ax, spec, keys[index], method="pro", algorithm=algorithm)
         ax.set_title(PRO_LABEL, fontsize=16, color=PRO_COLOR)
-        ax.set_xlabel("input x")
         _hide_ticks(ax, y=col > 0)
 
-    display_lo, display_hi = DISPLAY_YLIM
-    pad = DISPLAY_PAD * (display_hi - display_lo)
     for ax in (*gp_axes, *pro_axes):
-        ax.set_ylim(display_lo - pad, display_hi + pad)
+        ax.set_ylim(*AXIS_YLIM)
         ax.set_xticks(X_TICKS)
-    for ax in (gp_axes[0], pro_axes[0]):
-        ax.set_ylabel("response y")
 
 
-TOP_LEGEND_HANDLES = [
+LEGEND_HANDLES = [
     Line2D(
         [0], [0], color="black", linestyle="--", linewidth=1.3, alpha=0.7, label="truth"
     ),
@@ -288,11 +286,11 @@ TOP_LEGEND_HANDLES = [
         markersize=6,
         label="data",
     ),
-    Patch(facecolor=GP_COLOR, alpha=GP_BAND_ALPHA, label=f"{GP_LABEL} (90% central)"),
+    Patch(facecolor=GP_COLOR, alpha=GP_BAND_ALPHA, label=f"{GP_LABEL} (95% central)"),
     Patch(
         facecolor=PRO_COLOR,
         alpha=PRO_BAND_ALPHAS[1],
-        label=f"{PRO_LABEL} (50%/90% regions)",
+        label=f"{PRO_LABEL} (50%/95% regions)",
     ),
     Line2D(
         [0],

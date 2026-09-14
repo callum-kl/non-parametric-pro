@@ -13,8 +13,8 @@ from example_grid import _SOURCES as EXAMPLE_SOURCES
 from example_grid import (
     COLUMN_TITLE_PAD_IN,
     GP_COLOR,
+    LEGEND_HANDLES,
     PRO_COLOR,
-    TOP_LEGEND_HANDLES,
     _hide_ticks,
     _style_box,
     plot_fit_grid,
@@ -52,7 +52,7 @@ FIT_ROW_GAP_IN = 0.55  # room for the "PrO-GP" row title
 SUMMARY_NCOLS = 1
 BLOCK_GAP_IN = 0.95  # between the fit block and the summary column
 MARGIN_LEFT_IN, MARGIN_RIGHT_IN = 0.62, 0.25
-MARGIN_TOP_IN, MARGIN_BOTTOM_IN = 1.45, 0.55
+MARGIN_TOP_IN, MARGIN_BOTTOM_IN = 0.95, 1.05
 
 FIT_NCOLS, FIT_NROWS = 4, 2
 SUMMARY_NROWS = 4
@@ -165,15 +165,15 @@ def main(
     fig.text(
         (SUMMARY_LEFT + SUMMARY_RIGHT) / 2,
         GRID_TOP + COLUMN_TITLE_PAD_IN / FIG_H,
-        "Held-out NLPD (lower is better)",
+        "Held-out NLPD",
         ha="center",
         fontsize=TITLE_FONTSIZE,
     )
 
     fig.legend(
-        handles=TOP_LEGEND_HANDLES,
-        loc="upper center",
-        bbox_to_anchor=(0.5, 1.0),
+        handles=LEGEND_HANDLES,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.0),
         ncol=5,
         fontsize=LEGEND_FONTSIZE,
         frameon=False,
