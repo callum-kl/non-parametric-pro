@@ -1,0 +1,6 @@
+{
+  "vgp_nlpd": -2.184826184027076,
+  "gp_sigma": 0.03083387037562352,
+  "num_inducing": 500,
+  "median_seconds_per_iter": 0.15188773335000405
+}

@@ -9,6 +9,7 @@ os.environ.setdefault("JAX_ENABLE_X64", "1")
 import gpjax as gpx
 import jax.numpy as jnp
 import numpy as np
+import paramax as px
 from omegaconf import DictConfig, OmegaConf
 from sklearn.preprocessing import StandardScaler
 
@@ -90,3 +91,37 @@ def load_gp_state(cfg: DictConfig):
     scaler_y.scale_ = state["scaler_y_scale"]
 
     return kernel, sigma_val, inducing_basis, scaler_x, scaler_y
+
+
+def build_vgp_posterior(x_train: jnp.ndarray, cfg: DictConfig):
+    """Zero-mean RBF prior times Gaussian likelihood, initialised as in fit_vgp.py."""
+    num_features = x_train.shape[1]
+    lengthscale = gpx.parameters.SigmoidBounded(
+        jnp.sqrt(num_features) * jnp.ones((num_features,)),
+        low=cfg.lengthscale_min,
+        high=cfg.lengthscale_max,
+    )
+    variance = gpx.parameters.PositiveReal(jnp.array([1.0]))
+    kernel = gpx.kernels.RBF(lengthscale=lengthscale, variance=variance)
+    prior = gpx.gps.Prior(mean_function=gpx.mean_functions.Zero(), kernel=kernel)
+    likelihood = gpx.likelihoods.Gaussian(
+        num_datapoints=x_train.shape[0], obs_stddev=jnp.sqrt(0.01)
+    )
+    return prior * likelihood
+
+
+def save_gp_state(out_dir: Path, variational_family, scaler_x, scaler_y) -> None:
+    kernel = variational_family.posterior.prior.kernel
+    sigma = variational_family.posterior.likelihood.obs_stddev
+    np.savez(
+        out_dir / "gp_state.npz",
+        kernel_type=type(kernel).__name__,
+        lengthscale=np.array(px.unwrap(kernel.lengthscale)),
+        variance=np.array(px.unwrap(kernel.variance)),
+        sigma=np.array(px.unwrap(sigma)).reshape(()),
+        z=np.array(px.unwrap(variational_family.inducing_inputs)),
+        scaler_x_mean=scaler_x.mean_,
+        scaler_x_scale=scaler_x.scale_,
+        scaler_y_mean=scaler_y.mean_,
+        scaler_y_scale=scaler_y.scale_,
+    )

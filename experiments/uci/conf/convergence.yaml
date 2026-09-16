@@ -1,0 +1,33 @@
+defaults:
+  - _self_
+  - ds@_global_: parkinsons
+
+split: 1
+seed: 0
+num_inducing: 100
+
+inducing: true
+vgp_variant: noncollapsed
+vgp_name: conv_m${num_inducing}_s${seed}
+name: conv_m${num_inducing}_s${seed}
+
+results_root: ${script_dir:}/results
+
+gp_num_iters: 10000
+vgp_chunk_len: 100
+kernel_lr: 0.01
+lengthscale_min: 1.0e-3
+lengthscale_max: 1.0e3
+
+num_particles: 50
+alpha: 1.4
+num_gibbs_iters: 200
+gibbs_chunk_len: 10
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: ${script_dir:}/.hydra_logs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: ${script_dir:}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
