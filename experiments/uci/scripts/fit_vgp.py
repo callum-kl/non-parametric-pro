@@ -16,6 +16,7 @@ import optax as ox
 import paramax as px
 from omegaconf import DictConfig, OmegaConf
 from sklearn.preprocessing import StandardScaler
+from util import build_vgp_posterior, save_gp_state
 
 from non_parametric_pro.data.uci.uci import load_uci_regression_dataset
 from non_parametric_pro.gp import natural_gradient_svgp_fit
@@ -59,16 +60,7 @@ def main(cfg: DictConfig) -> None:
 
     # --- Sparse GP fit -------------------------------------------------------
     data = gpx.Dataset(X=x_train, y=y_train)
-    lengthscale = gpx.parameters.SigmoidBounded( 
-        jnp.sqrt(D) * jnp.ones((D,)), low=cfg.lengthscale_min, high=cfg.lengthscale_max
-    )
-    variance = gpx.parameters.PositiveReal(jnp.array([1.0]))
-    kernel = gpx.kernels.RBF(lengthscale=lengthscale, variance=variance)
-    prior = gpx.gps.Prior(mean_function=gpx.mean_functions.Zero(), kernel=kernel)
-    likelihood = gpx.likelihoods.Gaussian(
-        num_datapoints=data.n, obs_stddev=jnp.sqrt(0.01)
-    )
-    posterior = prior * likelihood
+    posterior = build_vgp_posterior(x_train, cfg)
 
     key, km_key = jr.split(key)
     z_init = kmeans_inducing_points(km_key, x_train, cfg.num_inducing).z
@@ -116,7 +108,6 @@ def main(cfg: DictConfig) -> None:
 
     opt_kernel = opt_vf.posterior.prior.kernel
     opt_sigma = opt_vf.posterior.likelihood.obs_stddev
-    z_opt = np.array(px.unwrap(opt_vf.inducing_inputs))
 
     # --- Evaluate ------------------------------------------------------------
     posterior_ = opt_vf.posterior
@@ -139,18 +130,7 @@ def main(cfg: DictConfig) -> None:
     log.info("VGP  NLPD=%.4f", metrics["vgp_nlpd"])
 
     # --- Save ----------------------------------------------------------------
-    np.savez(
-        out_dir / "gp_state.npz",
-        kernel_type=type(kernel).__name__,
-        lengthscale=np.array(px.unwrap(opt_kernel.lengthscale)),
-        variance=np.array(px.unwrap(opt_kernel.variance)),
-        sigma=np.array(px.unwrap(opt_sigma)).reshape(()),
-        z=z_opt,
-        scaler_x_mean=scaler_x.mean_,
-        scaler_x_scale=scaler_x.scale_,
-        scaler_y_mean=scaler_y.mean_,
-        scaler_y_scale=scaler_y.scale_,
-    )
+    save_gp_state(out_dir, opt_vf, scaler_x, scaler_y)
 
     with open(out_dir / "gp_metrics.json", "w") as f:
         json.dump(metrics, f, indent=2)
