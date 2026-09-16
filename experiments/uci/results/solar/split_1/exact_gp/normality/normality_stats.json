@@ -1,0 +1,73 @@
+{
+  "dataset": "solar",
+  "split": 1,
+  "sigma": 0.9230925662365035,
+  "residuals": {
+    "whitened": {
+      "n": 853,
+      "mean": 0.04336704563141562,
+      "std": 1.005897805344043,
+      "skew": 3.7943610933449947,
+      "excess_kurtosis": 19.70341935778514,
+      "shapiro_W": 0.562529454283798,
+      "shapiro_p": 1.1661352476304313e-41,
+      "dagostino_p": 5.310879248372869e-156,
+      "jarque_bera_p": 0.0,
+      "ks_standard_normal_D": 0.3399570247842794,
+      "ks_standard_normal_p": 1.7742802531795233e-88,
+      "anderson_A2": 132.01533282801472,
+      "anderson_p": 0.01,
+      "frac_beyond_2sigma": 0.05275498241500586,
+      "frac_beyond_3sigma": 0.031652989449003514
+    },
+    "loo": {
+      "n": 853,
+      "mean": 0.011731688536544277,
+      "std": 1.0207592659538425,
+      "skew": 3.62604268132305,
+      "excess_kurtosis": 19.021235352285636,
+      "shapiro_W": 0.5949820140639739,
+      "shapiro_p": 1.4941254527275639e-40,
+      "dagostino_p": 4.3320110252005014e-151,
+      "jarque_bera_p": 0.0,
+      "ks_standard_normal_D": 0.35465186903314005,
+      "ks_standard_normal_p": 1.714647803572009e-96,
+      "anderson_A2": 121.10215685265098,
+      "anderson_p": 0.01,
+      "frac_beyond_2sigma": 0.05744431418522861,
+      "frac_beyond_3sigma": 0.029308323563892145
+    },
+    "test": {
+      "n": 213,
+      "mean": -0.021475349347163088,
+      "std": 0.9412705871722487,
+      "skew": 3.4351268010964806,
+      "excess_kurtosis": 15.74757509905951,
+      "shapiro_W": 0.5765932062147108,
+      "shapiro_p": 1.5700316257456088e-22,
+      "dagostino_p": 5.511706118735706e-41,
+      "jarque_bera_p": 0.0,
+      "ks_standard_normal_D": 0.36551716758263275,
+      "ks_standard_normal_p": 5.120451210088057e-26,
+      "anderson_A2": 32.359327879001114,
+      "anderson_p": 0.01,
+      "frac_beyond_2sigma": 0.046948356807511735,
+      "frac_beyond_3sigma": 0.023474178403755867
+    }
+  },
+  "target": {
+    "n": 853,
+    "num_unique": 8,
+    "modal_value": -0.3599358322664461,
+    "modal_fraction": 0.8288393903868698,
+    "skew": 3.952274899726121,
+    "excess_kurtosis": 19.698434130495777
+  },
+  "whitening_order_check": {
+    "num_permutations": 100,
+    "shapiro_p_median": 2.8140386685040656e-40,
+    "shapiro_p_q05": 2.5712405546957696e-41,
+    "shapiro_p_q95": 7.474735592601368e-39,
+    "frac_reject_at_5pct": 1.0
+  }
+}

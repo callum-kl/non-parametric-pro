@@ -1,0 +1,21 @@
+defaults:
+  - _self_
+  - ds@_global_: machine
+
+split: 1
+seed: 0
+inducing: false
+gp_name: null
+
+jitter: 1.0e-8
+num_permutations: 100
+
+results_root: ${script_dir:}/results
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: ${script_dir:}/.hydra_logs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: ${script_dir:}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
