@@ -44,71 +44,58 @@ def plot_nlpd_by_num_train(summary, out_path: Path) -> None:
     pro_mean = [summary[(n, PRO_METHOD)]["nlpd"]["mean"] for n in NUM_TRAINS]
     pro_se = [summary[(n, PRO_METHOD)]["nlpd"]["se"] for n in NUM_TRAINS]
 
-    fig, ax = plt.subplots(figsize=(8, 5.5))
-
-    ax.fill_between(NUM_TRAINS, gp_mean, pro_mean, color=GAP_COLOR, alpha=0.15, zorder=1)
-
-    ax.errorbar(
-        NUM_TRAINS,
-        gp_mean,
-        yerr=gp_se,
-        color=GP_COLOR,
-        marker="o",
-        markersize=7,
-        linewidth=2.2,
-        capsize=4,
-        zorder=3,
-    )
-    ax.errorbar(
-        NUM_TRAINS,
-        pro_mean,
-        yerr=pro_se,
-        color=PRO_COLOR,
-        marker="o",
-        markersize=7,
-        linewidth=2.2,
-        capsize=4,
-        zorder=3,
-    )
+    fig, ax = plt.subplots(figsize=(7.0, 2.6))
 
     for n, gp, pro in zip(NUM_TRAINS, gp_mean, pro_mean, strict=True):
+        ax.plot([n, n], [pro, gp], color=GAP_COLOR, linewidth=1.0, alpha=0.6, zorder=1)
         ax.annotate(
-            f"Δ={gp - pro:.3f}",
+            f"Δ = {gp - pro:.3f}",
             xy=(n, (gp + pro) / 2),
-            fontsize=14,
+            xytext=(7, 0),
+            textcoords="offset points",
+            fontsize=12,
             color="#5a5850",
-            ha="center",
+            ha="left",
             va="center",
         )
 
-    end_offset = (NUM_TRAINS[-1] - NUM_TRAINS[0]) * 0.03
-    ax.text(
-        NUM_TRAINS[-1] + end_offset,
-        gp_mean[-1],
-        GP_LABEL,
-        color=GP_COLOR,
-        fontsize=12,
-        fontweight="bold",
-        va="center",
-    )
-    ax.text(
-        NUM_TRAINS[-1] + end_offset,
-        pro_mean[-1],
-        PRO_LABEL,
-        color=PRO_COLOR,
-        fontsize=12,
-        fontweight="bold",
-        va="center",
-    )
+    for mean, se, color in [(gp_mean, gp_se, GP_COLOR), (pro_mean, pro_se, PRO_COLOR)]:
+        ax.errorbar(
+            NUM_TRAINS,
+            mean,
+            yerr=se,
+            color=color,
+            marker="o",
+            markersize=6,
+            linewidth=2.0,
+            capsize=3,
+            zorder=3,
+        )
 
-    ax.set_xlim(NUM_TRAINS[0] - 15, NUM_TRAINS[-1] + end_offset + 20)
+    for mean, color, label in [(gp_mean, GP_COLOR, GP_LABEL), (pro_mean, PRO_COLOR, PRO_LABEL)]:
+        ax.annotate(
+            label,
+            xy=(NUM_TRAINS[-1], mean[-1]),
+            xytext=(8, 0),
+            textcoords="offset points",
+            color=color,
+            fontsize=11,
+            fontweight="bold",
+            va="center",
+            annotation_clip=False,
+        )
+
+    ax.set_xlim(NUM_TRAINS[0] - 6, NUM_TRAINS[-1] + 6)
     ax.set_xticks(NUM_TRAINS)
-    ax.set_xlabel("Number of training sensors")
-    ax.set_ylabel("Mean NLPD ± 1 SE")
+    ax.set_ylim(0.7, 1.2)
+    ax.set_yticks([0.8, 1.0, 1.2])
+    ax.grid(axis="x", visible=False)
+    ax.set_xlabel("Training sensors")
+    ax.set_ylabel("NLPD ± 1 SE")
 
     fig.tight_layout()
     FIGURES_DIR.mkdir(exist_ok=True)
-    fig.savefig(out_path, dpi=150)
+    fig.savefig(out_path, dpi=200, bbox_inches="tight")
     print(f"Saved {out_path}")
 
 
