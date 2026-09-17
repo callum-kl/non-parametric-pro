@@ -1,0 +1,5 @@
+{
+  "hyperparameters_from": "vgp_noncollapsed_conv_m500_s0",
+  "inducing": "kmeans",
+  "num_inducing": 1000
+}

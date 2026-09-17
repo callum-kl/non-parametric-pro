@@ -1,0 +1,5 @@
+{
+  "pro_sigma": 0.01178520220825259,
+  "sigma_from": "inducing_pro_gp_conv_m500_s0",
+  "gp_sigma": 0.028931153858980693
+}

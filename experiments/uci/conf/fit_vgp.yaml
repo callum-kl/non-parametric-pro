@@ -16,6 +16,7 @@ variance_max: 10.0
 vgp_batch_size: 512
 num_inducing: 200
 collapsed: false
+train_inducing: true
 natural_gradients: false
 natural_lr: 0.5
 

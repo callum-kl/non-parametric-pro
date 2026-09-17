@@ -7,6 +7,7 @@ from pathlib import Path
 
 os.environ.setdefault("JAX_ENABLE_X64", "1")
 
+import equinox as eqx
 import gpjax as gpx
 import hydra
 import jax.numpy as jnp
@@ -70,6 +71,13 @@ def main(cfg: DictConfig) -> None:
             posterior=posterior,
             inducing_inputs=z_init,
         )
+        if not cfg.train_inducing:
+            # stop_gradient on Z keeps the (N, m, d) dK_fu/dZ tensor out of the backward pass.
+            variational_family = eqx.tree_at(
+                lambda v: v.inducing_inputs,
+                variational_family,
+                px.non_trainable(z_init),
+            )
         objective = lambda p, d: -gpx.objectives.collapsed_elbo(p, d)
         opt_vf, _ = gpx.fit_scipy(
             model=variational_family,
@@ -125,6 +133,7 @@ def main(cfg: DictConfig) -> None:
         "gp_sigma": float(np.array(px.unwrap(opt_sigma)).reshape(())),
         "gp_variance": float(np.array(px.unwrap(opt_kernel.variance)).reshape(())),
         "collapsed": bool(cfg.collapsed),
+        "train_inducing": bool(cfg.train_inducing),
         "natural_gradients": bool(cfg.natural_gradients),
     }
     log.info("VGP  NLPD=%.4f", metrics["vgp_nlpd"])
