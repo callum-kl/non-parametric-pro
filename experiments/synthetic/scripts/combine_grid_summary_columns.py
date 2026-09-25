@@ -39,9 +39,9 @@ if _EXAMPLE_ORDER != SOURCES:
 
 SUMMARY_COLORS = {"standard_gp": GP_COLOR, "pro_gp": PRO_COLOR}
 
-TITLE_FONTSIZE = 16
-LEGEND_FONTSIZE = 17
-AXIS_FONTSIZE = 13
+TITLE_FONTSIZE = 19
+LEGEND_FONTSIZE = 19
+AXIS_FONTSIZE = 16
 
 # Layout is specified in inches and converted to figure fractions below, so panel
 # proportions are exact regardless of how many columns the figure ends up with.

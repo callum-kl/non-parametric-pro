@@ -39,6 +39,8 @@ GP_BAND_ALPHA = 0.4
 PRO_BAND_ALPHAS = (0.2, 0.7)
 COLUMN_TITLE_PAD_IN = 0.62
 X_TICKS = (0.0, 0.5, 1.0)
+TICK_FONTSIZE = 16
+PANEL_TITLE_FONTSIZE = 19
 # Every panel is rescaled onto this window for display (see `_display_affine`), then
 # padded slightly so nothing sits on the spines.
 # Each panel's data is rescaled onto DISPLAY_YLIM (see `_display_affine`); AXIS_YLIM
@@ -49,7 +51,7 @@ AXIS_YLIM = (-1.5, 1.5)
 
 plt.rcParams.update(
     {
-        "font.size": 12,
+        "font.size": 14,
         "axes.spines.top": False,
         "axes.spines.right": False,
         "axes.spines.left": False,
@@ -84,7 +86,7 @@ def _style_box(ax, *, grid: bool = False, grid_axis: str = "both") -> None:
     ax.grid(False)
     if grid:
         ax.grid(True, axis=grid_axis)
-    ax.tick_params(labelsize=9, length=3)
+    ax.tick_params(labelsize=TICK_FONTSIZE, length=4)
 
 
 def _hide_ticks(ax, *, x: bool = False, y: bool = False) -> None:
@@ -251,21 +253,21 @@ def plot_fit_grid(
     for col, (ax, spec) in enumerate(zip(gp_axes, sources, strict=True)):
         index = index_overrides.get(spec.regime, spec.instance_index)
         _plot_fit_panel(ax, spec, keys[index], method="gp", algorithm=algorithm)
-        ax.set_title(GP_LABEL, fontsize=16, color=GP_COLOR)
+        ax.set_title(GP_LABEL, fontsize=PANEL_TITLE_FONTSIZE, color=GP_COLOR)
         pos = ax.get_position()
         fig.text(
             (pos.x0 + pos.x1) / 2,
             pos.y1 + COLUMN_TITLE_PAD_IN / fig.get_figheight(),
             spec.title,
             ha="center",
-            fontsize=16,
+            fontsize=PANEL_TITLE_FONTSIZE,
             color="black",
         )
         _hide_ticks(ax, x=True, y=col > 0)
     for col, (ax, spec) in enumerate(zip(pro_axes, sources, strict=True)):
         index = index_overrides.get(spec.regime, spec.instance_index)
         _plot_fit_panel(ax, spec, keys[index], method="pro", algorithm=algorithm)
-        ax.set_title(PRO_LABEL, fontsize=16, color=PRO_COLOR)
+        ax.set_title(PRO_LABEL, fontsize=PANEL_TITLE_FONTSIZE, color=PRO_COLOR)
         _hide_ticks(ax, y=col > 0)
 
     for ax in (*gp_axes, *pro_axes):

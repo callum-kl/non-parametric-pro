@@ -4,6 +4,7 @@ import json
 import logging
 import os
 from pathlib import Path
+from typing import NamedTuple
 
 os.environ.setdefault("JAX_ENABLE_X64", "1")
 
@@ -74,47 +75,16 @@ def _sampling_algorithm(cfg: DictConfig, pro_params: ProParameters):
     raise ValueError(msg)
 
 
-@hydra.main(version_base=None, config_path="../conf", config_name="fit_pro")
-def main(cfg: DictConfig) -> None:
-    log.info("PRO (graph GP): split=%d num_train=%d", cfg.split, cfg.num_train)
+class ProInference(NamedTuple):
+    particles: jnp.ndarray
+    pro_params: ProParameters
+    kernel: gpx.kernels.AbstractKernel
+    key: jax.Array
 
-    if cfg.algorithm == "replica_gibbs":
-        _check_replica_gibbs_config(cfg)
 
-    key = jr.PRNGKey(cfg.seed)
-    out_dir = pro_out_dir(cfg)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    # --- Load GP state -- fixed kernel, never adapted here -------------------
-    kernel, gp_sigma_val, scaler_y = load_gp_state(cfg)
-
-    # --- Data ------------------------------------------------------------------
-    graph_data = load_pems_graph_data()
-    if cfg.default_kernel_init:
-        kernel = gpx.kernels.GraphKernel(
-            laplacian=graph_data.laplacian,
-            lengthscale=jnp.array(5.0),
-            variance=jnp.array(1.0),
-            smoothness=jnp.array(3.0),
-        )
-        log.info("default_kernel_init=true -- ignoring fitted GP kernel.")
-    sigma_init_val = gp_sigma_val if cfg.sigma_init is None else cfg.sigma_init
-    log.info(
-        "Loaded exact GP state: kernel fixed, gp_sigma=%.4f, sigma starts at %.4f",
-        gp_sigma_val,
-        sigma_init_val,
-    )
-
-    split = pems_regression_split(
-        graph_data, cfg.split, num_train=cfg.num_train, seed=cfg.split + cfg.split_seed_offset
-    )
-    x_train = jnp.asarray(split.x_train)
-    y_train = jnp.asarray(scaler_y.transform(split.y_train))
-    x_test = jnp.asarray(split.x_test)
-    y_test = jnp.asarray(scaler_y.transform(split.y_test))
-
-    log.info("N_train=%d  N_test=%d", x_train.shape[0], x_test.shape[0])
-
+def run_pro_inference(cfg, key, kernel, x_train, y_train, sigma_init) -> ProInference:
+    """Adapt sigma (and optionally the kernel), then sample particles against the
+    full training set. Returns `key` advanced exactly as the caller left off."""
     # --- Full basis, from *all* training points -------------------------------
     basis_full = cholesky_basis(kernel, x_train)
     basis_dim = basis_full.shape[1]
@@ -133,7 +103,7 @@ def main(cfg: DictConfig) -> None:
         basis=None,
         step_size=cfg.step_size,
         sigma=gpx.parameters.SigmoidBounded(
-            sigma_init_val, low=cfg.sigma_min, high=cfg.sigma_max
+            sigma_init, low=cfg.sigma_min, high=cfg.sigma_max
         ),
         alpha=cfg.alpha,
         residual_std=None,
@@ -203,6 +173,57 @@ def main(cfg: DictConfig) -> None:
         progress_bar=True,
     )
     particles = states.position[:: cfg.thin]
+    return ProInference(
+        particles=particles,
+        pro_params=pro_params,
+        kernel=adapted_kernel,
+        key=key,
+    )
+
+
+@hydra.main(version_base=None, config_path="../conf", config_name="fit_pro")
+def main(cfg: DictConfig) -> None:
+    log.info("PRO (graph GP): split=%d num_train=%d", cfg.split, cfg.num_train)
+
+    if cfg.algorithm == "replica_gibbs":
+        _check_replica_gibbs_config(cfg)
+
+    key = jr.PRNGKey(cfg.seed)
+    out_dir = pro_out_dir(cfg)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # --- Load GP state -- fixed kernel, never adapted here -------------------
+    kernel, gp_sigma_val, scaler_y = load_gp_state(cfg)
+
+    # --- Data ------------------------------------------------------------------
+    graph_data = load_pems_graph_data()
+    if cfg.default_kernel_init:
+        kernel = gpx.kernels.GraphKernel(
+            laplacian=graph_data.laplacian,
+            lengthscale=jnp.array(5.0),
+            variance=jnp.array(1.0),
+            smoothness=jnp.array(3.0),
+        )
+        log.info("default_kernel_init=true -- ignoring fitted GP kernel.")
+    sigma_init_val = gp_sigma_val if cfg.sigma_init is None else cfg.sigma_init
+    log.info(
+        "Loaded exact GP state: kernel fixed, gp_sigma=%.4f, sigma starts at %.4f",
+        gp_sigma_val,
+        sigma_init_val,
+    )
+
+    split = pems_regression_split(
+        graph_data, cfg.split, num_train=cfg.num_train, seed=cfg.split + cfg.split_seed_offset
+    )
+    x_train = jnp.asarray(split.x_train)
+    y_train = jnp.asarray(scaler_y.transform(split.y_train))
+    x_test = jnp.asarray(split.x_test)
+    y_test = jnp.asarray(scaler_y.transform(split.y_test))
+
+    log.info("N_train=%d  N_test=%d", x_train.shape[0], x_test.shape[0])
+
+    fit = run_pro_inference(cfg, key, kernel, x_train, y_train, sigma_init_val)
+    particles, pro_params, adapted_kernel, key = fit
 
     # --- Evaluation ------------------------------------------------------------
     test_basis, test_cov = prediction_basis(adapted_kernel, x_train, x_test, pro_params)

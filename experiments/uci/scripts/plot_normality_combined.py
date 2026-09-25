@@ -12,8 +12,11 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from gp_normality import (
+    AXIS_LABEL_FONTSIZE,
     INK,
     INK_MUTED,
+    LEGEND_FONTSIZE,
+    PANEL_TITLE_FONTSIZE,
     SERIES,
     SURFACE,
     draw_histogram,
@@ -60,7 +63,7 @@ def _share_limits(qq_axes, hist_axes, scatter_axes) -> None:
 
 def plot_combined(datasets: list[str], split: int, path: Path) -> None:
     colour = SERIES["whitened"]
-    fig = plt.figure(figsize=(16.5, 4.0 * len(datasets)), facecolor=SURFACE)
+    fig = plt.figure(figsize=(16.5, 4.6 * len(datasets)), facecolor=SURFACE)
     subfigs = fig.subfigures(len(datasets), 1, hspace=0.10)
     if len(datasets) == 1:
         subfigs = [subfigs]
@@ -72,23 +75,23 @@ def plot_combined(datasets: list[str], split: int, path: Path) -> None:
         axes = subfig.subplots(1, 3)
 
         draw_qq(axes[0], z, colour)
-        axes[0].set_xlabel("Theoretical quantile", fontsize=9, color=INK_MUTED)
-        axes[0].set_ylabel("Observed quantile", fontsize=9, color=INK_MUTED)
+        axes[0].set_xlabel("Theoretical quantile", fontsize=AXIS_LABEL_FONTSIZE, color=INK_MUTED)
+        axes[0].set_ylabel("Observed quantile", fontsize=AXIS_LABEL_FONTSIZE, color=INK_MUTED)
         if row == 0:
             axes[0].legend(
-                frameon=False, fontsize=8, labelcolor=INK_MUTED, loc="upper left"
+                frameon=False, fontsize=LEGEND_FONTSIZE, labelcolor=INK_MUTED, loc="upper left"
             )
 
         draw_histogram(axes[1], z, colour)
-        axes[1].set_xlabel("z", fontsize=9, color=INK_MUTED)
-        axes[1].set_ylabel("Density", fontsize=9, color=INK_MUTED)
+        axes[1].set_xlabel("z", fontsize=AXIS_LABEL_FONTSIZE, color=INK_MUTED)
+        axes[1].set_ylabel("Density", fontsize=AXIS_LABEL_FONTSIZE, color=INK_MUTED)
 
         draw_residual_scatter(axes[2], z, np.arange(z.size, dtype=float), colour)
-        axes[2].set_xlabel("Training index", fontsize=9, color=INK_MUTED)
-        axes[2].set_ylabel("z", fontsize=9, color=INK_MUTED)
+        axes[2].set_xlabel("Training index", fontsize=AXIS_LABEL_FONTSIZE, color=INK_MUTED)
+        axes[2].set_ylabel("z", fontsize=AXIS_LABEL_FONTSIZE, color=INK_MUTED)
 
         for ax, title in zip(axes, COLUMN_TITLES, strict=True):
-            ax.set_title(title, fontsize=10, color=INK_MUTED)
+            ax.set_title(title, fontsize=PANEL_TITLE_FONTSIZE, color=INK_MUTED)
 
         qq_axes.append(axes[0])
         hist_axes.append(axes[1])

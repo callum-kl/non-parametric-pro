@@ -161,6 +161,12 @@ def whitening_order_check(
     }
 
 
+TICK_FONTSIZE = 14
+AXIS_LABEL_FONTSIZE = 15
+PANEL_TITLE_FONTSIZE = 16
+LEGEND_FONTSIZE = 13
+
+
 def _style_axes(ax) -> None:
     ax.set_facecolor(SURFACE)
     ax.grid(True, color=GRID, linewidth=0.6, alpha=0.9)
@@ -169,7 +175,7 @@ def _style_axes(ax) -> None:
         ax.spines[side].set_visible(False)
     for side in ("left", "bottom"):
         ax.spines[side].set_color(GRID)
-    ax.tick_params(colors=INK_MUTED, labelsize=8, length=3)
+    ax.tick_params(colors=INK_MUTED, labelsize=TICK_FONTSIZE, length=4)
 
 
 def _qq_points(z: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -241,23 +247,23 @@ def plot_panel(residuals: dict, path: Path) -> None:
     z = payload["z"]
     colour = SERIES["whitened"]
 
-    fig, axes = plt.subplots(1, 3, figsize=(14.5, 3.9), facecolor=SURFACE)
+    fig, axes = plt.subplots(1, 3, figsize=(16.5, 4.6), facecolor=SURFACE)
 
     draw_qq(axes[0], z, colour)
-    axes[0].set_title("Q-Q vs N(0, 1)", fontsize=10, color=INK)
-    axes[0].set_xlabel("Theoretical quantile", fontsize=9, color=INK_MUTED)
-    axes[0].set_ylabel("Observed quantile", fontsize=9, color=INK_MUTED)
-    axes[0].legend(frameon=False, fontsize=8, labelcolor=INK_MUTED, loc="upper left")
+    axes[0].set_title("Q-Q vs N(0, 1)", fontsize=PANEL_TITLE_FONTSIZE, color=INK)
+    axes[0].set_xlabel("Theoretical quantile", fontsize=AXIS_LABEL_FONTSIZE, color=INK_MUTED)
+    axes[0].set_ylabel("Observed quantile", fontsize=AXIS_LABEL_FONTSIZE, color=INK_MUTED)
+    axes[0].legend(frameon=False, fontsize=LEGEND_FONTSIZE, labelcolor=INK_MUTED, loc="upper left")
 
     draw_histogram(axes[1], z, colour)
-    axes[1].set_title("Density vs N(0, 1)", fontsize=10, color=INK)
-    axes[1].set_xlabel("z", fontsize=9, color=INK_MUTED)
-    axes[1].set_ylabel("Density", fontsize=9, color=INK_MUTED)
+    axes[1].set_title("Density vs N(0, 1)", fontsize=PANEL_TITLE_FONTSIZE, color=INK)
+    axes[1].set_xlabel("z", fontsize=AXIS_LABEL_FONTSIZE, color=INK_MUTED)
+    axes[1].set_ylabel("Density", fontsize=AXIS_LABEL_FONTSIZE, color=INK_MUTED)
 
     draw_residual_scatter(axes[2], z, payload["covariate"], colour)
-    axes[2].set_title("Residual vs index", fontsize=10, color=INK)
-    axes[2].set_xlabel("Training index", fontsize=9, color=INK_MUTED)
-    axes[2].set_ylabel("z", fontsize=9, color=INK_MUTED)
+    axes[2].set_title("Residual vs index", fontsize=PANEL_TITLE_FONTSIZE, color=INK)
+    axes[2].set_xlabel("Training index", fontsize=AXIS_LABEL_FONTSIZE, color=INK_MUTED)
+    axes[2].set_ylabel("z", fontsize=AXIS_LABEL_FONTSIZE, color=INK_MUTED)
 
     fig.tight_layout()
     fig.savefig(path, dpi=200, facecolor=SURFACE)
