@@ -103,18 +103,18 @@ uci.download_air_quality()
 "
 ```
 
-Test NLPD for all 18 datasets over 5 splits:
+Test NLPD for all 16 datasets over 5 splits:
 
 ```sh
 python experiments/uci/scripts/run_uci.py
 ```
 
-- Small datasets (servo, machine, autompg, housing, stock, energy, concrete, solar, autos, yacht) fit
+- Small datasets (machine, autompg, housing, stock, concrete, solar, yacht, concreteslump) fit
   `exact_gp`, then `pro_gp_gibbs`.
 - The larger datasets fit `vgp_noncollapsed` and `ppgpr`, then
   `inducing_pro_gp_gibbs` and `inducing_pro_gp_gibbs_ppgpr` (seeded from each of those).
 - Per-dataset settings live in `experiments/uci/conf/ds/<dataset>.yaml`.
-- Use `--datasets servo,wine --splits 1,2` to run a subset, then
+- Use `--datasets machine,wine --splits 1,2` to run a subset, then
   `python experiments/uci/scripts/aggregate_results.py` to rebuild the summary.
 
 Normality figure (needs the `exact_gp` fits above):

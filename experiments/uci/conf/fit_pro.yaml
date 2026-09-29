@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - ds@_global_: servo
+  - ds@_global_: machine
 
 split: 1
 seed: 0

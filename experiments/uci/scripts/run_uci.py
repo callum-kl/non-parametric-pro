@@ -9,7 +9,7 @@ Per-dataset settings live in conf/ds/<dataset>.yaml.
 
 Usage:
     python experiments/uci/scripts/run_uci.py
-    python experiments/uci/scripts/run_uci.py --datasets servo,wine --splits 1,2 --n-jobs 4
+    python experiments/uci/scripts/run_uci.py --datasets machine,wine --splits 1,2 --n-jobs 4
 """
 
 import argparse
@@ -20,16 +20,14 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 EXACT_DATASETS = [
-    "servo",
     "machine",
     "autompg",
     "housing",
     "stock",
-    "energy",
     "concrete",
     "solar",
-    "autos",
     "yacht",
+    "concreteslump",
 ]
 INDUCING_DATASETS = [
     "wine",
