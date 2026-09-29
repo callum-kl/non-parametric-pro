@@ -17,7 +17,7 @@ FIGURES_DIR = Path(__file__).resolve().parents[1] / "figures"
 
 QUANTITY = "uncertainty"
 
-# Same palette as the synthetic misspecification figures, via plot_nlpd.py.
+# Same palette as the synthetic misspecification figures.
 GP_COLOR = "#e8974e"
 PRO_COLOR = "#2ca58d"
 PANELS = [("graph_gp", "Graph GP", GP_COLOR), ("pro_gp", "Graph PrO-GP", PRO_COLOR)]
@@ -125,6 +125,6 @@ def main(out_name: str) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--out", default="road_map_grid_std_h.png")
+    parser.add_argument("--out", default="road_map_grid_std_h_2.png")
     args = parser.parse_args()
     main(args.out)

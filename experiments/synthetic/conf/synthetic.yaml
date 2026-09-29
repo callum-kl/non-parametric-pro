@@ -13,8 +13,6 @@ kernel:
   lengthscale: 1.0
 
 pro:
-  algorithm: replica_gibbs # 'ula' or 'replica_gibbs'
-  step_size: 0.0001
   alpha: 1.4
   sigma_init: 0.3
   sigma_min: 0.03

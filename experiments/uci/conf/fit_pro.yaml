@@ -5,39 +5,28 @@ defaults:
 split: 1
 seed: 0
 inducing: false
-vgp_variant: noncollapsed
+vgp_variant: noncollapsed # noncollapsed | ppgpr: which sparse GP seeds the inducing PRO-GP
 vgp_name: null
-gp_name: null
-name: null
-
-default_kernel_init: false # if true, ignore the fitted GP's kernel and start from lengthscale=sqrt(D), variance=1.0
-
-results_root: ${script_dir:}/results
+name: gibbs
 
 num_particles: 50
-alpha: 1.43
-step_size: 0.0001 # unused when algorithm=replica_gibbs
+alpha: 1.4
 
-sigma_min: 0.1
+sigma_min: 0.01
 sigma_max: 100.0
 sigma_init: 0.4
 sigma_lr: 0.1
 
-algorithm: ula
-sgld_batch_size: 512
-
 val_fraction: 0.3
-adapt_target: null
+num_adapt_steps: 100
+warmup_steps: 5
+sigma_adapt_steps: 95
 
-num_adapt_steps: 20000
-warmup_steps: 500
-sigma_adapt_steps: 1500
-kernel_adapt_steps: 200
-kernel_lr: 0.05
-
-num_sample_steps: 3000
+num_sample_steps: 30
 burn_fraction: 0.5
-thin: 50
+thin: 2
+
+results_root: ${script_dir:}/results
 
 hydra:
   job:

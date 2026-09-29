@@ -1,4 +1,3 @@
-import logging
 from pathlib import Path
 
 import gpjax as gpx
@@ -7,21 +6,29 @@ import numpy as np
 from omegaconf import DictConfig, OmegaConf
 from sklearn.preprocessing import StandardScaler
 
-log = logging.getLogger(__name__)
+from non_parametric_pro.data.pems.pems import pems_regression_split
 
 OmegaConf.register_new_resolver(
     "script_dir", lambda: str(Path(__file__).resolve().parents[1]), replace=True
 )
 
 
+def split_dir(cfg: DictConfig) -> Path:
+    return Path(cfg.results_root) / f"num_train_{cfg.num_train}" / f"split_{cfg.split}"
+
+
 def gp_state_dir(cfg: DictConfig) -> Path:
-    subdir = f"exact_gp_{cfg.gp_name}" if cfg.gp_name else "exact_gp"
-    return Path(cfg.results_root) / f"num_train_{cfg.num_train}" / f"split_{cfg.split}" / subdir
+    return split_dir(cfg) / "exact_gp"
 
 
 def pro_out_dir(cfg: DictConfig) -> Path:
-    subdir = f"pro_gp_{cfg.name}" if cfg.name else "pro_gp"
-    return Path(cfg.results_root) / f"num_train_{cfg.num_train}" / f"split_{cfg.split}" / subdir
+    return split_dir(cfg) / (f"pro_gp_{cfg.name}" if cfg.name else "pro_gp")
+
+
+def load_split(cfg: DictConfig, graph_data):
+    return pems_regression_split(
+        graph_data, cfg.split, num_train=cfg.num_train, seed=cfg.split + cfg.split_seed_offset
+    )
 
 
 def load_gp_state(cfg: DictConfig):

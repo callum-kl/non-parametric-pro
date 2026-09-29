@@ -17,7 +17,7 @@ import paramax as px
 from fastprogress.fastprogress import progress_bar
 from omegaconf import DictConfig, OmegaConf
 
-from non_parametric_pro import replica_gibbs, ula
+from non_parametric_pro import replica_gibbs
 from non_parametric_pro.data.synthetic.block_outliers import (
     BLOCK_OUTLIERS_KWARGS,
     make_block_outlier_instance,
@@ -32,7 +32,6 @@ from non_parametric_pro.data.synthetic.multimodal import (
 )
 from non_parametric_pro.data.synthetic.well_specified import (
     WELL_SPECIFIED_KWARGS,
-    build_kernel,
     make_well_specified_instance,
 )
 from non_parametric_pro.density import (
@@ -42,7 +41,6 @@ from non_parametric_pro.density import (
 from non_parametric_pro.inducing import PointInducingBasis
 from non_parametric_pro.parameter_adaptation import parameter_adaptation
 from non_parametric_pro.replica_gibbs import parametric_replica_gibbs, validate_r
-from non_parametric_pro.ula import parametric_ula
 from non_parametric_pro.util import (
     cholesky_basis,
     nlpd_gp,
@@ -69,13 +67,12 @@ class FitResult(NamedTuple):
     sigma_eff: jnp.ndarray | None = None
 
 
-def fit_gp(data, key=None, *, kernel_lengthscale=1.0, kernel_type="rbf") -> FitResult:
-
+def fit_gp(data, key=None, *, kernel_lengthscale=1.0) -> FitResult:
     x_train, y_train = data.x_train, data.y_train
     x_test, y_test = data.x_test, data.y_test
     gp_data = gpx.Dataset(X=x_train, y=y_train)
 
-    kernel = build_kernel(kernel_type, lengthscale=kernel_lengthscale)
+    kernel = gpx.kernels.RBF(lengthscale=kernel_lengthscale)
     prior = gpx.gps.Prior(mean_function=gpx.mean_functions.Zero(), kernel=kernel)
     likelihood = gpx.likelihoods.Gaussian(num_datapoints=x_train.shape[0])
     posterior = likelihood * prior
@@ -96,24 +93,6 @@ def fit_gp(data, key=None, *, kernel_lengthscale=1.0, kernel_type="rbf") -> FitR
     return FitResult(mean=mean, std=std, nlpd_per_point=nlpd_per_point)
 
 
-def _adaptation_algorithm(algorithm: str):
-    if algorithm == "ula":
-        return ula
-    if algorithm == "replica_gibbs":
-        return replica_gibbs
-    msg = f"Unknown algorithm={algorithm!r}; expected 'ula' or 'replica_gibbs'."
-    raise ValueError(msg)
-
-
-def _sampling_algorithm(algorithm: str, pro_params: ProParameters):
-    if algorithm == "ula":
-        return parametric_ula(pro_logdensity_fn, pro_params)
-    if algorithm == "replica_gibbs":
-        return parametric_replica_gibbs(pro_logdensity_fn, pro_params)
-    msg = f"Unknown algorithm={algorithm!r}; expected 'ula' or 'replica_gibbs'."
-    raise ValueError(msg)
-
-
 def fit_pro(
     data,
     key,
@@ -121,9 +100,6 @@ def fit_pro(
     kernel_lengthscale=1.0,
     kernel_lengthscale_min=1.0e-3,
     kernel_lengthscale_max=1.0e3,
-    kernel_type="rbf",
-    algorithm="replica_gibbs",
-    step_size=0.0001,
     alpha=1.0,
     sigma_init=0.3,
     sigma_min=0.05,
@@ -141,14 +117,12 @@ def fit_pro(
     burn_fraction=0.75,
     thin=5,
 ):
-    if algorithm == "replica_gibbs":
-        validate_r(num_particles, alpha)
+    validate_r(num_particles, alpha)
 
     x_train, y_train = data.x_train, data.y_train
     x_test, y_test = data.x_test, data.y_test
 
-    kernel = build_kernel(
-        kernel_type,
+    kernel = gpx.kernels.RBF(
         lengthscale=gpx.parameters.SigmoidBounded(
             kernel_lengthscale, low=kernel_lengthscale_min, high=kernel_lengthscale_max
         ),
@@ -163,7 +137,7 @@ def fit_pro(
     fold_params = ProParameters(
         y=split.y_train,
         basis=None,
-        step_size=step_size,
+        step_size=None,
         sigma=gpx.parameters.SigmoidBounded(sigma_init, low=sigma_min, high=sigma_max),
         alpha=alpha,
         residual_std=None,
@@ -171,7 +145,7 @@ def fit_pro(
     initial_position = jr.normal(pos_key, (basis_dim, num_particles))
 
     adaptation = parameter_adaptation(
-        _adaptation_algorithm(algorithm),
+        replica_gibbs,
         pro_logdensity_fn,
         fold_params,
         x_train=split.x_train,
@@ -204,12 +178,12 @@ def fit_pro(
     pro_params = ProParameters(
         y=y_train,
         basis=basis_full,
-        step_size=step_size,
+        step_size=None,
         sigma=adaptation_results.parameters.sigma,
         alpha=alpha,
         residual_std=None,
     )
-    sampling_algorithm = _sampling_algorithm(algorithm, pro_params)
+    sampling_algorithm = parametric_replica_gibbs(pro_logdensity_fn, pro_params)
     key, sample_key = jr.split(key)
     _, (states, _) = run_inference_algorithm_with_burn_in(
         rng_key=sample_key,
@@ -288,10 +262,7 @@ def _instance_fn(make_instance, kwarg_names, cfg: DictConfig):
 
 def _fit_gp_fn(cfg: DictConfig):
     return lambda data, key=None: fit_gp(
-        data,
-        key=key,
-        kernel_lengthscale=cfg.kernel.lengthscale,
-        kernel_type=getattr(data, "kernel_type", "rbf"),
+        data, key=key, kernel_lengthscale=cfg.kernel.lengthscale
     )
 
 
@@ -300,9 +271,6 @@ def _fit_pro_fn(cfg: DictConfig):
         data,
         key,
         kernel_lengthscale=cfg.kernel.lengthscale,
-        kernel_type=getattr(data, "kernel_type", "rbf"),
-        algorithm=cfg.pro.algorithm,
-        step_size=cfg.pro.step_size,
         alpha=cfg.pro.alpha,
         sigma_init=cfg.pro.sigma_init,
         sigma_min=cfg.pro.sigma_min,

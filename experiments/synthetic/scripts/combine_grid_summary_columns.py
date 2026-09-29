@@ -109,8 +109,6 @@ def main(
     seed: int,
     num_instances: int,
     index_overrides: dict[str, int],
-    *,
-    algorithm: str = "replica_gibbs",
 ) -> None:
     plt.rcParams.update({"font.size": AXIS_FONTSIZE})
 
@@ -149,7 +147,6 @@ def main(
         seed,
         num_instances,
         index_overrides,
-        algorithm=algorithm,
     )
 
     records = load_summary()
@@ -190,12 +187,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--seed", type=int, default=2421)
     parser.add_argument("--num-instances", type=int, default=20)
-    parser.add_argument(
-        "--algorithm",
-        default="replica_gibbs",
-        choices=["ula", "replica_gibbs"],
-        help="PRO sampler to use for the PrO-GP fits (default: replica_gibbs).",
-    )
     for _spec in EXAMPLE_SOURCES:
         parser.add_argument(
             f"--{_spec.regime.replace('_', '-')}-index",
@@ -210,4 +201,4 @@ if __name__ == "__main__":
         for spec in EXAMPLE_SOURCES
         if getattr(args, f"{spec.regime}_index") is not None
     }
-    main(args.seed, args.num_instances, index_overrides, algorithm=args.algorithm)
+    main(args.seed, args.num_instances, index_overrides)

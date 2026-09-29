@@ -4,7 +4,6 @@ import json
 import logging
 import os
 import time
-from pathlib import Path
 
 os.environ.setdefault("JAX_ENABLE_X64", "1")
 
@@ -27,11 +26,6 @@ from non_parametric_pro.inducing import kmeans_inducing_points
 from non_parametric_pro.util import nlpd_gp
 
 log = logging.getLogger(__name__)
-
-OmegaConf.register_new_resolver(
-    "script_dir", lambda: str(Path(__file__).resolve().parents[1]), replace=True
-)
-
 
 @hydra.main(version_base=None, config_path="../conf", config_name="convergence")
 def main(cfg: DictConfig) -> None:

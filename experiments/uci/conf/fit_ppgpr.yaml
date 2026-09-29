@@ -1,14 +1,13 @@
 defaults:
   - _self_
-  - ds@_global_: servo
+  - ds@_global_: wine
 
 split: 1
 seed: 0
-name: null
 
 gp_num_iters: 10000
 kernel_lr: 0.01
-train_kernel_variance: true # learn the RBF outputscale; false pins it to 1.0
+train_kernel_variance: true
 grad_clip_norm: 1.0
 lengthscale_min: 1.0e-3
 lengthscale_max: 1.0e3

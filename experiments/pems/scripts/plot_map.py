@@ -24,9 +24,9 @@ from omegaconf import OmegaConf
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from fit_pro import run_pro_inference
 from pems_regression_plotting import plot_prediction, plot_uncertainty
-from util import load_gp_state
+from util import load_gp_state, load_split
 
-from non_parametric_pro.data.pems.pems import load_pems_graph_data, pems_regression_split
+from non_parametric_pro.data.pems.pems import load_pems_graph_data
 from non_parametric_pro.util import prediction_basis, predictive_moments
 
 CONF_DIR = Path(__file__).resolve().parents[1] / "conf"
@@ -49,7 +49,7 @@ def _pro_posterior(cfg, kernel, x_train, y_train, x_all, gp_sigma):
     fit = run_pro_inference(
         cfg, jr.PRNGKey(cfg.seed), kernel, x_train, y_train, sigma_init
     )
-    basis, covariance = prediction_basis(fit.kernel, x_train, x_all, fit.pro_params)
+    basis, covariance = prediction_basis(kernel, x_train, x_all, fit.pro_params)
     residual_std = jnp.sqrt(
         jnp.maximum(jnp.diag(covariance) - jnp.sum(basis**2, axis=1), 0.0)
     )
@@ -79,12 +79,7 @@ def predict_all_nodes(cfg, graph_data, *, method: str):
     """Posterior at every node of the road graph, in standardised units
     (`plot_PEMS` un-normalises with the scaler's mean/scale itself)."""
     kernel, gp_sigma, scaler_y = load_gp_state(cfg)
-    split = pems_regression_split(
-        graph_data,
-        cfg.split,
-        num_train=cfg.num_train,
-        seed=cfg.split + cfg.split_seed_offset,
-    )
+    split = load_split(cfg, graph_data)
     x_train = jnp.asarray(split.x_train)
     y_train = jnp.asarray(scaler_y.transform(split.y_train))
     x_all = jnp.arange(graph_data.num_nodes, dtype=x_train.dtype).reshape(-1, 1)
@@ -155,7 +150,7 @@ def load_config(name: str, overrides: list[str]):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config-name", default="fit_pro_gibbs")
+    parser.add_argument("--config-name", default="fit_pro")
     parser.add_argument("--split", type=int, default=1)
     parser.add_argument("--num-train", type=int, default=250)
     parser.add_argument(

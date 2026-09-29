@@ -1,7 +1,2 @@
-# N=4177, D=10
 dataset: abalone
-vgp_variant: noncollapsed
-collapsed: false
 inducing: true
-algorithm: replica_gibbs
-num_folds: 1

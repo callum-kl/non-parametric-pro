@@ -1,7 +1,6 @@
 import csv
 import io
 import os
-import re
 import shutil
 import tarfile
 import tempfile
@@ -14,61 +13,22 @@ from typing import NamedTuple
 import numpy as np
 
 UCI_REGRESSION_DATASET_SIZES: dict[str, tuple[int, int]] = {
-    "3droad": (434_874, 3),
     "abalone": (4_177, 10),
     "airfoil": (1_503, 5),
     "airquality": (6_941, 11),
     "autompg": (392, 7),
-    "autos": (159, 25),
-    "bike": (17_379, 17),
-    "breastcancer": (194, 33),
-    "buzz": (583_250, 77),
-    "challenger": (23, 4),
     "concrete": (1_030, 8),
-    "concreteslump": (103, 7),
     "elevators": (16_599, 18),
-    "energy": (768, 8),
-    "fertility": (100, 9),
-    "forest": (517, 12),
-    "gas": (2_565, 128),
-    "houseelectric": (2_049_280, 11),
     "housing": (506, 13),
-    "keggdirected": (48_827, 20),
-    "keggundirected": (63_608, 27),
-    "kin40k": (40_000, 8),
     "machine": (209, 7),
     "parkinsons": (5_875, 20),
-    "pendulum": (630, 9),
-    "pol": (15_000, 26),
     "protein": (45_730, 9),
-    "pumadyn32nm": (8_192, 32),
     "servo": (167, 4),
     "skillcraft": (3_338, 19),
-    "slice": (53_500, 385),
-    "sml": (4_137, 26),
     "solar": (1_066, 10),
-    "song": (515_345, 90),
     "stock": (536, 11),
-    "tamielectric": (45_781, 3),
     "whitewine": (4_898, 11),
     "wine": (1_599, 11),
-    "yacht": (308, 6),
-}
-
-UCI_REGRESSION_DATASET_ALIASES: dict[str, str] = {
-    "automobile": "autos",
-    "cancer": "breastcancer",
-    "ctslice": "slice",
-    "electric": "houseelectric",
-    "forestfires": "forest",
-    "gassensor": "gas",
-    "hardware": "machine",
-    "kegg": "keggdirected",
-    "keggu": "keggundirected",
-    "poletele": "pol",
-    "pumadyn": "pumadyn32nm",
-    "slump": "concreteslump",
-    "solarflare": "solar",
 }
 
 
@@ -91,57 +51,11 @@ def package_data_dir(*parts: str) -> Path:
     return repo_root.joinpath("data", *parts)
 
 
-def uci_regression_datasets(*, include_aliases: bool = False) -> list[str]:
-    names = sorted(UCI_REGRESSION_DATASET_SIZES)
-    if not include_aliases:
-        return names
-    return sorted(set(names) | set(UCI_REGRESSION_DATASET_ALIASES))
-
-
 def _require_http_url(url: str) -> None:
     scheme = urllib.parse.urlparse(url).scheme
     if scheme not in ("http", "https"):
         msg = f"Unsupported URL scheme: {scheme!r}"
         raise ValueError(msg)
-
-
-def download_kin40k(
-    *,
-    directory: Path | None = None,
-    force: bool = False,
-    source_url: str = "https://github.com/trungngv/fgp/archive/refs/heads/master.tar.gz",
-) -> Path:
-    directory = directory if directory is not None else package_data_dir("kin40k")
-    if directory.is_dir() and not force:
-        return directory
-
-    _require_http_url(source_url)
-    directory.parent.mkdir(parents=True, exist_ok=True)
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_path = Path(tmpdir)
-        archive = tmp_path / "fgp-master.tar.gz"
-        extract_dir = tmp_path / "extract"
-        extract_dir.mkdir()
-
-        urllib.request.urlretrieve(source_url, archive)
-        with tarfile.open(archive) as tar:
-            tar.extractall(extract_dir, filter="data")
-
-        source_dir = extract_dir / "fgp-master" / "data" / "kin40k"
-        if not source_dir.is_dir():
-            msg = "Downloaded archive did not contain data/kin40k"
-            raise FileNotFoundError(msg)
-
-        if directory.is_dir():
-            if not force:
-                msg = f"Destination already exists: {directory}"
-                raise FileExistsError(msg)
-            shutil.rmtree(directory)
-
-        shutil.copytree(source_dir, directory)
-
-    return directory
 
 
 def download_uci_regression_datasets(
@@ -327,12 +241,6 @@ def load_uci_regression_dataset(
         raise FileNotFoundError(msg)
 
     data = _read_gzip_csv(data_path, np.float64)
-    if name == "song":
-        data1_path = dataset_dir / "data1.csv.gz"
-        if not data1_path.is_file():
-            msg = f"Missing second song data file: {data1_path}"
-            raise FileNotFoundError(msg)
-        data = np.vstack([data, _read_gzip_csv(data1_path, np.float64)])
     masks = _read_gzip_csv(mask_path, np.int64)
 
     if data.shape[1] < MIN_DATA_COLUMNS:
@@ -365,13 +273,11 @@ def load_uci_regression_dataset(
 
 
 def _canonical_uci_dataset_name(dataset: str) -> str:
-    key = re.sub(r"[\s_]", "", dataset.lower())
-    name = UCI_REGRESSION_DATASET_ALIASES.get(key, key)
-    if name not in UCI_REGRESSION_DATASET_SIZES:
-        available = ", ".join(uci_regression_datasets())
+    if dataset not in UCI_REGRESSION_DATASET_SIZES:
+        available = ", ".join(sorted(UCI_REGRESSION_DATASET_SIZES))
         msg = f"Unknown UCI regression dataset {dataset!r}. Available: {available}"
         raise ValueError(msg)
-    return name
+    return dataset
 
 
 def _find_uci_data_root(directory: Path, dataset: str = "yacht") -> Path | None:

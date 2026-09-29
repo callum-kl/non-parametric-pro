@@ -23,7 +23,7 @@ def dcn(x):
 
 
 
-def plot_PEMS(  # noqa: C901
+def plot_PEMS(
     G,
     vals,
     vertex_id,
@@ -101,7 +101,7 @@ def plot_PEMS(  # noqa: C901
     for node in G.nodes:
         if node not in nodes_to_label_set:
             x, y = G.nodes[node]["x"], G.nodes[node]["y"]
-            if s < y and y < n and w < x and x < e:  # select points at the crossroads
+            if s < y < n and w < x < e:  # select points at the crossroads
                 val = vals[vertex_id_dict[node]]
                 ax.scatter(
                     x,
@@ -114,7 +114,7 @@ def plot_PEMS(  # noqa: C901
 
     for node in nodes_to_label_set:
         x, y = G.nodes[node]["x"], G.nodes[node]["y"]
-        if s < y and y < n and w < x and x < e:  # select points at the crossroads
+        if s < y < n and w < x < e:  # select points at the crossroads
             val = vals[vertex_id_dict[node]]
             ax.scatter(
                 x,
@@ -137,7 +137,7 @@ def plot_PEMS(  # noqa: C901
         )
 
     if filename is not None and cax is None:
-        plt.savefig("plots/{}.svg".format(filename), dpi=1000, bbox_inches="tight")
+        plt.savefig(f"plots/{filename}.svg", dpi=1000, bbox_inches="tight")
 
     if cax is not None:
         if cut_colormap:
@@ -153,7 +153,7 @@ def plot_PEMS(  # noqa: C901
             )
         if filename is not None:
             plt.savefig(
-                "plots/{}.svg".format(filename),
+                f"plots/{filename}.svg",
                 dpi=1000,
                 transparent=True,
                 bbox_inches="tight",

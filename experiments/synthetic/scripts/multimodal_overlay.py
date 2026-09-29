@@ -12,6 +12,7 @@ import jax.random as jr
 import matplotlib.pyplot as plt
 import numpy as np
 from example_grid import (
+    DATA_ALPHA,
     GP_COLOR,
     PANEL_ADAPT_STEPS,
     PANEL_ALPHA,
@@ -23,7 +24,6 @@ from example_grid import (
     PRO_COLOR,
     PRO_LABEL,
     X_TICKS,
-    DATA_ALPHA,
     _display_affine,
     _pro_density_bands,
     _style_box,
@@ -57,7 +57,7 @@ plt.rcParams.update(
 )
 
 
-def main(seed: int, num_instances: int, index: int, *, algorithm: str) -> None:
+def main(seed: int, num_instances: int, index: int) -> None:
     key = jr.split(jr.PRNGKey(seed), num_instances)[index]
     data = make_illustrative_instance(key, regime=REGIME)
     scale, shift = _display_affine(data)
@@ -74,7 +74,6 @@ def main(seed: int, num_instances: int, index: int, *, algorithm: str) -> None:
     pro = fit_pro(
         data,
         fit_key,
-        algorithm=algorithm,
         alpha=PANEL_ALPHA,
         num_particles=PANEL_NUM_PARTICLES,
         num_adapt_steps=PANEL_ADAPT_STEPS,
@@ -151,8 +150,5 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=2421)
     parser.add_argument("--num-instances", type=int, default=20)
     parser.add_argument("--index", type=int, default=DEFAULT_INDEX)
-    parser.add_argument(
-        "--algorithm", default="replica_gibbs", choices=["ula", "replica_gibbs"]
-    )
     args = parser.parse_args()
-    main(args.seed, args.num_instances, args.index, algorithm=args.algorithm)
+    main(args.seed, args.num_instances, args.index)

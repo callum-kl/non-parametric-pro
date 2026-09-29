@@ -1,2 +1,5 @@
-# N=1030, D=8
 dataset: concrete
+num_particles: 30
+alpha: 1.3
+sigma_min: 0.1
+val_fraction: 0.25

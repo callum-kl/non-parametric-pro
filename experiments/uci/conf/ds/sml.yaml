@@ -1,8 +1,0 @@
-dataset: sml
-vgp_batch_size: 512
-vgp_variant: noncollapsed
-collapsed: false
-inducing: true
-algorithm: replica_gibbs
-num_folds: 1
-

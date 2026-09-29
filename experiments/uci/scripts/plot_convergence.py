@@ -115,8 +115,7 @@ def draw_time_per_iteration(ax, split_dir: Path) -> None:
 
 def save(fig, out: Path) -> None:
     fig.tight_layout()
-    fig.savefig(out, bbox_inches="tight")
-    fig.savefig(out.with_suffix(".png"), dpi=200, bbox_inches="tight")
+    fig.savefig(out, dpi=200, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -169,16 +168,16 @@ def plot_time_per_iteration(split_dir: Path, out: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--results-root", type=Path, default=UCI_DIR / "results")
+    parser.add_argument("--results-root", type=Path, default=UCI_DIR / "convergence_results")
     parser.add_argument("--dataset", default="parkinsons")
     parser.add_argument("--split", default=1, type=int)
     args = parser.parse_args()
 
     split_dir = args.results_root / args.dataset / f"split_{args.split}"
     FIGURES_DIR.mkdir(exist_ok=True)
-    plot_combined(split_dir, FIGURES_DIR / f"time_and_convergence_{args.dataset}.pdf")
-    plot_iterations(split_dir, FIGURES_DIR / f"convergence_iterations_{args.dataset}.pdf")
-    plot_time_per_iteration(split_dir, FIGURES_DIR / f"time_per_iteration_{args.dataset}.pdf")
+    plot_combined(split_dir, FIGURES_DIR / f"time_and_convergence_{args.dataset}.png")
+    plot_iterations(split_dir, FIGURES_DIR / f"convergence_iterations_{args.dataset}.png")
+    plot_time_per_iteration(split_dir, FIGURES_DIR / f"time_per_iteration_{args.dataset}.png")
     print(f"Saved figures to {FIGURES_DIR}")
 
 

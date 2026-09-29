@@ -4,16 +4,14 @@ import json
 import logging
 import os
 import time
-from pathlib import Path
 
 os.environ.setdefault("JAX_ENABLE_X64", "1")
 
 import hydra
 import jax
-import jax.numpy as jnp
 import jax.random as jr
 import numpy as np
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 from util import load_gp_state, pro_out_dir
 
 from non_parametric_pro.data.uci.uci import load_uci_regression_dataset
@@ -22,11 +20,6 @@ from non_parametric_pro.inducing import compute_inducing_basis
 from non_parametric_pro.replica_gibbs import parametric_replica_gibbs, validate_r
 
 log = logging.getLogger(__name__)
-
-OmegaConf.register_new_resolver(
-    "script_dir", lambda: str(Path(__file__).resolve().parents[1]), replace=True
-)
-
 
 @hydra.main(version_base=None, config_path="../conf", config_name="convergence")
 def main(cfg: DictConfig) -> None:

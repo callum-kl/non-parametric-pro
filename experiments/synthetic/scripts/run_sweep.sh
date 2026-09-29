@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regenerate figures/example_grid_and_summary_columns.png from scratch.
+# Regenerate results/summary.csv and both figures from scratch.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -10,3 +10,4 @@ python synthetic.py -m \
 
 python aggregate_results.py
 python combine_grid_summary_columns.py
+python multimodal_overlay.py

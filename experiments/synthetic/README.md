@@ -1,7 +1,10 @@
 # Synthetic experiments
 
-Produces `figures/example_grid_and_summary_columns.png`: illustrative Bayes-GP vs
-PrO-GP fits on the left, held-out NLPD against training size on the right.
+Produces `results/summary.csv` and two figures:
+
+- `figures/example_grid_and_summary_columns.png`: illustrative Bayes-GP vs PrO-GP fits
+  on the left, held-out NLPD against training size on the right.
+- `figures/multimodal_overlay.png`: GP and PrO-GP overlaid on the multimodal example.
 
 ```sh
 ./scripts/run_sweep.sh
@@ -10,13 +13,14 @@ PrO-GP fits on the left, held-out NLPD against training size on the right.
 Or step by step, from `scripts/`:
 
 ```sh
-# 4 regimes x n in {100,200,400} x 2 methods x 20 splits -> results/<source>/n_<n>/<algorithm>/
+# 4 regimes x n in {50,100,200} x 2 methods x 20 instances -> results/<source>/n_<n>/<algorithm>/
 python synthetic.py -m \
   ds@_global_=block_outliers,heteroskedastic,multimodal,well_specified \
   algorithm=standard_gp,pro_gp n=50,100,200
 
 python aggregate_results.py            # -> results/summary.csv
 python combine_grid_summary_columns.py # -> figures/example_grid_and_summary_columns.png
+python multimodal_overlay.py           # -> figures/multimodal_overlay.png
 ```
 
 ## Data-generating processes

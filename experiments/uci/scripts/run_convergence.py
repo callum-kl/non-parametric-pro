@@ -3,7 +3,7 @@ Convergence / runtime sweep over the number of inducing points, run strictly seq
 
 For each (seed, m):
     convergence_vgp.py     (vgp_noncollapsed_conv_m{m}_s{seed}: VGP fit, objective trace, timings)
-    fit_pro.py             (inducing_pro_gp_conv_m{m}_s{seed}: sigma adaptation with fit_pro_gibbs.yaml)
+    fit_pro.py             (inducing_pro_gp_conv_m{m}_s{seed}: sigma adaptation)
     convergence_pro.py     (inducing_pro_gp_conv_m{m}_s{seed}: fixed-sigma Gibbs score trace, timings)
 
 Usage:
@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-RESULTS_ROOT = SCRIPT_DIR.parent / "results"
+RESULTS_ROOT = SCRIPT_DIR.parent / "convergence_results"
 
 
 def _run(args: list[str]) -> None:
@@ -54,9 +54,8 @@ def main() -> None:
                     [
                         sys.executable,
                         str(SCRIPT_DIR / "fit_pro.py"),
-                        "--config-name",
-                        "fit_pro_gibbs",
                         *common,
+                        f"results_root={RESULTS_ROOT}",
                         "inducing=true",
                         "vgp_variant=noncollapsed",
                         f"vgp_name={tag}",

@@ -188,9 +188,7 @@ def _display_affine(data) -> tuple[float, float]:
     return scale, display_lo - scale * lo
 
 
-def _plot_fit_panel(
-    ax, spec: SourceSpec, instance_key, *, method: str, algorithm: str
-) -> None:
+def _plot_fit_panel(ax, spec: SourceSpec, instance_key, *, method: str) -> None:
     """Draw one dataset's single-method fit panel (truth + data + GP or PrO band) into `ax`."""
     data = make_illustrative_instance(instance_key, regime=spec.regime)
     scale, shift = _display_affine(data)
@@ -212,7 +210,6 @@ def _plot_fit_panel(
         result = fit_pro(
             data,
             fit_key,
-            algorithm=algorithm,
             alpha=PANEL_ALPHA,
             num_particles=PANEL_NUM_PARTICLES,
             num_adapt_steps=PANEL_ADAPT_STEPS,
@@ -243,7 +240,6 @@ def plot_fit_grid(
     num_instances: int,
     index_overrides: dict[str, int] | None = None,
     *,
-    algorithm: str = "replica_gibbs",
     sources: list[SourceSpec] = _SOURCES,
 ) -> None:
     """Fill `gp_axes`/`pro_axes` (each a flat list matching `sources`, one axis per
@@ -252,7 +248,7 @@ def plot_fit_grid(
     keys = jr.split(jr.PRNGKey(seed), num_instances)
     for col, (ax, spec) in enumerate(zip(gp_axes, sources, strict=True)):
         index = index_overrides.get(spec.regime, spec.instance_index)
-        _plot_fit_panel(ax, spec, keys[index], method="gp", algorithm=algorithm)
+        _plot_fit_panel(ax, spec, keys[index], method="gp")
         ax.set_title(GP_LABEL, fontsize=PANEL_TITLE_FONTSIZE, color=GP_COLOR)
         pos = ax.get_position()
         fig.text(
@@ -266,7 +262,7 @@ def plot_fit_grid(
         _hide_ticks(ax, x=True, y=col > 0)
     for col, (ax, spec) in enumerate(zip(pro_axes, sources, strict=True)):
         index = index_overrides.get(spec.regime, spec.instance_index)
-        _plot_fit_panel(ax, spec, keys[index], method="pro", algorithm=algorithm)
+        _plot_fit_panel(ax, spec, keys[index], method="pro")
         ax.set_title(PRO_LABEL, fontsize=PANEL_TITLE_FONTSIZE, color=PRO_COLOR)
         _hide_ticks(ax, y=col > 0)
 
