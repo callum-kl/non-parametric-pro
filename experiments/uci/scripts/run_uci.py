@@ -28,6 +28,8 @@ EXACT_DATASETS = [
     "energy",
     "concrete",
     "solar",
+    "autos",
+    "yacht",
 ]
 INDUCING_DATASETS = [
     "wine",

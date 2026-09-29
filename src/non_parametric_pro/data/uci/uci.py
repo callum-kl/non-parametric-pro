@@ -16,6 +16,7 @@ UCI_REGRESSION_DATASET_SIZES: dict[str, tuple[int, int]] = {
     "abalone": (4_177, 10),
     "airquality": (6_941, 11),
     "autompg": (392, 7),
+    "autos": (159, 25),
     "concrete": (1_030, 8),
     "elevators": (16_599, 18),
     "energy": (768, 8),
@@ -29,6 +30,7 @@ UCI_REGRESSION_DATASET_SIZES: dict[str, tuple[int, int]] = {
     "stock": (536, 11),
     "whitewine": (4_898, 11),
     "wine": (1_599, 11),
+    "yacht": (308, 6),
 }
 
 

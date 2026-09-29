@@ -6,11 +6,15 @@ from pathlib import Path
 
 import numpy as np
 
+from run_uci import EXACT_DATASETS, INDUCING_DATASETS
+
 from non_parametric_pro.data.uci.uci import UCI_REGRESSION_DATASET_SIZES
 
 RESULTS_ROOT = Path(__file__).resolve().parents[1] / "results"
 
-DATASETS = sorted(UCI_REGRESSION_DATASET_SIZES, key=lambda ds: UCI_REGRESSION_DATASET_SIZES[ds][0])
+DATASETS = sorted(
+    EXACT_DATASETS + INDUCING_DATASETS, key=lambda ds: UCI_REGRESSION_DATASET_SIZES[ds][0]
+)
 
 # method dir -> (metrics file, NLPD key)
 METHODS = {

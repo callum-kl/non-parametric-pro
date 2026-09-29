@@ -1,0 +1,8 @@
+{
+  "dataset": "fertility",
+  "split": 5,
+  "inducing": false,
+  "gp_sigma": 0.7257264121329162,
+  "pro_sigma": 0.6736231663905919,
+  "pro_nlpd": 1.673985531457365
+}
