@@ -234,6 +234,9 @@ def evaluate(get_instance, fit_function, key, num_instances):
         fit_key, instance_key = jr.split(instance_key)
         nlpd_per_point = fit_function(data, fit_key).nlpd_per_point
         nlpds.append(float(jnp.mean(nlpd_per_point)))
+        # Each fit closes over fresh data, so JAX recompiles and would otherwise keep
+        # every instance's executables (~75MB each) alive for the whole sweep.
+        jax.clear_caches()
 
     mean = float(np.mean(nlpds))
     std = float(np.std(nlpds))

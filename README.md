@@ -68,9 +68,98 @@ and then install in editable mode by running
 uv pip install -e .
 ```
 
-### Running Locally
+### Reproducing the results
 
-How to run the application on your local system.
+All commands are run from the repository root in an environment where the package is
+installed (`uv pip install -e .`). Scripts use absolute paths, so they can be run from
+any directory. Each experiment writes its runs to `experiments/<experiment>/results/` and
+its figures to `experiments/<experiment>/figures/`.
+
+#### Synthetic
+
+```sh
+./experiments/synthetic/scripts/run_sweep.sh
+```
+
+This runs the four regimes (block outliers, heteroskedastic, multimodal, well
+specified) × n ∈ {50, 100, 200} × {standard GP, PrO-GP}, then produces:
+
+- `results/summary.csv` (`aggregate_results.py`)
+- `figures/example_grid_and_summary_columns.png` (`combine_grid_summary_columns.py`)
+- `figures/multimodal_overlay.png` (`multimodal_overlay.py`)
+
+See [experiments/synthetic/README.md](experiments/synthetic/README.md) for the
+individual steps.
+
+#### UCI
+
+Download the data once. The first call must come first, because it skips the
+download when `data/uci_datasets/` already exists:
+
+```sh
+python -c "
+from non_parametric_pro.data.uci import uci
+uci.download_uci_regression_datasets()
+uci.download_wine_quality_white()
+uci.download_abalone()
+uci.download_air_quality()
+"
+```
+
+Test NLPD for all 16 datasets over 5 splits:
+
+```sh
+python experiments/uci/scripts/run_uci.py   # -> results/summary.csv
+```
+
+- Small datasets (servo, machine, autompg, housing, stock, concrete, solar) fit
+  `exact_gp`, then `pro_gp_gibbs`.
+- The larger datasets fit `vgp_noncollapsed` and `ppgpr`, then
+  `inducing_pro_gp_gibbs` and `inducing_pro_gp_gibbs_ppgpr` (seeded from each of those).
+- Per-dataset settings live in `experiments/uci/conf/ds/<dataset>.yaml`.
+- Use `--datasets servo,wine --splits 1,2` to run a subset, then
+  `python experiments/uci/scripts/aggregate_results.py` to rebuild the summary.
+
+Normality figure (needs the `exact_gp` fits above):
+
+```sh
+python experiments/uci/scripts/plot_normality.py
+# -> figures/normality_panel_machine_stock_servo_split1.png
+```
+
+Convergence and runtime figures (parkinsons, split 1). These run sequentially so the
+timings aren't contended, and write to `experiments/uci/convergence_results/`, which is
+kept separate from `results/summary.csv`:
+
+```sh
+python experiments/uci/scripts/run_convergence.py                   # m = 100, 250, 500; seeds 0-2
+python experiments/uci/scripts/run_convergence.py --ms 1000 --seeds 0
+python experiments/uci/scripts/plot_convergence.py
+# -> figures/{time_and_convergence,convergence_iterations,time_per_iteration}_parkinsons.png
+```
+
+The m = 1000 run only feeds the time-per-iteration panel, so it can use a smaller
+`gp_num_iters=...` override.
+
+#### PeMS
+
+The road-network data is downloaded automatically on first use.
+
+```sh
+python experiments/pems/scripts/run_pems.py   # -> results/summary.csv
+```
+
+This fits the exact graph GP, then `pro_gp_gibbs_50`, for num_train ∈ {200, 225, 250,
+275} × 10 splits. The num_train = 225 runs use `split_seed_offset=1000`, which
+`run_pems.py` sets automatically.
+
+Road-map figures (num_train = 250, split 1 by default; these need the fits above):
+
+```sh
+python experiments/pems/scripts/plot_map.py --method gp    # -> figures/graph_gp_road_map_{prediction,uncertainty}.png
+python experiments/pems/scripts/plot_map.py --method pro   # -> figures/pro_gp_road_map_{prediction,uncertainty}.png
+python experiments/pems/scripts/combine_road_maps.py       # -> figures/road_map_grid_std_h_2.png
+```
 
 ### Running Tests
 
