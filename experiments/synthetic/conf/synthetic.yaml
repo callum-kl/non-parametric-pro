@@ -32,7 +32,7 @@ pro:
 
 hydra:
   launcher:
-    n_jobs: 8
+    n_jobs: 4 # each worker holds ~0.7GB
   job:
     chdir: false
   run:

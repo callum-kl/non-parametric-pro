@@ -88,13 +88,10 @@ specified) × n ∈ {50, 100, 200} × {standard GP, PrO-GP}, then produces:
 - `figures/example_grid_and_summary_columns.png` (`combine_grid_summary_columns.py`)
 - `figures/multimodal_overlay.png` (`multimodal_overlay.py`)
 
-See [experiments/synthetic/README.md](experiments/synthetic/README.md) for the
-individual steps.
 
 #### UCI
 
-Download the data once. The first call must come first, because it skips the
-download when `data/uci_datasets/` already exists:
+Download the data once.
 
 ```sh
 python -c "
@@ -109,10 +106,10 @@ uci.download_air_quality()
 Test NLPD for all 16 datasets over 5 splits:
 
 ```sh
-python experiments/uci/scripts/run_uci.py   # -> results/summary.csv
+python experiments/uci/scripts/run_uci.py
 ```
 
-- Small datasets (servo, machine, autompg, housing, stock, concrete, solar) fit
+- Small datasets (servo, machine, autompg, housing, stock, energy, concrete, solar) fit
   `exact_gp`, then `pro_gp_gibbs`.
 - The larger datasets fit `vgp_noncollapsed` and `ppgpr`, then
   `inducing_pro_gp_gibbs` and `inducing_pro_gp_gibbs_ppgpr` (seeded from each of those).
@@ -124,7 +121,6 @@ Normality figure (needs the `exact_gp` fits above):
 
 ```sh
 python experiments/uci/scripts/plot_normality.py
-# -> figures/normality_panel_machine_stock_servo_split1.png
 ```
 
 Convergence and runtime figures (parkinsons, split 1). These run sequentially so the
@@ -146,7 +142,7 @@ The m = 1000 run only feeds the time-per-iteration panel, so it can use a smalle
 The road-network data is downloaded automatically on first use.
 
 ```sh
-python experiments/pems/scripts/run_pems.py   # -> results/summary.csv
+python experiments/pems/scripts/run_pems.py
 ```
 
 This fits the exact graph GP, then `pro_gp_gibbs_50`, for num_train ∈ {200, 225, 250,

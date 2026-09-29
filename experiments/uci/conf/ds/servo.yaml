@@ -1,3 +1,2 @@
 dataset: servo
-sigma_min: 0.1
-num_sample_steps: 500
+# num_sample_steps: 500

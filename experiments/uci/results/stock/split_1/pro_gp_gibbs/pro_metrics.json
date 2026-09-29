@@ -2,7 +2,7 @@
   "dataset": "stock",
   "split": 1,
   "inducing": false,
-  "gp_sigma": 0.3021051082174507,
-  "pro_sigma": 0.27848132551063876,
-  "pro_nlpd": 0.2691373027113397
+  "gp_sigma": 0.302166059253681,
+  "pro_sigma": 0.2889751899268283,
+  "pro_nlpd": 0.2681924888115934
 }

@@ -2,7 +2,7 @@
   "dataset": "machine",
   "split": 5,
   "inducing": false,
-  "gp_sigma": 0.3755217440998524,
-  "pro_sigma": 0.2932105433181957,
-  "pro_nlpd": 0.49926434705440237
+  "gp_sigma": 0.37534160950385886,
+  "pro_sigma": 0.2714733437288718,
+  "pro_nlpd": 0.4910242989144557
 }

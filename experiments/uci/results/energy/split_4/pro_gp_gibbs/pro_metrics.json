@@ -1,0 +1,8 @@
+{
+  "dataset": "energy",
+  "split": 4,
+  "inducing": false,
+  "gp_sigma": 0.043512517032073525,
+  "pro_sigma": 0.03552296199248148,
+  "pro_nlpd": -1.7317220019901454
+}

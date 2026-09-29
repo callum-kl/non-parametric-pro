@@ -19,9 +19,17 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
-EXACT_DATASETS = ["servo", "machine", "autompg", "housing", "stock", "concrete", "solar"]
+EXACT_DATASETS = [
+    "servo",
+    "machine",
+    "autompg",
+    "housing",
+    "stock",
+    "energy",
+    "concrete",
+    "solar",
+]
 INDUCING_DATASETS = [
-    "airfoil",
     "wine",
     "skillcraft",
     "abalone",
@@ -31,6 +39,9 @@ INDUCING_DATASETS = [
     "elevators",
     "protein",
 ]
+
+# Peak memory per protein split is ~2.3GB, so 5 in parallel would exceed 8GB of RAM.
+MAX_JOBS = {"protein": 2}
 
 
 def _run(args: list[str]) -> None:
@@ -49,13 +60,17 @@ def main() -> None:
     parser.add_argument("--n-jobs", default="-1")
     args = parser.parse_args()
 
-    launcher = ["-m", "hydra/launcher=joblib", f"hydra.launcher.n_jobs={args.n_jobs}"]
-
     def script(name: str, dataset: str, *overrides: str) -> list[str]:
+        n_jobs = int(args.n_jobs)
+        if dataset in MAX_JOBS:
+            cap = MAX_JOBS[dataset]
+            n_jobs = cap if n_jobs < 1 else min(n_jobs, cap)
         return [
             sys.executable,
             str(SCRIPT_DIR / name),
-            *launcher,
+            "-m",
+            "hydra/launcher=joblib",
+            f"hydra.launcher.n_jobs={n_jobs}",
             f"ds@_global_={dataset}",
             f"split={args.splits}",
             *overrides,

@@ -1,8 +1,0 @@
-{
-  "dataset": "airfoil",
-  "split": 5,
-  "inducing": true,
-  "gp_sigma": 0.00016993800093561323,
-  "pro_sigma": 0.05778513704021817,
-  "pro_nlpd": -0.06835496736861559
-}
