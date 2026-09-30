@@ -1,6 +1,6 @@
 {
   "split": 1,
-  "seed": 0,
+  "seed": 1,
   "num_train": 200,
   "lengthscale_init": 5.0,
   "lengthscale_min": 0.01,

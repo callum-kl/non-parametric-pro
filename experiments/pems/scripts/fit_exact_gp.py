@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import warnings
 
 os.environ.setdefault("JAX_ENABLE_X64", "1")
 
@@ -45,7 +46,11 @@ def main(cfg: DictConfig) -> None:
         graph_data.num_nodes,
     )
 
-    data = gpx.Dataset(X=x_train, y=y_train)
+    # X holds integer node indices for the GraphKernel, so GPJax's float64 check
+    # doesn't apply.
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="X is not of type float64")
+        data = gpx.Dataset(X=x_train, y=y_train)
     kernel = gpx.kernels.GraphKernel(
         laplacian=graph_data.laplacian,
         lengthscale=gpx.parameters.SigmoidBounded(

@@ -12,7 +12,8 @@ NUM_TRAINS = (200, 225, 250, 275)
 # method dir -> (metrics file, NLPD key)
 METHODS = {
     "exact_gp": ("gp_metrics.json", "gp_nlpd"),
-    "pro_gp_gibbs_50": ("pro_metrics.json", "pro_nlpd"),
+    # Must match pro_out_dir() for the `name` in conf/fit_pro.yaml.
+    "pro_gp_gibbs": ("pro_metrics.json", "pro_nlpd"),
 }
 
 

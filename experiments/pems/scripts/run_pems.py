@@ -16,11 +16,11 @@ def _run(args: list[str]) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--num-trains", default="200,225,250,275")
-    parser.add_argument("--splits", default="1,2,3,4,5,6,7,8,9,10")
-    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--splits", default="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20")
+    parser.add_argument("--seed", type=int, default=1)
     parser.add_argument(
         "--n-jobs",
-        default="1",
+        default="10",
         help="joblib workers; each holds a (num_nodes, num_nodes) eigendecomposition",
     )
     args = parser.parse_args()
