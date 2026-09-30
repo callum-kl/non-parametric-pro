@@ -22,7 +22,7 @@ pro:
   num_adapt_steps: 100
   warmup_steps: 5
   sigma_adapt_steps: 95
-  kernel_adapt_steps: 95
+  kernel_adapt_steps: 0
   sigma_lr: 0.1
   kernel_lr: 0.5
   kernel_steps_per_adapt: 1
