@@ -1,6 +1,5 @@
 {
   "seed": 2421,
-  "algorithm": "standard_gp",
   "num_instances": 20,
   "results_root": "${script_dir:}/results",
   "kernel": {
@@ -13,9 +12,9 @@
     "sigma_max": 100.0,
     "num_particles": 50,
     "val_fraction": 0.3,
-    "num_adapt_steps": 100,
-    "warmup_steps": 5,
-    "sigma_adapt_steps": 95,
+    "num_adapt_steps": 50,
+    "warmup_steps": 1,
+    "sigma_adapt_steps": 49,
     "kernel_adapt_steps": 0,
     "sigma_lr": 0.1,
     "kernel_lr": 0.5,

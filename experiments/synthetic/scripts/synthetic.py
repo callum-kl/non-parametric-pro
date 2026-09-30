@@ -65,32 +65,49 @@ class FitResult(NamedTuple):
     nlpd_per_point: jnp.ndarray
     particle_predictions: jnp.ndarray | None = None
     sigma_eff: jnp.ndarray | None = None
+    kernel: gpx.kernels.AbstractKernel | None = None
 
 
-def fit_gp(data, key=None, *, kernel_lengthscale=1.0) -> FitResult:
-    x_train, y_train = data.x_train, data.y_train
-    x_test, y_test = data.x_test, data.y_test
-    gp_data = gpx.Dataset(X=x_train, y=y_train)
-
+def fit_exact_gp(data, *, kernel_lengthscale=1.0):
+    gp_data = gpx.Dataset(X=data.x_train, y=data.y_train)
     kernel = gpx.kernels.RBF(lengthscale=kernel_lengthscale)
     prior = gpx.gps.Prior(mean_function=gpx.mean_functions.Zero(), kernel=kernel)
-    likelihood = gpx.likelihoods.Gaussian(num_datapoints=x_train.shape[0])
-    posterior = likelihood * prior
-
+    likelihood = gpx.likelihoods.Gaussian(num_datapoints=data.x_train.shape[0])
     opt_posterior, _ = gpx.fit_scipy(
-        model=posterior,
+        model=likelihood * prior,
         objective=lambda p, d: -gpx.objectives.conjugate_mll(p, d),
         train_data=gp_data,
         verbose=False,
     )
+    return opt_posterior, gp_data
 
-    latent = opt_posterior.predict(x_test, train_data=gp_data)
+
+def gp_kernel_hyperparameters(
+    kernel, *, lengthscale_min=1.0e-3, lengthscale_max=1.0e3
+) -> tuple[float, float]:
+    # Kept strictly inside PRO's SigmoidBounded lengthscale range.
+    lengthscale = float(
+        np.clip(px.unwrap(kernel.lengthscale), lengthscale_min * 1.01, lengthscale_max * 0.99)
+    )
+    return lengthscale, float(px.unwrap(kernel.variance))
+
+
+def fit_gp(data, key=None, *, kernel_lengthscale=1.0) -> FitResult:
+    y_test = data.y_test
+    opt_posterior, gp_data = fit_exact_gp(data, kernel_lengthscale=kernel_lengthscale)
+
+    latent = opt_posterior.predict(data.x_test, train_data=gp_data)
     predictive = opt_posterior.likelihood(latent)
     mean = predictive.mean
     std = jnp.sqrt(predictive.variance)
 
     nlpd_per_point = nlpd_gp(y_test, mean, std, return_per_point=True)
-    return FitResult(mean=mean, std=std, nlpd_per_point=nlpd_per_point)
+    return FitResult(
+        mean=mean,
+        std=std,
+        nlpd_per_point=nlpd_per_point,
+        kernel=opt_posterior.prior.kernel,
+    )
 
 
 def fit_pro(
@@ -100,6 +117,7 @@ def fit_pro(
     kernel_lengthscale=1.0,
     kernel_lengthscale_min=1.0e-3,
     kernel_lengthscale_max=1.0e3,
+    kernel_variance=1.0,
     alpha=1.0,
     sigma_init=0.3,
     sigma_min=0.05,
@@ -126,6 +144,7 @@ def fit_pro(
         lengthscale=gpx.parameters.SigmoidBounded(
             kernel_lengthscale, low=kernel_lengthscale_min, high=kernel_lengthscale_max
         ),
+        variance=kernel_variance,
     )
     basis_full = cholesky_basis(kernel, x_train)
     basis_dim = basis_full.shape[1]
@@ -225,24 +244,34 @@ def fit_pro(
     )
 
 
-def evaluate(get_instance, fit_function, key, num_instances):
-    keys = jr.split(key, num_instances)
+ALGORITHMS = ("standard_gp", "pro_gp")
 
-    nlpds = []
-    for instance_key in progress_bar(keys):
+
+def evaluate(get_instance, cfg: DictConfig, key) -> dict[str, list[float]]:
+    """Per-instance test NLPD for both methods; PrO-GP uses each instance's fitted GP kernel."""
+    nlpds = {algorithm: [] for algorithm in ALGORITHMS}
+    for instance_key in progress_bar(jr.split(key, cfg.num_instances)):
         data = get_instance(instance_key)
-        fit_key, instance_key = jr.split(instance_key)
-        nlpd_per_point = fit_function(data, fit_key).nlpd_per_point
-        nlpds.append(float(jnp.mean(nlpd_per_point)))
+        fit_key, _ = jr.split(instance_key)
+
+        gp = fit_gp(data, kernel_lengthscale=cfg.kernel.lengthscale)
+        lengthscale, variance = gp_kernel_hyperparameters(gp.kernel)
+        pro = fit_pro(
+            data,
+            fit_key,
+            kernel_lengthscale=lengthscale,
+            kernel_variance=variance,
+            **OmegaConf.to_container(cfg.pro),
+        )
+        nlpds["standard_gp"].append(float(jnp.mean(gp.nlpd_per_point)))
+        nlpds["pro_gp"].append(float(jnp.mean(pro.nlpd_per_point)))
         # Each fit closes over fresh data, so JAX recompiles and would otherwise keep
         # every instance's executables (~75MB each) alive for the whole sweep.
         jax.clear_caches()
 
-    mean = float(np.mean(nlpds))
-    std = float(np.std(nlpds))
-
-    log.info("NLPD: %.4f±%.4f", mean, std)
-    return mean, std, nlpds
+    for algorithm, values in nlpds.items():
+        log.info("%s NLPD: %.4f±%.4f", algorithm, np.mean(values), np.std(values))
+    return nlpds
 
 
 _DATASET_SOURCES = {
@@ -263,42 +292,6 @@ def _instance_fn(make_instance, kwarg_names, cfg: DictConfig):
     return lambda key: make_instance(key, **kwargs)
 
 
-def _fit_gp_fn(cfg: DictConfig):
-    return lambda data, key=None: fit_gp(
-        data, key=key, kernel_lengthscale=cfg.kernel.lengthscale
-    )
-
-
-def _fit_pro_fn(cfg: DictConfig):
-    return lambda data, key: fit_pro(
-        data,
-        key,
-        kernel_lengthscale=cfg.kernel.lengthscale,
-        alpha=cfg.pro.alpha,
-        sigma_init=cfg.pro.sigma_init,
-        sigma_min=cfg.pro.sigma_min,
-        sigma_max=cfg.pro.sigma_max,
-        num_particles=cfg.pro.num_particles,
-        val_fraction=cfg.pro.val_fraction,
-        num_adapt_steps=cfg.pro.num_adapt_steps,
-        warmup_steps=cfg.pro.warmup_steps,
-        sigma_adapt_steps=cfg.pro.sigma_adapt_steps,
-        kernel_adapt_steps=cfg.pro.kernel_adapt_steps,
-        sigma_lr=cfg.pro.sigma_lr,
-        kernel_lr=cfg.pro.kernel_lr,
-        kernel_steps_per_adapt=cfg.pro.kernel_steps_per_adapt,
-        num_sample_steps=cfg.pro.num_sample_steps,
-        burn_fraction=cfg.pro.burn_fraction,
-        thin=cfg.pro.thin,
-    )
-
-
-_FIT_ALGORITHMS = {
-    "standard_gp": _fit_gp_fn,
-    "pro_gp": _fit_pro_fn,
-}
-
-
 def _get_instance_fn(cfg: DictConfig):
     try:
         make_instance, kwarg_names = _DATASET_SOURCES[cfg.source]
@@ -308,61 +301,41 @@ def _get_instance_fn(cfg: DictConfig):
     return _instance_fn(make_instance, kwarg_names, cfg)
 
 
-def _get_fit_algorithm(cfg: DictConfig):
-    try:
-        build = _FIT_ALGORITHMS[cfg.algorithm]
-    except KeyError:
-        msg = f"Algorithm {cfg.algorithm} not supported"
-        raise ValueError(msg) from None
-    return build(cfg)
-
-
-def out_dir(cfg: DictConfig, param_value) -> Path:
+def out_dir(cfg: DictConfig, param_value, algorithm: str) -> Path:
     return (
         Path(cfg.results_root)
         / cfg.source
         / f"{cfg.param_name}_{param_value}"
-        / cfg.algorithm
+        / algorithm
     )
 
 
 @hydra.main(version_base=None, config_path="../conf", config_name="synthetic")
 def main(cfg: DictConfig) -> None:
     get_instance = _get_instance_fn(cfg)
-    fit_algorithm = _get_fit_algorithm(cfg)
-    key = jr.PRNGKey(cfg.seed)
     param_value = cfg[cfg.param_name]
+    log.info("Evaluating on %s (%s=%s)", cfg.source, cfg.param_name, param_value)
+    nlpds = evaluate(get_instance, cfg, jr.PRNGKey(cfg.seed))
 
-    log.info(
-        "Evaluating %s on %s (%s=%s)",
-        cfg.algorithm,
-        cfg.source,
-        cfg.param_name,
-        param_value,
-    )
-    mean, std, nlpds = evaluate(get_instance, fit_algorithm, key, cfg.num_instances)
-
-    metrics = {
-        "source": cfg.source,
-        "algorithm": cfg.algorithm,
-        "param_name": cfg.param_name,
-        "param_value": param_value,
-        "num_instances": cfg.num_instances,
-        "seed": cfg.seed,
-        "nlpd_mean": mean,
-        "nlpd_std": std,
-        "nlpds": nlpds,
-    }
-
-    results_dir = out_dir(cfg, param_value)
-    results_dir.mkdir(parents=True, exist_ok=True)
-    with open(results_dir / "metrics.json", "w") as f:
-        json.dump(metrics, f, indent=2)
-    with open(results_dir / "config.json", "w") as f:
-        json.dump(OmegaConf.to_container(cfg), f, indent=2)
-
-    log.info("Saved results to %s", results_dir)
-
+    for algorithm, values in nlpds.items():
+        metrics = {
+            "source": cfg.source,
+            "algorithm": algorithm,
+            "param_name": cfg.param_name,
+            "param_value": param_value,
+            "num_instances": cfg.num_instances,
+            "seed": cfg.seed,
+            "nlpd_mean": float(np.mean(values)),
+            "nlpd_std": float(np.std(values)),
+            "nlpds": values,
+        }
+        results_dir = out_dir(cfg, param_value, algorithm)
+        results_dir.mkdir(parents=True, exist_ok=True)
+        with open(results_dir / "metrics.json", "w") as f:
+            json.dump(metrics, f, indent=2)
+        with open(results_dir / "config.json", "w") as f:
+            json.dump(OmegaConf.to_container(cfg), f, indent=2)
+        log.info("Saved results to %s", results_dir)
 
 if __name__ == "__main__":
     main()
