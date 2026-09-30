@@ -128,10 +128,9 @@ timings aren't contended, and write to `experiments/uci/convergence_results/`, w
 kept separate from `results/summary.csv`:
 
 ```sh
-python experiments/uci/scripts/run_convergence.py                   # m = 100, 250, 500; seeds 0-2
+python experiments/uci/scripts/run_convergence.py
 python experiments/uci/scripts/run_convergence.py --ms 1000 --seeds 0
 python experiments/uci/scripts/plot_convergence.py
-# -> figures/{time_and_convergence,convergence_iterations,time_per_iteration}_parkinsons.png
 ```
 
 The m = 1000 run only feeds the time-per-iteration panel, so it can use a smaller
@@ -145,16 +144,15 @@ The road-network data is downloaded automatically on first use.
 python experiments/pems/scripts/run_pems.py
 ```
 
-This fits the exact graph GP, then `pro_gp_gibbs_50`, for num_train ∈ {200, 225, 250,
-275} × 10 splits. The num_train = 225 runs use `split_seed_offset=1000`, which
+This fits the exact graph GP, then `pro_gp_gibbs`, for num_train ∈ {200, 225, 250, 275} × 10 splits.
 `run_pems.py` sets automatically.
 
 Road-map figures (num_train = 250, split 1 by default; these need the fits above):
 
 ```sh
-python experiments/pems/scripts/plot_map.py --method gp    # -> figures/graph_gp_road_map_{prediction,uncertainty}.png
-python experiments/pems/scripts/plot_map.py --method pro   # -> figures/pro_gp_road_map_{prediction,uncertainty}.png
-python experiments/pems/scripts/combine_road_maps.py       # -> figures/road_map_grid_std_h_2.png
+python experiments/pems/scripts/plot_map.py --method gp
+python experiments/pems/scripts/plot_map.py --method pro
+python experiments/pems/scripts/combine_road_maps.py
 ```
 
 ### Running Tests

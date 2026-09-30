@@ -27,7 +27,7 @@ def pro_out_dir(cfg: DictConfig) -> Path:
 
 def load_split(cfg: DictConfig, graph_data):
     return pems_regression_split(
-        graph_data, cfg.split, num_train=cfg.num_train, seed=cfg.split + cfg.split_seed_offset
+        graph_data, cfg.split, num_train=cfg.num_train, seed=cfg.seed
     )
 
 

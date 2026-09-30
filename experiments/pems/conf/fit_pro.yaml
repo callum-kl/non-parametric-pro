@@ -1,15 +1,14 @@
 split: 1
-seed: 0
-split_seed_offset: 0 # partition seed = split + offset; num_train=225 used 1000
-num_train: 250 # must match the exact GP fit this run loads
-name: gibbs_50
+seed: 1
+num_train: 250
+name: gibbs
 
 num_particles: 50
 alpha: 1.4
 
 sigma_min: 0.01
 sigma_max: 100.0
-sigma_init: null # defaults to the exact GP's fitted sigma
+sigma_init: null
 sigma_lr: 0.1
 
 val_fraction: 0.3

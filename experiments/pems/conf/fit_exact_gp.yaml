@@ -1,6 +1,5 @@
 split: 1
-seed: 0
-split_seed_offset: 0 # partition seed = split + offset; num_train=225 used 1000
+seed: 1
 num_train: 250
 
 lengthscale_init: 5.0

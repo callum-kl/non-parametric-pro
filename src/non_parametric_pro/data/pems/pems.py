@@ -94,16 +94,10 @@ def pems_regression_split(
     split: int,
     *,
     num_train: int = 250,
-    seed: int | None = None,
+    seed: int = 0,
 ) -> PemsRegressionSplit:
-    """Random train/test split of the 325 sensors.
-
-    Reproducible via `seed` (defaults to `split` when not given). `seed` is
-    decoupled from `split` so callers can hold the output directory labeling
-    (`split`) fixed while generating a different partition (`seed`) -- e.g. to
-    rerun the same nominal splits with an independent set of random partitions.
-    """
-    rng = np.random.default_rng(seed if seed is not None else split)
+    """Random train/test split of the 325 sensors, reproducible from `(seed, split)`."""
+    rng = np.random.default_rng((seed, split))
     perm = rng.permutation(data.num_sensors)
     train_idx, test_idx = perm[:num_train], perm[num_train:]
 

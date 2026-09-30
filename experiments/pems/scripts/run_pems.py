@@ -7,9 +7,6 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
-# num_train=225 was run on a different set of random partitions.
-SPLIT_SEED_OFFSETS = {225: 1000}
-
 
 def _run(args: list[str]) -> None:
     print(f"\n$ {' '.join(args)}", flush=True)
@@ -20,6 +17,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--num-trains", default="200,225,250,275")
     parser.add_argument("--splits", default="1,2,3,4,5,6,7,8,9,10")
+    parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
         "--n-jobs",
         default="1",
@@ -32,7 +30,7 @@ def main() -> None:
         overrides = [
             f"split={args.splits}",
             f"num_train={num_train}",
-            f"split_seed_offset={SPLIT_SEED_OFFSETS.get(num_train, 0)}",
+            f"seed={args.seed}",
         ]
         for script in ("fit_exact_gp.py", "fit_pro.py"):
             _run([sys.executable, str(SCRIPT_DIR / script), *launcher, *overrides])
