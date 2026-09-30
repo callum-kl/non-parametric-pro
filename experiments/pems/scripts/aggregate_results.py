@@ -33,6 +33,13 @@ def collect() -> list[dict]:
     return rows
 
 
+def _mean_se(v: list[float], signed: bool = False) -> str:
+    if not v:
+        return "—"
+    se = np.std(v, ddof=1) / np.sqrt(len(v)) if len(v) > 1 else 0.0
+    return f"{np.mean(v):{'+' if signed else ''}.3f}±{se:.3f}"
+
+
 def main() -> None:
     rows = collect()
     path = RESULTS_ROOT / "summary.csv"
@@ -41,13 +48,20 @@ def main() -> None:
         writer.writeheader()
         writer.writerows(rows)
 
-    print(f"{'num_train':<11}" + "".join(f"{m:>18}" for m in METHODS))
+    print(f"{'num_train':<11}" + "".join(f"{m:>18}" for m in METHODS) + f"{'pro - exact':>18}")
     for num_train in NUM_TRAINS:
         line = f"{num_train:<11}"
+        by_method = {}
         for method in METHODS:
-            v = [r["nlpd"] for r in rows if r["num_train"] == num_train and r["method"] == method]
-            se = np.std(v, ddof=1) / np.sqrt(len(v)) if len(v) > 1 else 0.0
-            line += f"{f'{np.mean(v):.3f}±{se:.3f}' if v else '—':>18}"
+            by_method[method] = {
+                r["split"]: r["nlpd"]
+                for r in rows
+                if r["num_train"] == num_train and r["method"] == method
+            }
+            line += f"{_mean_se(list(by_method[method].values())):>18}"
+        exact, pro = by_method["exact_gp"], by_method["pro_gp_gibbs"]
+        diff = [pro[s] - exact[s] for s in exact.keys() & pro.keys()]
+        line += f"{_mean_se(diff, signed=True):>18}"
         print(line)
     print(f"Saved per-split results to {path}")
 

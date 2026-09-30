@@ -1,6 +1,6 @@
 {
   "split": 2,
-  "seed": 1,
+  "seed": 0,
   "num_train": 200,
   "name": "gibbs",
   "num_particles": 50,

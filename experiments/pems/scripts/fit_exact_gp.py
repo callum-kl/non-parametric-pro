@@ -51,32 +51,44 @@ def main(cfg: DictConfig) -> None:
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", message="X is not of type float64")
         data = gpx.Dataset(X=x_train, y=y_train)
-    kernel = gpx.kernels.GraphKernel(
-        laplacian=graph_data.laplacian,
-        lengthscale=gpx.parameters.SigmoidBounded(
-            jnp.array(cfg.lengthscale_init),
-            low=cfg.lengthscale_min,
-            high=cfg.lengthscale_max,
-        ),
-        variance=gpx.parameters.PositiveReal(jnp.array(1.0)),
-        smoothness=gpx.parameters.SigmoidBounded(
-            jnp.array(cfg.smoothness_init),
-            low=cfg.smoothness_min,
-            high=cfg.smoothness_max,
-        ),
-    )
-    prior = gpx.gps.Prior(mean_function=gpx.mean_functions.Zero(), kernel=kernel)
-    likelihood = gpx.likelihoods.Gaussian(
-        num_datapoints=data.n, obs_stddev=jnp.sqrt(0.01)
-    )
-
-    opt_posterior, _ = gpx.fit(
-        model=prior * likelihood,
-        objective=lambda p, d: -gpx.objectives.conjugate_mll(p, d),
-        train_data=data,
-        optim=ox.adam(cfg.kernel_lr),
-        num_iters=cfg.num_iters,
-    )
+    # pems-regression picks the restart by test NLL; we use train MLL to avoid test leakage.
+    objective = lambda p, d: -gpx.objectives.conjugate_mll(p, d)
+    rng = np.random.default_rng((cfg.seed, cfg.split))
+    opt_posterior, best_loss = None, np.inf
+    for restart in range(cfg.num_restarts):
+        lengthscale_init, smoothness = rng.uniform(cfg.init_min, cfg.init_max, size=2)
+        kernel = gpx.kernels.GraphKernel(
+            laplacian=graph_data.laplacian,
+            lengthscale=gpx.parameters.SigmoidBounded(
+                jnp.array(lengthscale_init),
+                low=cfg.lengthscale_min,
+                high=cfg.lengthscale_max,
+            ),
+            variance=gpx.parameters.PositiveReal(jnp.array(1.0)),
+            smoothness=px.NonTrainable(jnp.array(smoothness)),
+        )
+        prior = gpx.gps.Prior(mean_function=gpx.mean_functions.Zero(), kernel=kernel)
+        likelihood = gpx.likelihoods.Gaussian(
+            num_datapoints=data.n, obs_stddev=jnp.sqrt(0.01)
+        )
+        posterior, _ = gpx.fit(
+            model=prior * likelihood,
+            objective=objective,
+            train_data=data,
+            optim=ox.adam(cfg.kernel_lr),
+            num_iters=cfg.num_iters,
+            verbose=False,
+        )
+        loss = float(objective(posterior, data))
+        log.info(
+            "restart %d: lengthscale_init=%.2f smoothness=%.2f -> -mll=%.3f",
+            restart,
+            lengthscale_init,
+            smoothness,
+            loss,
+        )
+        if loss < best_loss:
+            opt_posterior, best_loss = posterior, loss
     opt_kernel = opt_posterior.prior.kernel
     opt_sigma = opt_posterior.likelihood.obs_stddev
 
