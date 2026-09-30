@@ -248,7 +248,6 @@ ALGORITHMS = ("standard_gp", "pro_gp")
 
 
 def evaluate(get_instance, cfg: DictConfig, key) -> dict[str, list[float]]:
-    """Per-instance test NLPD for both methods; PrO-GP uses each instance's fitted GP kernel."""
     nlpds = {algorithm: [] for algorithm in ALGORITHMS}
     for instance_key in progress_bar(jr.split(key, cfg.num_instances)):
         data = get_instance(instance_key)
@@ -265,8 +264,6 @@ def evaluate(get_instance, cfg: DictConfig, key) -> dict[str, list[float]]:
         )
         nlpds["standard_gp"].append(float(jnp.mean(gp.nlpd_per_point)))
         nlpds["pro_gp"].append(float(jnp.mean(pro.nlpd_per_point)))
-        # Each fit closes over fresh data, so JAX recompiles and would otherwise keep
-        # every instance's executables (~75MB each) alive for the whole sweep.
         jax.clear_caches()
 
     for algorithm, values in nlpds.items():
@@ -283,11 +280,6 @@ _DATASET_SOURCES = {
 
 
 def _instance_fn(make_instance, kwarg_names, cfg: DictConfig):
-    """
-    Build a `key -> data` closure for `make_instance`, forwarding only the subset of
-    `kwarg_names` that `cfg` actually sets -- so a `ds` config can override any subset
-    of a generator's parameters without a code change here.
-    """
     kwargs = {k: cfg[k] for k in kwarg_names if k in cfg}
     return lambda key: make_instance(key, **kwargs)
 
