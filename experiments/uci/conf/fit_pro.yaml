@@ -3,7 +3,7 @@ defaults:
   - ds@_global_: machine
 
 split: 1
-seed: 0
+seed: 1
 inducing: false
 vgp_variant: noncollapsed
 vgp_name: null

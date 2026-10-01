@@ -2,7 +2,7 @@
   "dataset": "concrete",
   "split": 3,
   "inducing": false,
-  "gp_sigma": 0.22979595481580295,
-  "pro_sigma": 0.16863478088384765,
-  "pro_nlpd": 0.06409064025360091
+  "gp_sigma": 0.22625896389101804,
+  "pro_sigma": 0.13156539180960955,
+  "pro_nlpd": 0.06073836599892322
 }

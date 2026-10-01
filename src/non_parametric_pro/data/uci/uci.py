@@ -19,21 +19,21 @@ UCI_REGRESSION_DATASET_SIZES: dict[str, tuple[int, int]] = {
     "concrete": (1_030, 8),
     "concreteslump": (103, 7),
     "elevators": (16_599, 18),
+    "energy": (768, 8),
     "housing": (506, 13),
     "machine": (209, 7),
     "parkinsons": (5_875, 20),
     "protein": (45_730, 9),
+    "servo": (167, 4),
     "skillcraft": (3_338, 19),
-    "solar": (1_066, 10),
     "stock": (536, 11),
     "whitewine": (4_898, 11),
     "wine": (1_599, 11),
-    "yacht": (308, 6),
 }
 
 
 NUM_RAW_UCI_SPLITS = 10
-NUM_UCI_SPLITS = 5
+UCI_TEST_FRACTION = 0.2
 MIN_DATA_COLUMNS = 2
 
 
@@ -214,10 +214,9 @@ def load_uci_regression_dataset(
     split: int = 1,
     directory: Path | None = None,
 ) -> UCIRegressionDataset:
-    if not 1 <= split <= NUM_UCI_SPLITS:
-        msg = (
-            f"split must be in 1..{NUM_UCI_SPLITS} (merged pairs of the 10 raw splits)."
-        )
+    """Random UCI_TEST_FRACTION train/test split, reproducible from `split` alone."""
+    if split < 1:
+        msg = f"split must be >= 1, got {split}."
         raise ValueError(msg)
 
     directory = directory if directory is not None else package_data_dir("uci_datasets")
@@ -232,41 +231,27 @@ def load_uci_regression_dataset(
 
     dataset_dir = data_root / name
     data_path = dataset_dir / "data.csv.gz"
-    mask_path = dataset_dir / "test_mask.csv.gz"
     if not data_path.is_file():
         msg = f"Missing data file: {data_path}"
         raise FileNotFoundError(msg)
-    if not mask_path.is_file():
-        msg = f"Missing split mask file: {mask_path}"
-        raise FileNotFoundError(msg)
 
     data = _read_gzip_csv(data_path, np.float64)
-    masks = _read_gzip_csv(mask_path, np.int64)
-
     if data.shape[1] < MIN_DATA_COLUMNS:
         msg = f"Expected at least one feature and one target column in {data_path}"
         raise ValueError(msg)
-    if masks.shape[0] != data.shape[0]:
-        msg = f"Mask row count does not match data row count for {name}"
-        raise ValueError(msg)
-    raw_col_a, raw_col_b = 2 * (split - 1), 2 * (split - 1) + 1
-    if masks.shape[1] < raw_col_b + 1:
-        msg = (
-            f"Requested split {split} (raw mask columns {raw_col_a + 1}+{raw_col_b + 1}), "
-            f"but {mask_path} only has {masks.shape[1]} raw split columns"
-        )
-        raise ValueError(msg)
 
-    test_mask = masks[:, raw_col_a].astype(bool) | masks[:, raw_col_b].astype(bool)
-    train_mask = ~test_mask
+    n = data.shape[0]
+    perm = np.random.default_rng(split).permutation(n)
+    num_test = round(UCI_TEST_FRACTION * n)
+    test_idx, train_idx = perm[:num_test], perm[num_test:]
     x = data[:, :-1]
     y = data[:, -1:]
 
     return UCIRegressionDataset(
-        x_train=x[train_mask],
-        y_train=y[train_mask],
-        x_test=x[test_mask],
-        y_test=y[test_mask],
+        x_train=x[train_idx],
+        y_train=y[train_idx],
+        x_test=x[test_idx],
+        y_test=y[test_idx],
         name=name,
         split=split,
     )
@@ -280,7 +265,7 @@ def _canonical_uci_dataset_name(dataset: str) -> str:
     return dataset
 
 
-def _find_uci_data_root(directory: Path, dataset: str = "yacht") -> Path | None:
+def _find_uci_data_root(directory: Path, dataset: str = "concrete") -> Path | None:
     candidates = (
         directory,
         directory / "uci_datasets",

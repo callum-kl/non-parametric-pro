@@ -25,9 +25,9 @@ EXACT_DATASETS = [
     "housing",
     "stock",
     "concrete",
-    "solar",
-    "yacht",
     "concreteslump",
+    "energy",
+    "servo",
 ]
 INDUCING_DATASETS = [
     "wine",
@@ -54,10 +54,10 @@ def main() -> None:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument(
-        "--datasets", default=",".join(EXACT_DATASETS + INDUCING_DATASETS)
+        "--datasets", default=",".join(EXACT_DATASETS)
     )
-    parser.add_argument("--splits", default="1,2,3,4,5")
-    parser.add_argument("--n-jobs", default="-1")
+    parser.add_argument("--splits", default="1,2,3,4,5,6,7,8,9,10")
+    parser.add_argument("--n-jobs", default="5")
     args = parser.parse_args()
 
     def script(name: str, dataset: str, *overrides: str) -> list[str]:

@@ -1,0 +1,8 @@
+{
+  "dataset": "servo",
+  "split": 4,
+  "inducing": false,
+  "gp_sigma": 0.22924318492454876,
+  "pro_sigma": 0.09738017798029458,
+  "pro_nlpd": 1.3165827515637627
+}

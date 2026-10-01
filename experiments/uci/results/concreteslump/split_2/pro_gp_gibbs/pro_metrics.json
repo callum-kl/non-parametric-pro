@@ -2,7 +2,7 @@
   "dataset": "concreteslump",
   "split": 2,
   "inducing": false,
-  "gp_sigma": 0.0372211802803432,
-  "pro_sigma": 0.020304934681626384,
-  "pro_nlpd": -1.6626350806164898
+  "gp_sigma": 0.01688779293064047,
+  "pro_sigma": 0.019829523032844684,
+  "pro_nlpd": -1.710913115702543
 }

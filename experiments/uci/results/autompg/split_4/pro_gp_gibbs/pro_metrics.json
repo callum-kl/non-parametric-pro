@@ -2,7 +2,7 @@
   "dataset": "autompg",
   "split": 4,
   "inducing": false,
-  "gp_sigma": 0.2703116759332945,
-  "pro_sigma": 0.153319086095122,
-  "pro_nlpd": 0.7567547745363659
+  "gp_sigma": 0.30060483408457483,
+  "pro_sigma": 0.2847152601825249,
+  "pro_nlpd": 0.36602014106790914
 }

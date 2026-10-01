@@ -109,7 +109,7 @@ Test NLPD for all 16 datasets over 5 splits:
 python experiments/uci/scripts/run_uci.py
 ```
 
-- Small datasets (machine, autompg, housing, stock, concrete, solar, yacht, concreteslump) fit
+- Small datasets (machine, autompg, housing, stock, concrete, concreteslump, energy, servo) fit
   `exact_gp`, then `pro_gp_gibbs`.
 - The larger datasets fit `vgp_noncollapsed` and `ppgpr`, then
   `inducing_pro_gp_gibbs` and `inducing_pro_gp_gibbs_ppgpr` (seeded from each of those).
