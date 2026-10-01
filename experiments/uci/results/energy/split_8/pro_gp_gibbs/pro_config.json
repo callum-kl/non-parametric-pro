@@ -1,6 +1,6 @@
 {
   "split": 8,
-  "seed": 1,
+  "seed": 0,
   "inducing": false,
   "vgp_variant": "noncollapsed",
   "vgp_name": null,
