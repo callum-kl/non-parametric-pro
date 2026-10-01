@@ -2,7 +2,7 @@
   "dataset": "whitewine",
   "split": 5,
   "inducing": true,
-  "gp_sigma": 0.770279252357966,
-  "pro_sigma": 0.11931334409395315,
-  "pro_nlpd": 1.1190959216385892
+  "gp_sigma": 0.7838627346059484,
+  "pro_sigma": 0.11001588311065803,
+  "pro_nlpd": 0.6950497538091556
 }

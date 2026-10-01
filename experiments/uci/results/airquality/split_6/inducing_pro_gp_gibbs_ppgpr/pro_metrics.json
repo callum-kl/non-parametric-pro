@@ -1,0 +1,8 @@
+{
+  "dataset": "airquality",
+  "split": 6,
+  "inducing": true,
+  "gp_sigma": 0.00033990371537338706,
+  "pro_sigma": 0.08279498520891103,
+  "pro_nlpd": -0.3773590319141937
+}
