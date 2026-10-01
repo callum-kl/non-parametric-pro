@@ -1,50 +1,23 @@
 # nonparametricpro
 
-[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
-[![Tests status][tests-badge]][tests-link]
-[![Linting status][linting-badge]][linting-link]
-[![Documentation status][documentation-badge]][documentation-link]
-[![License][license-badge]](./LICENSE.md)
-
-<!-- prettier-ignore-start -->
-[tests-badge]:              https://github.com/callum-kl/non-parametric-pro/actions/workflows/tests.yml/badge.svg
-[tests-link]:               https://github.com/callum-kl/non-parametric-pro/actions/workflows/tests.yml
-[linting-badge]:            https://github.com/callum-kl/non-parametric-pro/actions/workflows/linting.yml/badge.svg
-[linting-link]:             https://github.com/callum-kl/non-parametric-pro/actions/workflows/linting.yml
-[documentation-badge]:      https://github.com/callum-kl/non-parametric-pro/actions/workflows/docs.yml/badge.svg
-[documentation-link]:       https://github.com/callum-kl/non-parametric-pro/actions/workflows/docs.yml
-[license-badge]:            https://img.shields.io/badge/License-MIT-yellow.svg
-<!-- prettier-ignore-end -->
-
 Sampling Predictively Oriented Posteriors for Gaussian Processes
 
 ## About
 
-### Project Team
-
-Callum Lau ([callum_lau@hotmail.com](mailto:callum_lau@hotmail.com))
-
-<!-- TODO: how do we have an array of collaborators ? -->
 
 ## Built With
 
-<!-- TODO: can cookiecutter make a list of frameworks? -->
-
-- [Framework 1](https://something.com)
-- [Framework 2](https://something.com)
-- [Framework 3](https://something.com)
+- [GPJax](https://gpjax.quantclimate.com/)
+- [BlackJax](https://blackjax-devs.github.io/blackjax/)
 
 ## Getting Started
 
 ### Prerequisites
 
-<!-- Any tools or versions of languages needed to run code. For example specific Python or Node versions. Minimum hardware requirements also go here. -->
-
 `non-parametric-pro` requires Python 3.11&ndash;3.14.
 
 ### Installation
 
-<!-- How to build or install the application. -->
 
 We recommend installing in a project specific virtual environment created using
 a environment management tool such as
@@ -155,46 +128,69 @@ python experiments/pems/scripts/plot_map.py --method pro
 python experiments/pems/scripts/combine_road_maps.py
 ```
 
-### Running Tests
 
-<!-- How to run tests on your local system. -->
+#### UCI
 
-Tests can be run across all compatible Python versions in isolated environments
-using [`tox`](https://tox.wiki/en/latest/) by running
+Download the data once.
 
 ```sh
-tox
+python -c "
+from non_parametric_pro.data.uci import uci
+uci.download_uci_regression_datasets()
+uci.download_wine_quality_white()
+uci.download_abalone()
+uci.download_air_quality()
+"
 ```
 
-To run tests manually in a Python environment with `pytest` installed run
+Test NLPD for all 16 datasets over 5 splits:
 
 ```sh
-pytest tests
+python experiments/uci/scripts/run_uci.py
 ```
 
-again from the root of the repository.
+- Small datasets (machine, autompg, housing, stock, concrete, concreteslump, energy, servo) fit
+  `exact_gp`, then `pro_gp_gibbs`.
+- The larger datasets fit `vgp_noncollapsed` and `ppgpr`, then
+  `inducing_pro_gp_gibbs` and `inducing_pro_gp_gibbs_ppgpr` (seeded from each of those).
+- Per-dataset settings live in `experiments/uci/conf/ds/<dataset>.yaml`.
+- Use `--datasets machine,wine --splits 1,2` to run a subset, then
+  `python experiments/uci/scripts/aggregate_results.py` to rebuild the summary.
 
-### Building Documentation
-
-The MkDocs HTML documentation can be built locally by running
+Normality figure (needs the `exact_gp` fits above):
 
 ```sh
-tox -e docs
+python experiments/uci/scripts/plot_normality.py
 ```
 
-from the root of the repository. The built documentation will be written to
-`site`.
-
-Alternatively to build and preview the documentation locally, in a Python
-environment with the `docs` dependency group installed, run
+Convergence and runtime figures (parkinsons, split 1). These run sequentially so the
+timings aren't contended, and write to `experiments/uci/convergence_results/`, which is
+kept separate from `results/summary.csv`:
 
 ```sh
-mkdocs serve
+python experiments/uci/scripts/run_convergence.py
+python experiments/uci/scripts/run_convergence.py --ms 1000 --seeds 0
+python experiments/uci/scripts/plot_convergence.py
 ```
 
-## Roadmap
+The m = 1000 run only feeds the time-per-iteration panel, so it can use a smaller
+`gp_num_iters=...` override.
 
-- [x] Initial Research
-- [ ] Minimum viable product <-- You are Here
-- [ ] Alpha Release
-- [ ] Feature-Complete Release
+#### PeMS
+
+The road-network data is downloaded automatically on first use.
+
+```sh
+python experiments/pems/scripts/run_pems.py
+```
+
+This fits the exact graph GP, then `pro_gp_gibbs`, for num_train ∈ {200, 225, 250, 275} × 10 splits.
+`run_pems.py` sets automatically.
+
+Road-map figures (num_train = 250, split 1 by default; these need the fits above):
+
+```sh
+python experiments/pems/scripts/plot_map.py --method gp
+python experiments/pems/scripts/plot_map.py --method pro
+python experiments/pems/scripts/combine_road_maps.py
+```
