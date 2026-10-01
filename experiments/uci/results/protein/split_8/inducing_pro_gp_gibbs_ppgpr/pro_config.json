@@ -1,10 +1,10 @@
 {
-  "split": 3,
+  "split": 8,
   "seed": 0,
   "inducing": true,
-  "vgp_variant": "noncollapsed",
+  "vgp_variant": "ppgpr",
   "vgp_name": null,
-  "name": "gibbs",
+  "name": "gibbs_ppgpr",
   "num_particles": 50,
   "alpha": 1.4,
   "sigma_min": 0.01,

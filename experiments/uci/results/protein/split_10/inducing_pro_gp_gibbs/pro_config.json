@@ -1,5 +1,5 @@
 {
-  "split": 3,
+  "split": 10,
   "seed": 0,
   "inducing": true,
   "vgp_variant": "noncollapsed",
