@@ -1,9 +1,8 @@
 source: multimodal
 param_name: n
-n: 400
-num_regions: 2
-mix_prob: 0.5
-min_width: 0.3
-max_width: 0.8
-ell_range: [0.5, 1.0]
+n: 100
+test_fraction: 0.3
 noise_std_frac: 0.15
+mix_prob: 0.5
+ell_range: [0.5, 1.0]
+alpha_range: [0.5, 2.0]

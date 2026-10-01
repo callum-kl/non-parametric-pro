@@ -1,0 +1,73 @@
+{
+  "dataset": "concrete",
+  "split": 1,
+  "sigma": 0.23947230117568089,
+  "residuals": {
+    "whitened": {
+      "n": 824,
+      "mean": -0.023094816368992976,
+      "std": 1.02242132675534,
+      "skew": -0.28150252878179627,
+      "excess_kurtosis": 1.9242861418515966,
+      "shapiro_W": 0.9820252453580722,
+      "shapiro_p": 1.582856082850603e-08,
+      "dagostino_p": 1.0739169261107089e-11,
+      "jarque_bera_p": 1.0726111703659823e-30,
+      "ks_standard_normal_D": 0.04636414984069004,
+      "ks_standard_normal_p": 0.056071064452156816,
+      "anderson_A2": 3.2223776082637414,
+      "anderson_p": 0.01,
+      "frac_beyond_2sigma": 0.06674757281553398,
+      "frac_beyond_3sigma": 0.00849514563106796
+    },
+    "loo": {
+      "n": 824,
+      "mean": 0.003789061707805956,
+      "std": 1.0072387024082923,
+      "skew": 0.1650789111004958,
+      "excess_kurtosis": 3.133681365553259,
+      "shapiro_W": 0.9651463819600739,
+      "shapiro_p": 4.069835785355307e-13,
+      "dagostino_p": 7.583069657081126e-16,
+      "jarque_bera_p": 9.45631044649856e-75,
+      "ks_standard_normal_D": 0.062138237353531856,
+      "ks_standard_normal_p": 0.0032952700363061155,
+      "anderson_A2": 6.236096806561932,
+      "anderson_p": 0.01,
+      "frac_beyond_2sigma": 0.05703883495145631,
+      "frac_beyond_3sigma": 0.009708737864077669
+    },
+    "test": {
+      "n": 206,
+      "mean": -0.17196213217465864,
+      "std": 0.9127320468608062,
+      "skew": -0.4166381181902835,
+      "excess_kurtosis": 1.46836812992961,
+      "shapiro_W": 0.9623587581505284,
+      "shapiro_p": 2.7246228490148585e-05,
+      "dagostino_p": 0.0005324378661216086,
+      "jarque_bera_p": 4.866188898174997e-06,
+      "ks_standard_normal_D": 0.1475820050959301,
+      "ks_standard_normal_p": 0.00022184068078876562,
+      "anderson_A2": 3.0425828788130787,
+      "anderson_p": 0.01,
+      "frac_beyond_2sigma": 0.04854368932038835,
+      "frac_beyond_3sigma": 0.0048543689320388345
+    }
+  },
+  "target": {
+    "n": 824,
+    "num_unique": 697,
+    "modal_value": -0.3012994448051454,
+    "modal_fraction": 0.0048543689320388345,
+    "skew": 0.41091523688954484,
+    "excess_kurtosis": -0.33046552516128
+  },
+  "whitening_order_check": {
+    "num_permutations": 100,
+    "shapiro_p_median": 3.9047026892086146e-09,
+    "shapiro_p_q05": 3.1071602875554765e-11,
+    "shapiro_p_q95": 1.3965071083661129e-06,
+    "frac_reject_at_5pct": 1.0
+  }
+}

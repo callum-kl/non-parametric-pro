@@ -10,11 +10,17 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 from example_grid import _SOURCES as EXAMPLE_SOURCES
-from example_grid import LEGEND_HANDLES as EXAMPLE_LEGEND_HANDLES
-from example_grid import plot_examples
+from example_grid import (
+    COLUMN_TITLE_PAD_IN,
+    GP_COLOR,
+    LEGEND_HANDLES,
+    PRO_COLOR,
+    _hide_ticks,
+    _style_box,
+    plot_fit_grid,
+)
 from matplotlib.lines import Line2D
 from plot_summary import (
-    ALGORITHM_COLORS,
     DIVIDER_COLOR,
     SOURCES,
     load_summary,
@@ -23,7 +29,7 @@ from plot_summary import (
 
 FIGURES_DIR = Path(__file__).resolve().parents[1] / "figures"
 
-_EXAMPLE_ORDER = tuple(spec.name for spec in EXAMPLE_SOURCES)
+_EXAMPLE_ORDER = tuple(spec.regime for spec in EXAMPLE_SOURCES)
 if _EXAMPLE_ORDER != SOURCES:
     msg = (
         f"example_grid.py's dataset order {_EXAMPLE_ORDER} doesn't match "
@@ -31,136 +37,146 @@ if _EXAMPLE_ORDER != SOURCES:
     )
     raise ValueError(msg)
 
-SUMMARY_LEGEND_HANDLES = [
-    Line2D(
-        [0],
-        [0],
-        marker="o",
-        color=ALGORITHM_COLORS["standard_gp"],
-        linestyle="-",
-        markersize=6,
-        label="Standard GP",
-    ),
-    Line2D(
-        [0],
-        [0],
-        marker="o",
-        color=ALGORITHM_COLORS["pro_gp"],
-        linestyle="-",
-        markersize=6,
-        label="PrO-GP",
-    ),
-]
+SUMMARY_COLORS = {"standard_gp": GP_COLOR, "pro_gp": PRO_COLOR}
 
-TITLE_FONTSIZE = 18
-LEGEND_FONTSIZE = 14
-AXIS_FONTSIZE = 15
-EXAMPLE_LEFT, EXAMPLE_RIGHT = 0.02, 0.64
-SUMMARY_LEFT, SUMMARY_RIGHT = 0.70, 0.99
-GRID_TOP, GRID_BOTTOM = 0.90, 0.16
+TITLE_FONTSIZE = 19
+LEGEND_FONTSIZE = 19
+AXIS_FONTSIZE = 16
+
+# Layout is specified in inches and converted to figure fractions below, so panel
+# proportions are exact regardless of how many columns the figure ends up with.
+FIT_PANEL_W_IN = 3.6
+FIT_PANEL_H_IN = 2.8  # slightly wider than tall
+FIT_COL_GAP_IN = 0.62  # room for each column's own y tick labels
+FIT_ROW_GAP_IN = 0.55  # room for the "PrO-GP" row title
+SUMMARY_NCOLS = 1
+BLOCK_GAP_IN = 0.95  # between the fit block and the summary column
+MARGIN_LEFT_IN, MARGIN_RIGHT_IN = 0.62, 0.25
+MARGIN_TOP_IN, MARGIN_BOTTOM_IN = 0.95, 1.05
+
+FIT_NCOLS, FIT_NROWS = 4, 2
+SUMMARY_NROWS = 4
+# The NLPD column is as wide as one fit column; its panels are short, their height
+# falling out of sharing the fit block's total height four ways.
+SUMMARY_PANEL_W_IN = FIT_PANEL_W_IN
+
+FIT_BLOCK_W_IN = FIT_NCOLS * FIT_PANEL_W_IN + (FIT_NCOLS - 1) * FIT_COL_GAP_IN
+GRID_H_IN = FIT_NROWS * FIT_PANEL_H_IN + (FIT_NROWS - 1) * FIT_ROW_GAP_IN
+SUMMARY_BLOCK_W_IN = (
+    SUMMARY_NCOLS * SUMMARY_PANEL_W_IN + (SUMMARY_NCOLS - 1) * FIT_COL_GAP_IN
+)
+SUMMARY_ROW_GAP_IN = 0.42  # room for each NLPD panel's own title
+SUMMARY_PANEL_H_IN = (
+    GRID_H_IN - (SUMMARY_NROWS - 1) * SUMMARY_ROW_GAP_IN
+) / SUMMARY_NROWS
+
+FIG_W = (
+    MARGIN_LEFT_IN
+    + FIT_BLOCK_W_IN
+    + BLOCK_GAP_IN
+    + SUMMARY_BLOCK_W_IN
+    + MARGIN_RIGHT_IN
+)
+FIG_H = MARGIN_TOP_IN + GRID_H_IN + MARGIN_BOTTOM_IN
+
+FIT_LEFT = MARGIN_LEFT_IN / FIG_W
+FIT_RIGHT = (MARGIN_LEFT_IN + FIT_BLOCK_W_IN) / FIG_W
+SUMMARY_LEFT = (MARGIN_LEFT_IN + FIT_BLOCK_W_IN + BLOCK_GAP_IN) / FIG_W
+SUMMARY_RIGHT = SUMMARY_LEFT + SUMMARY_BLOCK_W_IN / FIG_W
+GRID_TOP = 1.0 - MARGIN_TOP_IN / FIG_H
+GRID_BOTTOM = MARGIN_BOTTOM_IN / FIG_H
+
+# gridspec spacing is a fraction of the average panel size
+FIT_WSPACE = FIT_COL_GAP_IN / FIT_PANEL_W_IN
+FIT_HSPACE = FIT_ROW_GAP_IN / FIT_PANEL_H_IN
+SUMMARY_HSPACE = SUMMARY_ROW_GAP_IN / SUMMARY_PANEL_H_IN
 
 
-def _add_dividers(fig, example_axes, summary_axes) -> None:
+def _add_dividers(fig, fit_axes, summary_axes) -> None:
     fig.canvas.draw()
-    ex_pos = [ax.get_position() for ax in example_axes]
-    su_pos = [[ax.get_position() for ax in row] for row in summary_axes]
+    fit_pos = [ax.get_position() for row in fit_axes for ax in row]
+    su_pos = [ax.get_position() for ax in summary_axes]
 
-    top = max(*(p.y1 for p in ex_pos), *(p.y1 for row in su_pos for p in row))
-    bottom = min(*(p.y0 for p in ex_pos), *(p.y0 for row in su_pos for p in row))
-
-    block_v_x = (
-        max(p.x1 for p in ex_pos) + min(p.x0 for row in su_pos for p in row)
-    ) / 2
+    top = max(*(p.y1 for p in fit_pos), *(p.y1 for p in su_pos))
+    bottom = min(*(p.y0 for p in fit_pos), *(p.y0 for p in su_pos))
+    v_x = (max(p.x1 for p in fit_pos) + min(p.x0 for p in su_pos)) / 2
     fig.add_artist(
-        Line2D(
-            [block_v_x, block_v_x], [bottom, top], color=DIVIDER_COLOR, linewidth=1.2
-        )
-    )
-
-    su_v_x = (su_pos[0][0].x1 + su_pos[0][1].x0) / 2
-    su_h_y = (su_pos[0][0].y0 + su_pos[1][0].y1) / 2
-    su_left = min(su_pos[0][0].x0, su_pos[1][0].x0)
-    su_right = max(su_pos[0][1].x1, su_pos[1][1].x1)
-    su_top = max(su_pos[0][0].y1, su_pos[0][1].y1)
-    su_bottom = min(su_pos[1][0].y0, su_pos[1][1].y0)
-    fig.add_artist(
-        Line2D(
-            [su_v_x, su_v_x], [su_bottom, su_top], color=DIVIDER_COLOR, linewidth=1.0
-        )
-    )
-    fig.add_artist(
-        Line2D(
-            [su_left, su_right], [su_h_y, su_h_y], color=DIVIDER_COLOR, linewidth=1.0
-        )
+        Line2D([v_x, v_x], [bottom, top], color=DIVIDER_COLOR, linewidth=1.2)
     )
 
 
-def main(seed: int, num_instances: int) -> None:
+def main(
+    seed: int,
+    num_instances: int,
+    index_overrides: dict[str, int],
+) -> None:
     plt.rcParams.update({"font.size": AXIS_FONTSIZE})
 
-    fig = plt.figure(figsize=(24, 9))
-    example_gs = fig.add_gridspec(
-        2,
-        2,
-        left=EXAMPLE_LEFT,
-        right=EXAMPLE_RIGHT,
+    fig = plt.figure(figsize=(FIG_W, FIG_H))
+    fit_gs = fig.add_gridspec(
+        FIT_NROWS,
+        FIT_NCOLS,
+        left=FIT_LEFT,
+        right=FIT_RIGHT,
         top=GRID_TOP,
         bottom=GRID_BOTTOM,
-        hspace=0.12,
-        wspace=0.06,
+        hspace=FIT_HSPACE,
+        wspace=FIT_WSPACE,
     )
     summary_gs = fig.add_gridspec(
-        2,
-        2,
+        SUMMARY_NROWS,
+        SUMMARY_NCOLS,
         left=SUMMARY_LEFT,
         right=SUMMARY_RIGHT,
         top=GRID_TOP,
         bottom=GRID_BOTTOM,
-        hspace=0.45,
-        wspace=0.3,
+        hspace=SUMMARY_HSPACE,
     )
-    example_axes = [
-        [fig.add_subplot(example_gs[i, j]) for j in range(2)] for i in range(2)
-    ]
+    gp_axes = [fig.add_subplot(fit_gs[0, j]) for j in range(4)]
+    pro_axes = [fig.add_subplot(fit_gs[1, j]) for j in range(4)]
     summary_axes = [
-        [fig.add_subplot(summary_gs[i, j]) for j in range(2)] for i in range(2)
+        fig.add_subplot(summary_gs[i, j])
+        for i in range(SUMMARY_NROWS)
+        for j in range(SUMMARY_NCOLS)
     ]
-    example_flat = [ax for row in example_axes for ax in row]
-    summary_flat = [ax for row in summary_axes for ax in row]
 
-    plot_examples(example_flat, seed, num_instances)
-    for ax in example_flat:
-        ax.set_title(ax.get_title(), fontsize=TITLE_FONTSIZE)
+    plot_fit_grid(
+        fig,
+        gp_axes,
+        pro_axes,
+        seed,
+        num_instances,
+        index_overrides,
+    )
 
     records = load_summary()
-    plot_summary_row(summary_flat, records, SOURCES)
-    for ax in summary_flat[1:]:
-        ax.sharey(summary_flat[0])
-    for row in summary_axes:
-        row[0].set_ylabel("NLPD", fontsize=AXIS_FONTSIZE)
-    for ax in summary_flat:
+    plot_summary_row(summary_axes, records, SOURCES, colors=SUMMARY_COLORS)
+    for ax in summary_axes[:-SUMMARY_NCOLS]:
+        ax.set_xlabel("")
+        _hide_ticks(ax, x=True)
+    for ax in summary_axes:
         ax.set_title(ax.get_title(), fontsize=TITLE_FONTSIZE)
-        ax.tick_params(labelsize=AXIS_FONTSIZE)
         ax.xaxis.label.set_fontsize(AXIS_FONTSIZE)
+        _style_box(ax, grid=True, grid_axis="y")
+
+    fig.text(
+        (SUMMARY_LEFT + SUMMARY_RIGHT) / 2,
+        GRID_TOP + COLUMN_TITLE_PAD_IN / FIG_H,
+        "Held-out NLPD",
+        ha="center",
+        fontsize=TITLE_FONTSIZE,
+    )
 
     fig.legend(
-        handles=EXAMPLE_LEGEND_HANDLES,
+        handles=LEGEND_HANDLES,
         loc="lower center",
-        bbox_to_anchor=((EXAMPLE_LEFT + EXAMPLE_RIGHT) / 2, 0.0),
-        ncol=4,
+        bbox_to_anchor=(0.5, 0.0),
+        ncol=5,
         fontsize=LEGEND_FONTSIZE,
         frameon=False,
     )
-    fig.legend(
-        handles=SUMMARY_LEGEND_HANDLES,
-        loc="lower center",
-        bbox_to_anchor=((SUMMARY_LEFT + SUMMARY_RIGHT) / 2, 0.0),
-        ncol=2,
-        fontsize=LEGEND_FONTSIZE,
-        frameon=False,
-    )
 
-    _add_dividers(fig, example_flat, summary_axes)
+    _add_dividers(fig, [gp_axes, pro_axes], summary_axes)
 
     out_path = FIGURES_DIR / "example_grid_and_summary_columns.png"
     fig.savefig(out_path, dpi=150)
@@ -171,5 +187,18 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--seed", type=int, default=2421)
     parser.add_argument("--num-instances", type=int, default=20)
+    for _spec in EXAMPLE_SOURCES:
+        parser.add_argument(
+            f"--{_spec.regime.replace('_', '-')}-index",
+            type=int,
+            default=None,
+            help=f"Override this panel's instance index (default from _SOURCES: {_spec.instance_index}).",
+        )
     args = parser.parse_args()
-    main(args.seed, args.num_instances)
+
+    index_overrides = {
+        spec.regime: getattr(args, f"{spec.regime}_index")
+        for spec in EXAMPLE_SOURCES
+        if getattr(args, f"{spec.regime}_index") is not None
+    }
+    main(args.seed, args.num_instances, index_overrides)

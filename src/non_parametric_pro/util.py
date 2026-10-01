@@ -80,28 +80,6 @@ def predictive_moments(
     return mean, jnp.sqrt(jnp.maximum(variance, 0.0))
 
 
-def draw_predictive_samples(
-    rng_key: PRNGKey,
-    basis: jax.Array,
-    particles: jax.Array,
-    *,
-    num_samples: int,
-    noise_std: jax.Array | float = 0.0,
-    residual_std: jax.Array | float = 0.0,
-) -> jax.Array:
-    projected = project_particles(basis, particles)
-    num_particles = projected.shape[1]
-    index_key, noise_key = jr.split(rng_key)
-    particle_indices = jr.randint(index_key, (num_samples,), 0, num_particles)
-    selected = projected[:, particle_indices]
-
-    sample_std = jnp.sqrt(noise_std**2 + residual_std**2)
-    if jnp.ndim(sample_std) == 1:
-        sample_std = sample_std[:, None]
-    noise = sample_std * jr.normal(noise_key, selected.shape)
-    return selected + noise
-
-
 def cholesky_basis(
     kernel: gpx.kernels.AbstractKernel, x: jax.Array, jitter: float = 1e-6
 ) -> jax.Array:

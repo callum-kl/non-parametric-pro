@@ -1,0 +1,8 @@
+{
+  "dataset": "skillcraft",
+  "split": 5,
+  "inducing": true,
+  "gp_sigma": 0.6422416662244794,
+  "pro_sigma": 0.3929987959249961,
+  "pro_nlpd": 0.986946825505739
+}

@@ -93,10 +93,19 @@ def base(
     x_val: jax.Array | None = None,
     y_val: jax.Array | None = None,
     adapt_target: Literal["train", "val"] | None = None,
+    kernel_steps_per_adapt: int = 1,
 ) -> tuple[Callable, Callable, Callable]:
     """
     Build the (init, update, final) triple for sigma/basis adaptation.
+
+    `kernel_steps_per_adapt` takes that many optimizer steps, each on a freshly
+    evaluated gradient, every time the kernel schedule fires -- so the kernel can be
+    driven further per firing without raising the learning rate. The loop is unrolled
+    at trace time, so keep the count small (compile time grows with it).
     """
+    if kernel_steps_per_adapt < 1:
+        msg = f"kernel_steps_per_adapt must be >= 1 (got {kernel_steps_per_adapt})."
+        raise ValueError(msg)
     if adapt_target == "val" and (x_val is None or y_val is None):
         msg = "adapt_target='val' requires both x_val and y_val to be given."
         raise ValueError(msg)
@@ -228,13 +237,17 @@ def base(
         position: ArrayLikeTree,
         base_parameters: ProParameters,
     ) -> ParameterAdaptationState:
-        _, grad = eqx.filter_value_and_grad(kernel_loss)(
-            state.kernel, position, base_parameters
-        )
-        updates, new_opt_state = kernel_optimizer.update(
-            grad, state.kernel_opt_state, eqx.filter(state.kernel, eqx.is_array)
-        )
-        new_kernel = eqx.apply_updates(state.kernel, updates)
+        new_kernel, new_opt_state = state.kernel, state.kernel_opt_state
+        for _ in range(kernel_steps_per_adapt):
+            # kernel_loss rebuilds the basis from `new_kernel` itself, so only the
+            # final basis has to be materialised into the state below.
+            _, grad = eqx.filter_value_and_grad(kernel_loss)(
+                new_kernel, position, base_parameters
+            )
+            updates, new_opt_state = kernel_optimizer.update(
+                grad, new_opt_state, eqx.filter(new_kernel, eqx.is_array)
+            )
+            new_kernel = eqx.apply_updates(new_kernel, updates)
         new_basis, new_residual_std = basis_fn(new_kernel)
         new_val_basis, new_val_residual_std = val_basis_fn(new_kernel, new_basis)
         return state._replace(
@@ -294,11 +307,15 @@ def parameter_adaptation(
     adapt_target: Literal["train", "val"] | None = None,
     sigma_optimizer: optax.GradientTransformation | None = None,
     kernel_optimizer: optax.GradientTransformation | None = None,
+    kernel_steps_per_adapt: int = 1,
     jitter: float = 1e-6,
     progress_bar: bool = False,
 ) -> AdaptationAlgorithm:
     """
     Adapt `sigma` and the kernel hyperparameters behind `basis`.
+
+    `kernel_adapt_steps` sets how many iterations adapt the kernel at all;
+    `kernel_steps_per_adapt` sets how many optimizer steps each of those takes.
     """
     if sigma_optimizer is None:
         sigma_optimizer = optax.adam(1e-2)
@@ -316,6 +333,7 @@ def parameter_adaptation(
         x_val=x_val,
         y_val=y_val,
         adapt_target=adapt_target,
+        kernel_steps_per_adapt=kernel_steps_per_adapt,
     )
 
     def one_step(carry, xs):
@@ -440,6 +458,7 @@ def cross_validated_parameter_adaptation(
     adapt_target: Literal["train", "val"] | None = None,
     sigma_optimizer: optax.GradientTransformation | None = None,
     kernel_optimizer: optax.GradientTransformation | None = None,
+    kernel_steps_per_adapt: int = 1,
     jitter: float = 1e-6,
     progress_bar: bool = False,
 ) -> CrossValidationResult:
@@ -471,6 +490,7 @@ def cross_validated_parameter_adaptation(
             warmup_steps=warmup_steps,
             sigma_adapt_steps=sigma_adapt_steps,
             kernel_adapt_steps=kernel_adapt_steps,
+            kernel_steps_per_adapt=kernel_steps_per_adapt,
             objective_fn=objective_fn,
             inducing_basis=inducing_basis,
             x_val=x_val,

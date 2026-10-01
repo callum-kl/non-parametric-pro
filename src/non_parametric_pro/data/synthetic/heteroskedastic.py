@@ -8,16 +8,6 @@ from blackjax.types import PRNGKey
 
 from non_parametric_pro.util import train_val_split
 
-_SHAPE_GAUSSIAN, _SHAPE_BOXCAR, _SHAPE_RAMP = 0, 1, 2
-_NUM_SHAPES = 3
-
-
-class NoiseRegions(NamedTuple):
-    centers: jax.Array
-    widths: jax.Array
-    amplitudes: jax.Array
-    shapes: jax.Array
-
 
 class HeteroskedasticCase(NamedTuple):
     x_train: jax.Array
@@ -31,62 +21,23 @@ class HeteroskedasticCase(NamedTuple):
     noise_floor: float
     ell: float
     alpha: float
-    regions: NoiseRegions
-
-
-def sample_noise_regions(
-    key: PRNGKey,
-    *,
-    x_min: float = -1.0,
-    x_max: float = 1.0,
-    min_width: float = 0.05,
-    max_width: float = 0.3,
-    amplitude: float = 0.3,
-    num_regions: int = 3,
-) -> NoiseRegions:
-    center_key, width_key, shape_key = jr.split(key, 3)
-
-    centers = jr.uniform(center_key, (num_regions,), minval=x_min, maxval=x_max)
-    widths = jr.uniform(width_key, (num_regions,), minval=min_width, maxval=max_width)
-    amplitudes = jnp.full((num_regions,), amplitude)
-    shapes = jr.randint(shape_key, (num_regions,), 0, _NUM_SHAPES)
-
-    return NoiseRegions(
-        centers=centers, widths=widths, amplitudes=amplitudes, shapes=shapes
-    )
-
-
-def _region_bump(x: jax.Array, center: float, width: float, shape: int) -> jax.Array:
-    gaussian = jnp.exp(-0.5 * ((x - center) / width) ** 2)
-    boxcar = (jnp.abs(x - center) <= width).astype(x.dtype)
-    ramp = jnp.clip(1.0 - jnp.abs(x - center) / width, 0.0, 1.0)
-    return jnp.select(
-        [shape == _SHAPE_GAUSSIAN, shape == _SHAPE_BOXCAR, shape == _SHAPE_RAMP],
-        [gaussian, boxcar, ramp],
-    )
+    center: float
+    width: float
+    variance_frac: float
 
 
 def heteroskedastic_noise_std(
-    x: jax.Array, regions: NoiseRegions, *, noise_floor: float
+    x: jax.Array,
+    *,
+    center: float,
+    width: float,
+    excess_variance: float,
+    noise_floor: float,
 ) -> jax.Array:
-
-    def one_region(center, width, amplitude, shape):
-        return (amplitude * _region_bump(x, center, width, shape)) ** 2
-
-    per_region_variance = jax.vmap(one_region)(
-        regions.centers, regions.widths, regions.amplitudes, regions.shapes
-    )
-    total_variance = noise_floor**2 + jnp.sum(per_region_variance, axis=0)
-    return jnp.sqrt(total_variance)
-
-
-def heteroskedastic_region_mask(x: jax.Array, regions: NoiseRegions) -> jax.Array:
-
-    def in_one_region(center, width):
-        return jnp.abs(x - center) <= width
-
-    in_any_region = jax.vmap(in_one_region)(regions.centers, regions.widths)
-    return jnp.any(in_any_region, axis=0)
+    """Noise SD of a single Gaussian bump of unit height at `center`, so the local
+    variance rises from `noise_floor**2` to `noise_floor**2 + excess_variance`."""
+    bump = jnp.exp(-0.5 * ((x - center) / width) ** 2)
+    return jnp.sqrt(noise_floor**2 + excess_variance * bump**2)
 
 
 def make_heteroskedastic_instance(
@@ -97,39 +48,43 @@ def make_heteroskedastic_instance(
     x_min: float = -2.0,
     x_max: float = 2.0,
     noise_std_frac: float = 0.15,
-    amplitude_frac: float = 0.4,
-    min_width: float = 0.15,
-    max_width: float = 0.5,
-    ell_range: tuple[float, float] = (0.15, 0.5),
+    variance_frac: float = 0.4,
+    min_width: float = 0.3,
+    max_width: float = 0.8,
+    ell_range: tuple[float, float] = (0.5, 1.0),
     alpha_range: tuple[float, float] = (0.5, 2.0),
-    num_regions: int = 3,
 ) -> HeteroskedasticCase:
-    x_key, ell_key, alpha_key, latent_key, region_key, split_key, noise_key = jr.split(
-        key, 7
-    )
+    (
+        x_key,
+        ell_key,
+        alpha_key,
+        latent_key,
+        center_key,
+        width_key,
+        split_key,
+        noise_key,
+    ) = jr.split(key, 8)
 
     ell = jr.uniform(ell_key, (), minval=ell_range[0], maxval=ell_range[1])
     alpha = jr.uniform(alpha_key, (), minval=alpha_range[0], maxval=alpha_range[1])
-    signal_std = jnp.sqrt(alpha)
 
-    kernel = gpx.kernels.RBF(lengthscale=ell, variance=alpha)
+    kernel = gpx.kernels.RBF(lengthscale=ell, variance=alpha**2)
     prior = gpx.gps.Prior(mean_function=gpx.mean_functions.Zero(), kernel=kernel)
 
     x = jr.uniform(x_key, (n, 1), minval=x_min, maxval=x_max)
     y_truth = prior.predict(x).sample(latent_key)
 
-    regions = sample_noise_regions(
-        region_key,
-        x_min=x_min,
-        x_max=x_max,
-        min_width=min_width,
-        max_width=max_width,
-        amplitude=amplitude_frac * signal_std,
-        num_regions=num_regions,
-    )
-    noise_floor = noise_std_frac * signal_std
+    center = jr.uniform(center_key, (), minval=x_min, maxval=x_max)
+    width = jr.uniform(width_key, (), minval=min_width, maxval=max_width)
+    noise_floor = noise_std_frac * alpha
 
-    sigma = heteroskedastic_noise_std(x[:, 0], regions, noise_floor=noise_floor)
+    sigma = heteroskedastic_noise_std(
+        x[:, 0],
+        center=center,
+        width=width,
+        excess_variance=variance_frac * alpha,
+        noise_floor=noise_floor,
+    )
     y_obs = y_truth + sigma * jr.normal(noise_key, y_truth.shape)
 
     split = train_val_split(split_key, x, y_truth, val_fraction=test_fraction)
@@ -147,7 +102,9 @@ def make_heteroskedastic_instance(
         noise_floor=float(noise_floor),
         ell=float(ell),
         alpha=float(alpha),
-        regions=regions,
+        center=float(center),
+        width=float(width),
+        variance_frac=float(variance_frac),
     )
 
 
@@ -168,7 +125,11 @@ def plot_heteroskedastic_case(
         ax.plot(x_sorted, y_truth_sorted, color="C0", linewidth=1.5)
     if show_noise_bands:
         sigma_sorted = heteroskedastic_noise_std(
-            x_sorted, data.regions, noise_floor=data.noise_floor
+            x_sorted,
+            center=data.center,
+            width=data.width,
+            excess_variance=data.variance_frac * data.alpha,
+            noise_floor=data.noise_floor,
         )
         ax.fill_between(
             x_sorted,
@@ -202,10 +163,9 @@ HETEROSKEDASTIC_KWARGS = (
     "x_min",
     "x_max",
     "noise_std_frac",
-    "amplitude_frac",
+    "variance_frac",
     "min_width",
     "max_width",
     "ell_range",
     "alpha_range",
-    "num_regions",
 )

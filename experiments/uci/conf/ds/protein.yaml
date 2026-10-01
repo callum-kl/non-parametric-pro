@@ -1,2 +1,5 @@
-# N=45730, D=9
 dataset: protein
+inducing: true
+num_inducing: 500
+num_adapt_steps: 40
+sigma_adapt_steps: 35

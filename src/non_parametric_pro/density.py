@@ -80,6 +80,18 @@ def pro_score_fn(
     return score
 
 
+def pro_replica_fn(
+    u: jax.Array,
+    parameters: ProParameters,
+) -> jax.Array:
+    sigma = _effective_sigma(parameters)
+    log_density = normal_logpdf(parameters.y, u, sigma)
+    log_marginal = logsumexp(log_density, axis=1)
+    log_weights = log_density - log_marginal[:, None]
+
+    return log_weights
+
+
 def predictive_score(
     z: jax.Array,
     parameters: ProParameters,

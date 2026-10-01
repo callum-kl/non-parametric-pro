@@ -1,0 +1,73 @@
+{
+  "dataset": "machine",
+  "split": 4,
+  "sigma": 0.38391187316483383,
+  "residuals": {
+    "whitened": {
+      "n": 167,
+      "mean": -0.010674306453007454,
+      "std": 1.0325538485707972,
+      "skew": -0.19876521775589395,
+      "excess_kurtosis": 0.322406774041736,
+      "shapiro_W": 0.9941325663835733,
+      "shapiro_p": 0.7452920977492679,
+      "dagostino_p": 0.32236191935383335,
+      "jarque_bera_p": 0.40193690012082706,
+      "ks_standard_normal_D": 0.03617219275655181,
+      "ks_standard_normal_p": 0.9755512104807285,
+      "anderson_A2": 0.2459285560625517,
+      "anderson_p": 0.15,
+      "frac_beyond_2sigma": 0.041916167664670656,
+      "frac_beyond_3sigma": 0.005988023952095809
+    },
+    "loo": {
+      "n": 167,
+      "mean": 0.013065750179013664,
+      "std": 0.9999861577890727,
+      "skew": -0.27195066545731983,
+      "excess_kurtosis": 0.3601314439298746,
+      "shapiro_W": 0.9926701226359772,
+      "shapiro_p": 0.5605683537845967,
+      "dagostino_p": 0.18020275120289692,
+      "jarque_bera_p": 0.22753151281487152,
+      "ks_standard_normal_D": 0.05408336678792919,
+      "ks_standard_normal_p": 0.6923047945408944,
+      "anderson_A2": 0.37564326049636065,
+      "anderson_p": 0.15,
+      "frac_beyond_2sigma": 0.041916167664670656,
+      "frac_beyond_3sigma": 0.005988023952095809
+    },
+    "test": {
+      "n": 42,
+      "mean": 0.11468178067547222,
+      "std": 0.9077841548883918,
+      "skew": 0.011006156523751339,
+      "excess_kurtosis": 1.9275221211119522,
+      "shapiro_W": 0.9642711789878158,
+      "shapiro_p": 0.20952256758541016,
+      "dagostino_p": 0.07372485344046044,
+      "jarque_bera_p": 0.03872198274456081,
+      "ks_standard_normal_D": 0.11923138973299408,
+      "ks_standard_normal_p": 0.5491366405366133,
+      "anderson_A2": 0.4152275795670306,
+      "anderson_p": 0.15,
+      "frac_beyond_2sigma": 0.047619047619047616,
+      "frac_beyond_3sigma": 0.0
+    }
+  },
+  "target": {
+    "n": 167,
+    "num_unique": 97,
+    "modal_value": -0.3312432343961285,
+    "modal_fraction": 0.03592814371257485,
+    "skew": 0.5295338116898687,
+    "excess_kurtosis": 0.03235442385517917
+  },
+  "whitening_order_check": {
+    "num_permutations": 100,
+    "shapiro_p_median": 0.4785021578309727,
+    "shapiro_p_q05": 0.04489530011960854,
+    "shapiro_p_q95": 0.8695735244754722,
+    "frac_reject_at_5pct": 0.07
+  }
+}
