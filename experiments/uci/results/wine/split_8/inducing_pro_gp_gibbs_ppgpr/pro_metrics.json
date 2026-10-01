@@ -1,0 +1,8 @@
+{
+  "dataset": "wine",
+  "split": 8,
+  "inducing": true,
+  "gp_sigma": 0.00016356281620157837,
+  "pro_sigma": 0.1725485033079941,
+  "pro_nlpd": 0.6343666405124843
+}
