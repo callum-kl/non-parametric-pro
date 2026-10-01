@@ -127,3 +127,70 @@ python experiments/pems/scripts/plot_map.py --method gp
 python experiments/pems/scripts/plot_map.py --method pro
 python experiments/pems/scripts/combine_road_maps.py
 ```
+
+
+#### UCI
+
+Download the data once.
+
+```sh
+python -c "
+from non_parametric_pro.data.uci import uci
+uci.download_uci_regression_datasets()
+uci.download_wine_quality_white()
+uci.download_abalone()
+uci.download_air_quality()
+"
+```
+
+Test NLPD for all 16 datasets over 5 splits:
+
+```sh
+python experiments/uci/scripts/run_uci.py
+```
+
+- Small datasets (machine, autompg, housing, stock, concrete, concreteslump, energy, servo) fit
+  `exact_gp`, then `pro_gp_gibbs`.
+- The larger datasets fit `vgp_noncollapsed` and `ppgpr`, then
+  `inducing_pro_gp_gibbs` and `inducing_pro_gp_gibbs_ppgpr` (seeded from each of those).
+- Per-dataset settings live in `experiments/uci/conf/ds/<dataset>.yaml`.
+- Use `--datasets machine,wine --splits 1,2` to run a subset, then
+  `python experiments/uci/scripts/aggregate_results.py` to rebuild the summary.
+
+Normality figure (needs the `exact_gp` fits above):
+
+```sh
+python experiments/uci/scripts/plot_normality.py
+```
+
+Convergence and runtime figures (parkinsons, split 1). These run sequentially so the
+timings aren't contended, and write to `experiments/uci/convergence_results/`, which is
+kept separate from `results/summary.csv`:
+
+```sh
+python experiments/uci/scripts/run_convergence.py
+python experiments/uci/scripts/run_convergence.py --ms 1000 --seeds 0
+python experiments/uci/scripts/plot_convergence.py
+```
+
+The m = 1000 run only feeds the time-per-iteration panel, so it can use a smaller
+`gp_num_iters=...` override.
+
+#### PeMS
+
+The road-network data is downloaded automatically on first use.
+
+```sh
+python experiments/pems/scripts/run_pems.py
+```
+
+This fits the exact graph GP, then `pro_gp_gibbs`, for num_train ∈ {200, 225, 250, 275} × 10 splits.
+`run_pems.py` sets automatically.
+
+Road-map figures (num_train = 250, split 1 by default; these need the fits above):
+
+```sh
+python experiments/pems/scripts/plot_map.py --method gp
+python experiments/pems/scripts/plot_map.py --method pro
+python experiments/pems/scripts/combine_road_maps.py
+```
