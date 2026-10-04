@@ -90,7 +90,7 @@ def main(cfg: DictConfig) -> None:
         x_val=split.x_val,
         y_val=split.y_val,
         sigma_optimizer=ox.adam(cfg.sigma_lr),
-        progress_bar=True,
+        progress_bar=False,
     )
     adaptation_results, _ = adaptation.run(
         adapt_key, initial_position, num_steps=cfg.num_adapt_steps
@@ -115,7 +115,8 @@ def main(cfg: DictConfig) -> None:
         num_steps=cfg.num_sample_steps,
         burn_ratio=cfg.burn_fraction,
         initial_position=adaptation_results.state.position,
-        progress_bar=True,
+        # The progress-bar host callback hung joblib workers on protein.
+        progress_bar=False,
     )
     particles = states.position[:: cfg.thin]
 
