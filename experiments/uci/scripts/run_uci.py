@@ -54,7 +54,7 @@ def main() -> None:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument(
-        "--datasets", default=",".join(EXACT_DATASETS)
+        "--datasets", default=",".join(EXACT_DATASETS + INDUCING_DATASETS)
     )
     parser.add_argument("--splits", default="1,2,3,4,5,6,7,8,9,10")
     parser.add_argument("--n-jobs", default="5")

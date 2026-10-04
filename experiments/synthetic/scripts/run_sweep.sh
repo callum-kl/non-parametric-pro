@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 python synthetic.py -m \
-  ds@_global_=block_outliers,heteroskedastic,multimodal \
+  ds@_global_=block_outliers,heteroskedastic,multimodal,well_specified \
   n=50,100,200
 
 python aggregate_results.py

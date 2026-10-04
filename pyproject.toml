@@ -29,7 +29,7 @@ test = [
 
 [project]
 authors = [
-    {email = "callum_lau@hotmail.com", name = "Callum Lau"},
+    {},
 ]
 classifiers = [
     "Operating System :: POSIX",
