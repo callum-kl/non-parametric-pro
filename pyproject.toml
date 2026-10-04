@@ -29,7 +29,7 @@ test = [
 
 [project]
 authors = [
-    {},
+    {name = "Anonymous"},
 ]
 classifiers = [
     "Operating System :: POSIX",
@@ -70,7 +70,6 @@ license-files = [
 name = "non-parametric-pro"
 readme = "README.md"
 requires-python = ">=3.11"
-urls.homepage = "https://github.com/callum-kl/non-parametric-pro"
 
 [tool.coverage]
 report = {sort = "cover"}
@@ -148,6 +147,7 @@ lint.pep8-naming.classmethod-decorators = [
 ]
 
 [tool.setuptools_scm]
+fallback_version = "0.1.0"
 local_scheme = "no-local-version"
 write_to = "src/non_parametric_pro/_version.py"
 

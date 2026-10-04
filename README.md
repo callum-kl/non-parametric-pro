@@ -88,7 +88,7 @@ The road-network data is downloaded automatically on first use.
 python experiments/pems/scripts/run_pems.py
 ```
 
-This fits the exact graph GP, then `pro_gp_gibbs`, for num_train ∈ {200, 225, 250, 275} × 10 splits.
+This fits the exact graph GP, then `pro_gp_gibbs`, for num_train ∈ {200, 225, 250, 275} × 20 splits.
 
 Road-map figures (num_train = 250, split 1 by default; these need the fits above):
 
