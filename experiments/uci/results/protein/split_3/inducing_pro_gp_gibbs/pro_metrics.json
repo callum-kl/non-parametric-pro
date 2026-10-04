@@ -2,7 +2,7 @@
   "dataset": "protein",
   "split": 3,
   "inducing": true,
-  "gp_sigma": 0.7152053909232469,
-  "pro_sigma": 0.09262312237497815,
-  "pro_nlpd": 0.635548534471009
+  "gp_sigma": 0.7156721718719249,
+  "pro_sigma": 0.09746851701334891,
+  "pro_nlpd": 0.6457428671531055
 }
