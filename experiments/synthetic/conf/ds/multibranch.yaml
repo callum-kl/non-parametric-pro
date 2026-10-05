@@ -1,0 +1,10 @@
+source: multibranch
+param_name: num_branches
+num_branches: 2
+n: 200
+test_fraction: 0.3
+noise_std_frac: 0.15
+ell_range: [0.5, 1.0]
+alpha_range: [0.5, 2.0]
+shared_width: 0.6
+transition_width: 0.8

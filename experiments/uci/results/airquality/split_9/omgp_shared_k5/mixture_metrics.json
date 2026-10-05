@@ -1,0 +1,9 @@
+{
+  "dataset": "airquality",
+  "split": 9,
+  "gp_sigma": 0.27160330764199747,
+  "mixture_nlpd": -0.19211018963845933,
+  "runtime": 45.68895166600123,
+  "occupied_components": 5.0,
+  "selected_k": null
+}

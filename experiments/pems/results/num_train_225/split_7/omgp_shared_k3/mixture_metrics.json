@@ -1,0 +1,8 @@
+{
+  "split": 7,
+  "num_train": 225,
+  "mixture_nlpd": 0.9054116876563709,
+  "runtime": 3.1851653339981567,
+  "occupied_components": 3.0,
+  "selected_k": null
+}

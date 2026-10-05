@@ -32,6 +32,26 @@ specified) × n ∈ {50, 100, 200} × {standard GP, PrO-GP}, then produces:
 - `figures/example_grid_and_summary_columns.png` (`combine_grid_summary_columns.py`)
 - `figures/multimodal_overlay.png` (`multimodal_overlay.py`)
 
+Bayesian overlapping mixture of GPs (OMGP) baselines, fitted by Gibbs in the same
+Cholesky basis and with the same kernel as PrO-GP (needs the sweep above):
+
+```sh
+./experiments/synthetic/scripts/run_mixture_sweep.sh
+```
+
+This fits OMGP with K ∈ {1, 2, 3, 5, 10}, a sparse-Dirichlet OMGP (K = 10) and OMGP
+with K chosen on a validation split, on the four regimes and on a multi-branch regime
+with K* ∈ {1, 2, 3, 4} branches. It also sweeps PrO-GP's particle count against OMGP's
+component count, then produces:
+
+- `results/omgp_k_sensitivity.csv`, `results/mixture_multibranch.csv` (`plot_mixture.py`)
+- `figures/omgp_k_sensitivity_n100.png`, `figures/multibranch_heatmap.png`,
+  `figures/particles_vs_components.png` (`plot_mixture.py`)
+
+Add `mixture.shared_sigma=true` to the `synthetic.py` calls (and `--prefix omgp_shared` to
+`plot_mixture.py`) for OMGP with one noise scale shared across components.
+- `figures/multibranch_overlay.png` (`multibranch_overlay.py`)
+
 
 #### UCI
 
@@ -65,6 +85,23 @@ Normality figure (needs the `exact_gp` fits above):
 
 ```sh
 python experiments/uci/scripts/plot_normality.py
+```
+
+OMGP baselines on the exact datasets (needs the `exact_gp` fits above):
+
+```sh
+python experiments/uci/scripts/run_uci.py --mixture-only --datasets machine,autompg,housing,stock,concrete,concreteslump,energy,servo
+python experiments/uci/scripts/plot_mixture_uci.py
+```
+
+`fit_mixture.py shared_sigma=true` (with `plot_mixture_uci.py --prefix omgp_shared`) shares one
+noise scale across components. On the inducing datasets `fit_mixture.py` uses the saved VGP's
+inducing points, e.g. `fit_mixture.py -m ds@_global_=wine split=1,2,3,4,5,6,7,8,9,10 shared_sigma=true`.
+
+PeMS OMGP baselines (needs the exact graph GP fits):
+
+```sh
+python experiments/pems/scripts/run_pems.py --mixture-only
 ```
 
 Convergence and runtime figures (parkinsons, split 1). These run sequentially so the

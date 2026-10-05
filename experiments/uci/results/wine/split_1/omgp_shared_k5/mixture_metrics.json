@@ -1,0 +1,9 @@
+{
+  "dataset": "wine",
+  "split": 1,
+  "gp_sigma": 0.4221324867472523,
+  "mixture_nlpd": 0.6229914499940442,
+  "runtime": 21.961429874994792,
+  "occupied_components": 4.98,
+  "selected_k": null
+}

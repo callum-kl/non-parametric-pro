@@ -58,6 +58,16 @@ def main() -> None:
     )
     parser.add_argument("--splits", default="1,2,3,4,5,6,7,8,9,10")
     parser.add_argument("--n-jobs", default="5")
+    parser.add_argument(
+        "--mixture",
+        action="store_true",
+        help="Also fit the OMGP baselines (fit_mixture.py) on exact datasets.",
+    )
+    parser.add_argument(
+        "--mixture-only",
+        action="store_true",
+        help="Only fit the OMGP baselines, reusing saved exact GP fits.",
+    )
     args = parser.parse_args()
 
     def script(name: str, dataset: str, *overrides: str) -> list[str]:
@@ -78,8 +88,13 @@ def main() -> None:
 
     for dataset in args.datasets.split(","):
         if dataset in EXACT_DATASETS:
-            _run(script("fit_exact_gp.py", dataset))
-            _run(script("fit_pro.py", dataset))
+            if not args.mixture_only:
+                _run(script("fit_exact_gp.py", dataset))
+                _run(script("fit_pro.py", dataset))
+            if args.mixture or args.mixture_only:
+                _run(script("fit_mixture.py", dataset))
+        elif args.mixture_only:
+            continue
         elif dataset in INDUCING_DATASETS:
             _run(script("fit_vgp.py", dataset))
             _run(script("fit_ppgpr.py", dataset))

@@ -1,6 +1,8 @@
 import json
 import logging
 import os
+import time
+from collections import defaultdict
 from pathlib import Path
 from typing import NamedTuple
 
@@ -26,6 +28,10 @@ from non_parametric_pro.data.synthetic.heteroskedastic import (
     HETEROSKEDASTIC_KWARGS,
     make_heteroskedastic_instance,
 )
+from non_parametric_pro.data.synthetic.multibranch import (
+    MULTIBRANCH_KWARGS,
+    make_multibranch_instance,
+)
 from non_parametric_pro.data.synthetic.multimodal import (
     MULTIMODAL_KWARGS,
     make_multimodal_instance,
@@ -39,6 +45,7 @@ from non_parametric_pro.density import (
     pro_logdensity_fn,
 )
 from non_parametric_pro.inducing import PointInducingBasis
+from non_parametric_pro.mixture_gibbs import fit_omgp_variants
 from non_parametric_pro.parameter_adaptation import parameter_adaptation
 from non_parametric_pro.replica_gibbs import parametric_replica_gibbs, validate_r
 from non_parametric_pro.util import (
@@ -66,6 +73,7 @@ class FitResult(NamedTuple):
     particle_predictions: jnp.ndarray | None = None
     sigma_eff: jnp.ndarray | None = None
     kernel: gpx.kernels.AbstractKernel | None = None
+    noise_std: float | None = None
 
 
 def fit_exact_gp(data, *, kernel_lengthscale=1.0):
@@ -107,6 +115,7 @@ def fit_gp(data, key=None, *, kernel_lengthscale=1.0) -> FitResult:
         std=std,
         nlpd_per_point=nlpd_per_point,
         kernel=opt_posterior.prior.kernel,
+        noise_std=float(px.unwrap(opt_posterior.likelihood.obs_stddev)),
     )
 
 
@@ -244,31 +253,58 @@ def fit_pro(
     )
 
 
-ALGORITHMS = ("standard_gp", "pro_gp")
+def evaluate(get_instance, cfg: DictConfig, key) -> dict[str, dict[str, list]]:
+    results = defaultdict(lambda: defaultdict(list))
 
+    def record(name, nlpd_per_point, runtime, **extra):
+        results[name]["nlpds"].append(float(jnp.mean(nlpd_per_point)))
+        results[name]["runtimes"].append(runtime)
+        for field, value in extra.items():
+            results[name][field].append(value)
 
-def evaluate(get_instance, cfg: DictConfig, key) -> dict[str, list[float]]:
-    nlpds = {algorithm: [] for algorithm in ALGORITHMS}
     for instance_key in progress_bar(jr.split(key, cfg.num_instances)):
         data = get_instance(instance_key)
-        fit_key, _ = jr.split(instance_key)
+        fit_key, omgp_key = jr.split(instance_key)
 
+        start = time.perf_counter()
         gp = fit_gp(data, kernel_lengthscale=cfg.kernel.lengthscale)
+        if "standard_gp" in cfg.algorithms:
+            record("standard_gp", gp.nlpd_per_point, time.perf_counter() - start)
         lengthscale, variance = gp_kernel_hyperparameters(gp.kernel)
-        pro = fit_pro(
-            data,
-            fit_key,
-            kernel_lengthscale=lengthscale,
-            kernel_variance=variance,
-            **OmegaConf.to_container(cfg.pro),
-        )
-        nlpds["standard_gp"].append(float(jnp.mean(gp.nlpd_per_point)))
-        nlpds["pro_gp"].append(float(jnp.mean(pro.nlpd_per_point)))
+
+        if "pro_gp" in cfg.algorithms:
+            start = time.perf_counter()
+            pro = fit_pro(
+                data,
+                fit_key,
+                kernel_lengthscale=lengthscale,
+                kernel_variance=variance,
+                **OmegaConf.to_container(cfg.pro),
+            )
+            record(cfg.pro_label, pro.nlpd_per_point, time.perf_counter() - start)
+
+        if "omgp" in cfg.algorithms:
+            omgp = fit_omgp_variants(
+                omgp_key,
+                gpx.kernels.RBF(lengthscale=lengthscale, variance=variance),
+                data.x_train,
+                data.y_train,
+                data.x_test,
+                data.y_test,
+                sigma_init=gp.noise_std,
+                **OmegaConf.to_container(cfg.mixture),
+            )
+            for name, result in omgp.items():
+                extra = {"occupied_components": result.occupied}
+                if result.selected_k is not None:
+                    extra["selected_k"] = result.selected_k
+                record(name, result.nlpd_per_point, result.runtime, **extra)
         jax.clear_caches()
 
-    for algorithm, values in nlpds.items():
+    for algorithm, fields in results.items():
+        values = fields["nlpds"]
         log.info("%s NLPD: %.4f±%.4f", algorithm, np.mean(values), np.std(values))
-    return nlpds
+    return results
 
 
 _DATASET_SOURCES = {
@@ -276,6 +312,7 @@ _DATASET_SOURCES = {
     "heteroskedastic": (make_heteroskedastic_instance, HETEROSKEDASTIC_KWARGS),
     "multimodal": (make_multimodal_instance, MULTIMODAL_KWARGS),
     "well_specified": (make_well_specified_instance, WELL_SPECIFIED_KWARGS),
+    "multibranch": (make_multibranch_instance, MULTIBRANCH_KWARGS),
 }
 
 
@@ -307,9 +344,10 @@ def main(cfg: DictConfig) -> None:
     get_instance = _get_instance_fn(cfg)
     param_value = cfg[cfg.param_name]
     log.info("Evaluating on %s (%s=%s)", cfg.source, cfg.param_name, param_value)
-    nlpds = evaluate(get_instance, cfg, jr.PRNGKey(cfg.seed))
+    results = evaluate(get_instance, cfg, jr.PRNGKey(cfg.seed))
 
-    for algorithm, values in nlpds.items():
+    for algorithm, fields in results.items():
+        values = fields["nlpds"]
         metrics = {
             "source": cfg.source,
             "algorithm": algorithm,
@@ -319,7 +357,7 @@ def main(cfg: DictConfig) -> None:
             "seed": cfg.seed,
             "nlpd_mean": float(np.mean(values)),
             "nlpd_std": float(np.std(values)),
-            "nlpds": values,
+            **fields,
         }
         results_dir = out_dir(cfg, param_value, algorithm)
         results_dir.mkdir(parents=True, exist_ok=True)
@@ -328,6 +366,7 @@ def main(cfg: DictConfig) -> None:
         with open(results_dir / "config.json", "w") as f:
             json.dump(OmegaConf.to_container(cfg), f, indent=2)
         log.info("Saved results to %s", results_dir)
+
 
 if __name__ == "__main__":
     main()

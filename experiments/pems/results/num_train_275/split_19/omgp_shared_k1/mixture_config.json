@@ -1,0 +1,22 @@
+{
+  "split": 19,
+  "seed": 0,
+  "num_train": 275,
+  "ks": [
+    1,
+    2,
+    3,
+    5
+  ],
+  "gamma": 1.0,
+  "sparse_k": 10,
+  "sparse_gamma": 0.01,
+  "select_k": true,
+  "val_fraction": 0.3,
+  "sigma_prior_shape": 2.0,
+  "num_steps": 1000,
+  "burn_fraction": 0.5,
+  "thin": 10,
+  "shared_sigma": true,
+  "results_root": "${script_dir:}/results"
+}

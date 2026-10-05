@@ -1,0 +1,9 @@
+{
+  "dataset": "concreteslump",
+  "split": 2,
+  "gp_sigma": 0.01688779293064047,
+  "mixture_nlpd": -0.3454605687510265,
+  "runtime": 6.696500250021927,
+  "occupied_components": 1.0,
+  "selected_k": null
+}

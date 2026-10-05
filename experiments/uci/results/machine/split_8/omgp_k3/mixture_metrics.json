@@ -1,0 +1,9 @@
+{
+  "dataset": "machine",
+  "split": 8,
+  "gp_sigma": 0.3737705109041956,
+  "mixture_nlpd": 0.7588949318626672,
+  "runtime": 1.8536310410127044,
+  "occupied_components": 2.48,
+  "selected_k": null
+}

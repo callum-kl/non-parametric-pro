@@ -1,0 +1,9 @@
+{
+  "dataset": "housing",
+  "split": 2,
+  "gp_sigma": 0.18896343201191548,
+  "mixture_nlpd": 0.11072201277336936,
+  "runtime": 30.52939291598159,
+  "occupied_components": 3.68,
+  "selected_k": null
+}

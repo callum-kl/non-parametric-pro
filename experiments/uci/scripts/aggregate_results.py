@@ -5,7 +5,6 @@ import json
 from pathlib import Path
 
 import numpy as np
-
 from run_uci import EXACT_DATASETS, INDUCING_DATASETS
 
 from non_parametric_pro.data.uci.uci import UCI_REGRESSION_DATASET_SIZES
@@ -24,6 +23,11 @@ METHODS = {
     "pro_gp_gibbs": ("pro_metrics.json", "pro_nlpd"),
     "inducing_pro_gp_gibbs": ("pro_metrics.json", "pro_nlpd"),
     "inducing_pro_gp_gibbs_ppgpr": ("pro_metrics.json", "pro_nlpd"),
+    **{
+        f"{prefix}_{variant}": ("mixture_metrics.json", "mixture_nlpd")
+        for prefix in ("omgp", "omgp_shared")
+        for variant in ("k1", "k2", "k3", "k5", "sparse", "valk")
+    },
 }
 
 
