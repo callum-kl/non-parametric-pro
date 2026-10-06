@@ -15,13 +15,6 @@ dev = [
     "tox",
     "twine",
 ]
-docs = [
-    "mkdocs-include-markdown-plugin",
-    "mkdocs-material",
-    "mkdocs<2",
-    "mkdocstrings",
-    "mkdocstrings-python",
-]
 test = [
     "pytest",
     "pytest-cov",
@@ -157,7 +150,6 @@ spaces_indent_inline_array = 4
 trailing_comma_inline_array = true
 overrides."project.classifiers".inline_arrays = false
 overrides."tool.coverage.paths.source".inline_arrays = false
-overrides."tool.tox.env.docs.commands".inline_arrays = false
 overrides."tool.tox.env_run_base.commands".inline_arrays = false
 
 [tool.tox]
@@ -176,15 +168,6 @@ env_run_base = {commands = [
     ],
 ], dependency_groups = [
     "test",
-]}
-env.docs = {commands = [
-    [
-        "mkdocs",
-        "build",
-        "--strict",
-    ],
-], dependency_groups = [
-    "docs",
 ]}
 gh.python."3.11" = ["py311"]
 gh.python."3.12" = ["py312"]
