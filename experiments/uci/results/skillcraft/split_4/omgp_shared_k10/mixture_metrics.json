@@ -1,0 +1,9 @@
+{
+  "dataset": "skillcraft",
+  "split": 4,
+  "gp_sigma": 0.6415363825543614,
+  "mixture_nlpd": 0.9153221904739965,
+  "runtime": 94.85070875001838,
+  "occupied_components": 9.5,
+  "selected_k": null
+}

@@ -15,12 +15,10 @@ UCI_DIR = Path(__file__).resolve().parents[1]
 FIGURES_DIR = UCI_DIR / "figures"
 
 MS = [100, 250, 500, 1000]
-# m=1000 has no full-length Adam trace, only the short run behind its timing point.
 VGP_MS = [100, 250, 500]
 TIME_MS = [100, 250, 500, 1000]
 SEEDS = [0, 1, 2]
 
-# Filled in by eye after the first render; None means no marker.
 CONVERGENCE_ITERS = {
     "vgp": {100: None, 250: None, 500: None, 1000: None},
     "pro": {100: None, 250: None, 500: None, 1000: None},

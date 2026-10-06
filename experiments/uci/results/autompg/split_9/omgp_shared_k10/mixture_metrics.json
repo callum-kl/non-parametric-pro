@@ -1,0 +1,9 @@
+{
+  "dataset": "autompg",
+  "split": 9,
+  "gp_sigma": 0.30452751953804325,
+  "mixture_nlpd": 0.6356772788562287,
+  "runtime": 13.707365582988132,
+  "occupied_components": 7.4,
+  "selected_k": null
+}

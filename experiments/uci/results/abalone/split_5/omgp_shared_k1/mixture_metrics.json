@@ -1,0 +1,9 @@
+{
+  "dataset": "abalone",
+  "split": 5,
+  "gp_sigma": 0.6367319687722006,
+  "mixture_nlpd": 0.9823615994904139,
+  "runtime": 11.007196584017947,
+  "occupied_components": 1.0,
+  "selected_k": null
+}

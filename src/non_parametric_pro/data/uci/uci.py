@@ -16,18 +16,18 @@ UCI_REGRESSION_DATASET_SIZES: dict[str, tuple[int, int]] = {
     "abalone": (4_177, 10),
     "airquality": (6_941, 11),
     "autompg": (392, 7),
+    "autos": (159, 25),
     "concrete": (1_030, 8),
     "concreteslump": (103, 7),
     "elevators": (16_599, 18),
     "energy": (768, 8),
     "housing": (506, 13),
+    "kin40k": (40_000, 8),
     "machine": (209, 7),
     "parkinsons": (5_875, 20),
     "protein": (45_730, 9),
-    "servo": (167, 4),
     "skillcraft": (3_338, 19),
     "stock": (536, 11),
-    "whitewine": (4_898, 11),
     "wine": (1_599, 11),
 }
 
@@ -119,31 +119,6 @@ def _write_uci_regression_dataset(
     np.savetxt(dataset_dir / "data.csv.gz", data, delimiter=",")
     np.savetxt(dataset_dir / "test_mask.csv.gz", mask, delimiter=",", fmt="%d")
     return dataset_dir
-
-
-def download_wine_quality_white(
-    *,
-    directory: Path | None = None,
-    force: bool = False,
-    source_url: str = "https://archive.ics.uci.edu/static/public/186/wine+quality.zip",
-) -> Path:
-    directory = directory if directory is not None else package_data_dir("uci_datasets")
-    dataset_dir = directory / "whitewine"
-    if dataset_dir.is_dir() and not force:
-        return dataset_dir
-
-    _require_http_url(source_url)
-    with tempfile.TemporaryDirectory() as tmpdir:
-        archive = Path(tmpdir) / "wine-quality.zip"
-        urllib.request.urlretrieve(source_url, archive)
-        with zipfile.ZipFile(archive) as zf, zf.open("winequality-white.csv") as f:
-            rows = list(
-                csv.reader(io.TextIOWrapper(f, encoding="utf-8"), delimiter=";")
-            )
-
-    data = np.array(rows[1:], dtype=np.float64)
-    x, y = data[:, :-1], data[:, -1]
-    return _write_uci_regression_dataset("whitewine", x, y, directory=directory)
 
 
 def download_abalone(

@@ -1,0 +1,9 @@
+{
+  "dataset": "autos",
+  "split": 3,
+  "gp_sigma": 0.2145366841469591,
+  "mixture_nlpd": 0.147567732165944,
+  "runtime": 4.044193499998073,
+  "occupied_components": 1.46,
+  "selected_k": null
+}

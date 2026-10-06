@@ -1,0 +1,9 @@
+{
+  "dataset": "parkinsons",
+  "split": 4,
+  "gp_sigma": 0.03371881405151843,
+  "mixture_nlpd": -2.6970628816161764,
+  "runtime": 33.105338166991714,
+  "occupied_components": 2.0,
+  "selected_k": null
+}

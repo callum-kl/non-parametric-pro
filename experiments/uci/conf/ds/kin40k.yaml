@@ -1,0 +1,4 @@
+# N=40000, D=8
+dataset: kin40k
+inducing: true
+num_inducing: 500

@@ -55,23 +55,6 @@ def kmeans_inducing_points(
 ) -> "PointInducingBasis":
     """
     Select inducing locations via k-means clustering of the training inputs.
-
-    Parameters
-    ----------
-    rng_key
-        JAX random key used to initialise centroids from a random subset of
-        training points.
-    x_train
-        Training inputs, shape ``(N,)`` or ``(N, D)``.
-    num_inducing
-        Number of inducing points (clusters) ``M``.
-    num_iters
-        Number of Lloyd's algorithm iterations.  100 is usually sufficient.
-
-    Returns
-    -------
-    A :class:`PointInducingBasis` whose ``z`` are the ``(M, D)`` centroids.
-
     """
     x = x_train.reshape(-1, 1) if x_train.ndim == 1 else x_train  # (N, D)
 

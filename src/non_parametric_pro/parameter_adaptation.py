@@ -95,14 +95,6 @@ def base(
     adapt_target: Literal["train", "val"] | None = None,
     kernel_steps_per_adapt: int = 1,
 ) -> tuple[Callable, Callable, Callable]:
-    """
-    Build the (init, update, final) triple for sigma/basis adaptation.
-
-    `kernel_steps_per_adapt` takes that many optimizer steps, each on a freshly
-    evaluated gradient, every time the kernel schedule fires -- so the kernel can be
-    driven further per firing without raising the learning rate. The loop is unrolled
-    at trace time, so keep the count small (compile time grows with it).
-    """
     if kernel_steps_per_adapt < 1:
         msg = f"kernel_steps_per_adapt must be >= 1 (got {kernel_steps_per_adapt})."
         raise ValueError(msg)

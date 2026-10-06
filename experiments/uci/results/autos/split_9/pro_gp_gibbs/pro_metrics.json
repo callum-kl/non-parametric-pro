@@ -1,0 +1,8 @@
+{
+  "dataset": "autos",
+  "split": 9,
+  "inducing": false,
+  "gp_sigma": 0.19047719564246196,
+  "pro_sigma": 0.19416806048974644,
+  "pro_nlpd": 0.3088146296615273
+}

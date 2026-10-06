@@ -1,0 +1,9 @@
+{
+  "dataset": "protein",
+  "split": 2,
+  "gp_sigma": 0.7164040462139702,
+  "mixture_nlpd": 0.656629309085415,
+  "runtime": 5078.935678541995,
+  "occupied_components": 19.84,
+  "selected_k": null
+}
