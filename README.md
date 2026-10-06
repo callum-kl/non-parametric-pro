@@ -80,7 +80,7 @@ The m = 1000 run only feeds the time-per-iteration panel, so it can use a smalle
 `gp_num_iters=...` override.
 
 Comparison with a Bayesian overlapping mixture of GPs (OMGP) with M ∈ {1, 2, 3, 5, 10, 20}
-components and a shared noise scale (`src/non_parametric_pro/mixture_gibbs.py`), fitted by
+components (`src/non_parametric_pro/mixture_gibbs.py`), fitted by
 Gibbs in the same basis and with the same kernel as PrO-GP (needs the GP fits above):
 
 ```sh
@@ -88,10 +88,7 @@ python experiments/uci/scripts/run_uci.py --mixture
 python experiments/uci/scripts/plot_mixture_uci.py
 ```
 
-- The datasets, splits and Gibbs steps are in `MIXTURE_RUNS` in `run_uci.py`: 10 splits for the
-  exact datasets, 5 for wine, skillcraft, abalone, parkinsons, airquality and kin40k, and 3 for
-  elevators and protein, with 500 Gibbs steps for kin40k, elevators and protein.
-- Produces `figures/omgp_shared_uci_raw_combined.png`.
+Produces `figures/omgp_shared_uci_raw_combined.png`.
 
 #### PeMS
 

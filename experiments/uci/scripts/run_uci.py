@@ -45,24 +45,18 @@ INDUCING_DATASETS = [
 # Peak memory per protein split is ~2.3GB, so 5 in parallel would exceed 8GB of RAM.
 MAX_JOBS = {"protein": 2, "kin40k": 1}
 
-# OMGP baselines for the mixture figure: (splits, Gibbs steps, batches of K). The batches
-# are how the stored results were run, and the random keys depend on the batch, so this
-# reproduces them exactly.
+# OMGP baselines for the mixture figure: (Gibbs steps, batches of K), run on --splits. The
+# batches are how the stored results were run, and the random keys depend on the batch,
+# so this reproduces them exactly.
 _SMALL_K_BATCHES = ([1, 2, 3, 5], [10], [20])
 _LARGE_K_BATCHES = ([1, 2, 3, 5, 10], [20])
 MIXTURE_RUNS = {
     **dict.fromkeys(
         ("concreteslump", "autos", "machine", "autompg", "housing", "stock", "energy",
-         "concrete"),
-        ("1,2,3,4,5,6,7,8,9,10", 1000, _SMALL_K_BATCHES),
+         "concrete", "wine", "skillcraft", "abalone", "parkinsons", "airquality"),
+        (1000, _SMALL_K_BATCHES),
     ),
-    **dict.fromkeys(
-        ("wine", "skillcraft", "abalone", "parkinsons", "airquality"),
-        ("1,2,3,4,5", 1000, _SMALL_K_BATCHES),
-    ),
-    "kin40k": ("1,2,3,4,5", 500, _LARGE_K_BATCHES),
-    "elevators": ("1,2,3", 500, _LARGE_K_BATCHES),
-    "protein": ("1,2,3", 500, _LARGE_K_BATCHES),
+    **dict.fromkeys(("kin40k", "elevators", "protein"), (500, _LARGE_K_BATCHES)),
 }
 
 
@@ -107,12 +101,12 @@ def main() -> None:
         for dataset in args.datasets.split(","):
             if dataset not in MIXTURE_RUNS:
                 continue
-            splits, num_steps, k_batches = MIXTURE_RUNS[dataset]
+            num_steps, k_batches = MIXTURE_RUNS[dataset]
             for ks in k_batches:
                 _run([
                     sys.executable, str(SCRIPT_DIR / "fit_mixture.py"), "-m",
                     "hydra/launcher=joblib", f"hydra.launcher.n_jobs={args.n_jobs}",
-                    f"ds@_global_={dataset}", f"split={splits}", f"num_steps={num_steps}",
+                    f"ds@_global_={dataset}", f"split={args.splits}", f"num_steps={num_steps}",
                     f"ks=[{','.join(map(str, ks))}]",
                 ])
         return

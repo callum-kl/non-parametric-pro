@@ -1,6 +1,5 @@
 """
-Bayesian overlapping mixture of GPs (OMGP) with a noise scale shared across components,
-sampled by Gibbs in the Cholesky or inducing basis of a fixed GP kernel.
+Bayesian overlapping mixture of GPs (OMGP), sampled by Gibbs in the Cholesky or inducing basis of a fixed GP kernel.
 """
 
 import time
@@ -25,13 +24,10 @@ from non_parametric_pro.util import (
 TEST_CHUNK = 1024
 TRAIN_CHUNK = 4096
 
-
 class MixtureState(NamedTuple):
     w: jax.Array
     log_pi: jax.Array
-    # One shared scale, stored per component.
     sigma: jax.Array
-
 
 class MixtureParameters(NamedTuple):
     y: jax.Array
@@ -39,7 +35,6 @@ class MixtureParameters(NamedTuple):
     gamma: float
     sigma_prior_shape: float
     sigma_prior_scale: float
-    # Per-datum K(x,x) - Q(x,x) for an inducing basis, treated as extra noise as in PRO.
     residual_var: jax.Array | None = None
 
 
@@ -78,7 +73,6 @@ def one_step(rng_key, state: MixtureState, parameters: MixtureParameters) -> Mix
     onehot = jax.nn.one_hot(jr.categorical(assign_key, logits, axis=1), num_components)
     counts = onehot.sum(axis=0)
 
-    # With sigma=1, _gaussian_block's per-datum weight count * sigma**-2 becomes 1[c_i=k] / sigma**2.
     w = _gaussian_block(
         w_key, parameters.basis, y, 1.0, onehot / _noise_var(state.sigma, parameters)
     )
@@ -129,7 +123,6 @@ def sample_mixture(
         basis=basis,
         gamma=gamma,
         sigma_prior_shape=sigma_prior_shape,
-        # Prior mean of sigma**2 is sigma_init**2.
         sigma_prior_scale=(sigma_prior_shape - 1.0) * sigma_init**2,
         residual_var=residual_var,
     )
@@ -151,7 +144,6 @@ def sample_mixture(
 def nlpd_mixture(
     y_test: jax.Array, test_basis: jax.Array, test_prior_var: jax.Array, samples: MixtureState
 ) -> jax.Array:
-    """Per-point NLPD; `test_prior_var` is the diagonal of the prior covariance K(x*, x*)."""
     projected = jnp.einsum("td,sdk->stk", test_basis, samples.w)
     residual_var = jnp.maximum(test_prior_var - jnp.sum(test_basis**2, axis=1), 0.0)
     sigma_eff = jnp.sqrt(samples.sigma[:, None, :] ** 2 + residual_var[None, :, None])
@@ -162,8 +154,6 @@ def nlpd_mixture(
 
 
 def _chunked_inducing_basis(inducing_basis, kernel, x_train):
-    """Rows of the inducing basis depend only on their own input, so build it in chunks
-    rather than materialising the full train-inducing kernel intermediates at once."""
     bases, residual_stds = [], []
     for start in range(0, x_train.shape[0], TRAIN_CHUNK):
         basis, residual_std = compute_inducing_basis(
@@ -175,8 +165,6 @@ def _chunked_inducing_basis(inducing_basis, kernel, x_train):
 
 
 def _test_basis_and_prior_var(kernel, x_train, x_test, parameters, inducing_basis):
-    """Chunked over test points so the dense test-test Gram matrix, of which only the
-    diagonal is needed, is never built in full."""
     bases, prior_vars = [], []
     for start in range(0, x_test.shape[0], TEST_CHUNK):
         basis, covariance = prediction_basis(
@@ -236,7 +224,6 @@ def fit_omgp(
     inducing_basis: InducingBasis | None = None,
 ) -> dict[int, tuple[jax.Array, float]]:
     """OMGP with each number of components in `ks`: {K: (per-point NLPD, runtime)}."""
-    # The first of four splits, so the stored results are reproduced exactly.
     full_key = jr.split(rng_key, 4)[0]
     return {
         int(k): fit_mixture_gp(

@@ -10,7 +10,6 @@ class ProParameters(NamedTuple):
     """
     Parameters controlling one ULA iteration.
     """
-
     y: jax.Array
     step_size: float
     sigma: jax.Array | float | paramax.AbstractUnwrappable
