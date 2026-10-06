@@ -97,6 +97,7 @@ python experiments/uci/scripts/plot_mixture_uci.py
 `fit_mixture.py shared_sigma=true` (with `plot_mixture_uci.py --prefix omgp_shared`) shares one
 noise scale across components. On the inducing datasets `fit_mixture.py` uses the saved VGP's
 inducing points, e.g. `fit_mixture.py -m ds@_global_=wine split=1,2,3,4,5,6,7,8,9,10 shared_sigma=true`.
+`plot_mixture_uci.py --prefix omgp_shared --inducing` plots those against inducing PrO-GP.
 
 PeMS OMGP baselines (needs the exact graph GP fits):
 

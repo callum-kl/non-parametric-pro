@@ -28,6 +28,10 @@ EXACT_DATASETS = [
     "concreteslump",
     "energy",
     "servo",
+    "autos",
+    "breastcancer",
+    "forest",
+    "yacht",
 ]
 INDUCING_DATASETS = [
     "wine",
@@ -38,6 +42,9 @@ INDUCING_DATASETS = [
     "airquality",
     "elevators",
     "protein",
+    "kin40k",
+    "abalone_dq",
+    "whitewine_dq",
 ]
 
 # Peak memory per protein split is ~2.3GB, so 5 in parallel would exceed 8GB of RAM.

@@ -16,11 +16,15 @@ UCI_REGRESSION_DATASET_SIZES: dict[str, tuple[int, int]] = {
     "abalone": (4_177, 10),
     "airquality": (6_941, 11),
     "autompg": (392, 7),
+    "autos": (159, 25),
+    "breastcancer": (194, 33),
     "concrete": (1_030, 8),
     "concreteslump": (103, 7),
     "elevators": (16_599, 18),
     "energy": (768, 8),
+    "forest": (517, 12),
     "housing": (506, 13),
+    "kin40k": (40_000, 8),
     "machine": (209, 7),
     "parkinsons": (5_875, 20),
     "protein": (45_730, 9),
@@ -29,7 +33,16 @@ UCI_REGRESSION_DATASET_SIZES: dict[str, tuple[int, int]] = {
     "stock": (536, 11),
     "whitewine": (4_898, 11),
     "wine": (1_599, 11),
+    "yacht": (308, 6),
+    "abalone_dq": (4_177, 10),
+    "whitewine_dq": (4_898, 11),
 }
+
+# Integer-valued targets give continuous densities an unbounded likelihood (a mixture can
+# put a spike on every level), so these variants add U(-1/2, 1/2) noise to the target:
+# the standard dequantisation, under which NLPD scores the mass of each integer's bin.
+DEQUANTIZED_DATASETS = {"abalone_dq": "abalone", "whitewine_dq": "whitewine"}
+DEQUANTIZE_SEED = 0
 
 
 NUM_RAW_UCI_SPLITS = 10
@@ -221,7 +234,8 @@ def load_uci_regression_dataset(
 
     directory = directory if directory is not None else package_data_dir("uci_datasets")
     name = _canonical_uci_dataset_name(dataset)
-    data_root = _find_uci_data_root(directory, name)
+    source = DEQUANTIZED_DATASETS.get(name, name)
+    data_root = _find_uci_data_root(directory, source)
     if data_root is None:
         msg = (
             f"Could not find UCI regression data under {directory}. "
@@ -229,7 +243,7 @@ def load_uci_regression_dataset(
         )
         raise FileNotFoundError(msg)
 
-    dataset_dir = data_root / name
+    dataset_dir = data_root / source
     data_path = dataset_dir / "data.csv.gz"
     if not data_path.is_file():
         msg = f"Missing data file: {data_path}"
@@ -241,6 +255,8 @@ def load_uci_regression_dataset(
         raise ValueError(msg)
 
     n = data.shape[0]
+    if name in DEQUANTIZED_DATASETS:
+        data[:, -1] += np.random.default_rng(DEQUANTIZE_SEED).uniform(-0.5, 0.5, size=n)
     perm = np.random.default_rng(split).permutation(n)
     num_test = round(UCI_TEST_FRACTION * n)
     test_idx, train_idx = perm[:num_test], perm[num_test:]

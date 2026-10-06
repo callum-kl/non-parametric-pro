@@ -1,0 +1,9 @@
+{
+  "dataset": "energy",
+  "split": 6,
+  "gp_sigma": 0.04468328868718564,
+  "mixture_nlpd": -1.7890525765211327,
+  "runtime": 366.969481084001,
+  "occupied_components": 5.46,
+  "selected_k": null
+}

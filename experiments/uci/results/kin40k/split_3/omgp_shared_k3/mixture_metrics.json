@@ -1,0 +1,9 @@
+{
+  "dataset": "kin40k",
+  "split": 3,
+  "gp_sigma": 0.2145062601687827,
+  "mixture_nlpd": -0.4472455813495511,
+  "runtime": 625.152423917003,
+  "occupied_components": 3.0,
+  "selected_k": null
+}

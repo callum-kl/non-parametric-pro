@@ -1,0 +1,8 @@
+{
+  "dataset": "whitewine_dq",
+  "split": 2,
+  "inducing": true,
+  "gp_sigma": 0.793197359585802,
+  "pro_sigma": 0.6579879539916814,
+  "pro_nlpd": 1.1831779023033044
+}

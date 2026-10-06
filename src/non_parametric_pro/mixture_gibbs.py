@@ -180,15 +180,14 @@ def sample_mixture(
 def nlpd_mixture(
     y_test: jax.Array,
     test_basis: jax.Array,
-    test_covariance: jax.Array,
+    test_prior_var: jax.Array,
     samples: MixtureState,
     *,
     return_per_point: bool = False,
 ) -> jax.Array:
+    """`test_prior_var` is the diagonal of the prior covariance K(x*, x*)."""
     projected = jnp.einsum("td,sdk->stk", test_basis, samples.w)
-    residual_var = jnp.maximum(
-        jnp.diag(test_covariance) - jnp.sum(test_basis**2, axis=1), 0.0
-    )
+    residual_var = jnp.maximum(test_prior_var - jnp.sum(test_basis**2, axis=1), 0.0)
     sigma_eff = jnp.sqrt(samples.sigma[:, None, :] ** 2 + residual_var[None, :, None])
     log_components = samples.log_pi[:, None, :] + normal_logpdf(
         y_test.reshape(1, -1, 1), projected, sigma_eff
@@ -208,8 +207,39 @@ class MixtureFit(NamedTuple):
     samples: MixtureState
     infos: MixtureInfo
     test_basis: jax.Array
-    test_covariance: jax.Array
+    test_prior_var: jax.Array
     runtime: float
+
+
+TEST_CHUNK = 1024
+TRAIN_CHUNK = 4096
+
+
+def _chunked_inducing_basis(inducing_basis, kernel, x_train):
+    """Rows of the inducing basis depend only on their own input, so build it in chunks
+    rather than materialising the full train-inducing kernel intermediates at once."""
+    bases, residual_stds = [], []
+    for start in range(0, x_train.shape[0], TRAIN_CHUNK):
+        basis, residual_std = compute_inducing_basis(
+            inducing_basis, kernel, x_train[start : start + TRAIN_CHUNK]
+        )
+        bases.append(basis)
+        residual_stds.append(residual_std)
+    return jnp.concatenate(bases), jnp.concatenate(residual_stds)
+
+
+def _test_basis_and_prior_var(kernel, x_train, x_test, parameters, inducing_basis):
+    """Chunked over test points so the dense test-test Gram matrix, of which only the
+    diagonal is needed, is never built in full."""
+    bases, prior_vars = [], []
+    for start in range(0, x_test.shape[0], TEST_CHUNK):
+        basis, covariance = prediction_basis(
+            kernel, x_train, x_test[start : start + TEST_CHUNK], parameters,
+            inducing_basis=inducing_basis,
+        )
+        bases.append(basis)
+        prior_vars.append(jnp.diag(covariance))
+    return jnp.concatenate(bases), jnp.concatenate(prior_vars)
 
 
 def fit_mixture_gp(
@@ -227,27 +257,27 @@ def fit_mixture_gp(
     if inducing_basis is None:
         basis, residual_var = cholesky_basis(kernel, x_train), None
     else:
-        basis, residual_std = compute_inducing_basis(inducing_basis, kernel, x_train)
+        basis, residual_std = _chunked_inducing_basis(inducing_basis, kernel, x_train)
         residual_var = residual_std**2
     samples, infos = sample_mixture(
         rng_key, basis, y_train, residual_var=residual_var, **sample_kwargs
     )
-    test_basis, test_covariance = prediction_basis(
+    test_basis, test_prior_var = _test_basis_and_prior_var(
         kernel,
         x_train,
         x_test,
         ProParameters(y=y_train, step_size=None, sigma=None, alpha=None, basis=basis),
-        inducing_basis=inducing_basis,
+        inducing_basis,
     )
     nlpd_per_point = jax.block_until_ready(
-        nlpd_mixture(y_test, test_basis, test_covariance, samples, return_per_point=True)
+        nlpd_mixture(y_test, test_basis, test_prior_var, samples, return_per_point=True)
     )
     return MixtureFit(
         nlpd_per_point=nlpd_per_point,
         samples=samples,
         infos=infos,
         test_basis=test_basis,
-        test_covariance=test_covariance,
+        test_prior_var=test_prior_var,
         runtime=time.perf_counter() - start,
     )
 

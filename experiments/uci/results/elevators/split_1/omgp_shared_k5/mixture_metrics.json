@@ -1,0 +1,9 @@
+{
+  "dataset": "elevators",
+  "split": 1,
+  "gp_sigma": 0.3885273341789241,
+  "mixture_nlpd": 0.3674669203287896,
+  "runtime": 90.10824662499999,
+  "occupied_components": 5.0,
+  "selected_k": null
+}

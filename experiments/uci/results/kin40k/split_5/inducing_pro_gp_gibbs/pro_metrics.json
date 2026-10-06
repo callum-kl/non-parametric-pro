@@ -1,0 +1,8 @@
+{
+  "dataset": "kin40k",
+  "split": 5,
+  "inducing": true,
+  "gp_sigma": 0.2190517586566622,
+  "pro_sigma": 0.026993467932723537,
+  "pro_nlpd": -0.5970833589911638
+}

@@ -49,7 +49,7 @@ def omgp_bands(ax, data, kernel, sigma_init, num_components, key) -> None:
     samples = fit.samples
     projected = np.einsum("td,sdk->tsk", fit.test_basis, samples.w)
     residual_var = np.maximum(
-        np.diag(fit.test_covariance) - np.sum(np.asarray(fit.test_basis) ** 2, axis=1), 0.0
+        np.asarray(fit.test_prior_var) - np.sum(np.asarray(fit.test_basis) ** 2, axis=1), 0.0
     )
     sigma = np.sqrt(samples.sigma[None] ** 2 + residual_var[:, None, None])
 

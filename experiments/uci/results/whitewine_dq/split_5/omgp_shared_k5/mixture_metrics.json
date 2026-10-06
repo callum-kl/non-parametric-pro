@@ -1,0 +1,9 @@
+{
+  "dataset": "whitewine_dq",
+  "split": 5,
+  "gp_sigma": 0.8061729433257512,
+  "mixture_nlpd": 1.1711304697930063,
+  "runtime": 60.40922637499898,
+  "occupied_components": 5.0,
+  "selected_k": null
+}

@@ -1,0 +1,8 @@
+defaults:
+  - fit_pro
+  - _self_
+
+# alpha = lambda_n / n is a per-particle likelihood temperature (alpha = 1 is Bayes);
+# r = num_particles * alpha must be an integer: with 50 particles, r = 25, 70, 150, 300.
+alphas: [0.5, 1.4, 3.0, 6.0]
+alpha_val_fraction: 0.3
