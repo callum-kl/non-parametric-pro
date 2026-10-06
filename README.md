@@ -32,26 +32,6 @@ specified) × n ∈ {50, 100, 200} × {standard GP, PrO-GP}, then produces:
 - `figures/example_grid_and_summary_columns.png` (`combine_grid_summary_columns.py`)
 - `figures/multimodal_overlay.png` (`multimodal_overlay.py`)
 
-Bayesian overlapping mixture of GPs (OMGP) baselines, fitted by Gibbs in the same
-Cholesky basis and with the same kernel as PrO-GP (needs the sweep above):
-
-```sh
-./experiments/synthetic/scripts/run_mixture_sweep.sh
-```
-
-This fits OMGP with K ∈ {1, 2, 3, 5, 10}, a sparse-Dirichlet OMGP (K = 10) and OMGP
-with K chosen on a validation split, on the four regimes and on a multi-branch regime
-with K* ∈ {1, 2, 3, 4} branches. It also sweeps PrO-GP's particle count against OMGP's
-component count, then produces:
-
-- `results/omgp_k_sensitivity.csv`, `results/mixture_multibranch.csv` (`plot_mixture.py`)
-- `figures/omgp_k_sensitivity_n100.png`, `figures/multibranch_heatmap.png`,
-  `figures/particles_vs_components.png` (`plot_mixture.py`)
-
-Add `mixture.shared_sigma=true` to the `synthetic.py` calls (and `--prefix omgp_shared` to
-`plot_mixture.py`) for OMGP with one noise scale shared across components.
-- `figures/multibranch_overlay.png` (`multibranch_overlay.py`)
-
 
 #### UCI
 
@@ -61,7 +41,6 @@ Download the data once.
 python -c "
 from non_parametric_pro.data.uci import uci
 uci.download_uci_regression_datasets()
-uci.download_wine_quality_white()
 uci.download_abalone()
 uci.download_air_quality()
 "
@@ -73,7 +52,7 @@ Test NLPD for all 16 datasets over 10 splits:
 python experiments/uci/scripts/run_uci.py
 ```
 
-- Small datasets (machine, autompg, housing, stock, concrete, concreteslump, energy, servo) fit
+- Small datasets (machine, autompg, housing, stock, concrete, concreteslump, energy, autos) fit
   `exact_gp`, then `pro_gp_gibbs`.
 - The larger datasets fit `vgp_noncollapsed` and `ppgpr`, then
   `inducing_pro_gp_gibbs` and `inducing_pro_gp_gibbs_ppgpr` (seeded from each of those).
@@ -85,24 +64,6 @@ Normality figure (needs the `exact_gp` fits above):
 
 ```sh
 python experiments/uci/scripts/plot_normality.py
-```
-
-OMGP baselines on the exact datasets (needs the `exact_gp` fits above):
-
-```sh
-python experiments/uci/scripts/run_uci.py --mixture-only --datasets machine,autompg,housing,stock,concrete,concreteslump,energy,servo
-python experiments/uci/scripts/plot_mixture_uci.py
-```
-
-`fit_mixture.py shared_sigma=true` (with `plot_mixture_uci.py --prefix omgp_shared`) shares one
-noise scale across components. On the inducing datasets `fit_mixture.py` uses the saved VGP's
-inducing points, e.g. `fit_mixture.py -m ds@_global_=wine split=1,2,3,4,5,6,7,8,9,10 shared_sigma=true`.
-`plot_mixture_uci.py --prefix omgp_shared --inducing` plots those against inducing PrO-GP.
-
-PeMS OMGP baselines (needs the exact graph GP fits):
-
-```sh
-python experiments/pems/scripts/run_pems.py --mixture-only
 ```
 
 Convergence and runtime figures (parkinsons, split 1). These run sequentially so the
@@ -117,6 +78,20 @@ python experiments/uci/scripts/plot_convergence.py
 
 The m = 1000 run only feeds the time-per-iteration panel, so it can use a smaller
 `gp_num_iters=...` override.
+
+Comparison with a Bayesian overlapping mixture of GPs (OMGP) with M ∈ {1, 2, 3, 5, 10, 20}
+components and a shared noise scale (`src/non_parametric_pro/mixture_gibbs.py`), fitted by
+Gibbs in the same basis and with the same kernel as PrO-GP (needs the GP fits above):
+
+```sh
+python experiments/uci/scripts/run_uci.py --mixture
+python experiments/uci/scripts/plot_mixture_uci.py
+```
+
+- The datasets, splits and Gibbs steps are in `MIXTURE_RUNS` in `run_uci.py`: 10 splits for the
+  exact datasets, 5 for wine, skillcraft, abalone, parkinsons, airquality and kin40k, and 3 for
+  elevators and protein, with 500 Gibbs steps for kin40k, elevators and protein.
+- Produces `figures/omgp_shared_uci_raw_combined.png`.
 
 #### PeMS
 

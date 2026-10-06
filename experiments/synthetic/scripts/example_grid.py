@@ -121,7 +121,6 @@ def _pro_density_bands(
     # widest first, so the inner region sits on top
     masses: tuple[float, ...] = (0.95, 0.5),
     alphas: tuple[float, ...] = PRO_BAND_ALPHAS,
-    color: str = PRO_COLOR,
 ) -> None:
     """
     Shade the actual predictive density surface (a per-x mixture of Gaussians, one per
@@ -138,10 +137,12 @@ def _pro_density_bands(
     y_hi = float(np.max(mean_sorted + credible_k * std_sorted))
     y_grid = np.linspace(y_lo, y_hi, num_y)
 
-    # sigma_eff may be per-x (N_x,) or per-particle (N_x, J)
-    sigma = np.reshape(sigma_eff_sorted, (len(x_sorted), 1, -1))
-    z = (y_grid[None, :, None] - particle_predictions_sorted[:, None, :]) / sigma
-    normal_pdf = np.exp(-0.5 * z**2) / (sigma * np.sqrt(2 * np.pi))
+    z = (y_grid[None, :, None] - particle_predictions_sorted[:, None, :]) / (
+        sigma_eff_sorted[:, None, None]
+    )
+    normal_pdf = np.exp(-0.5 * z**2) / (
+        sigma_eff_sorted[:, None, None] * np.sqrt(2 * np.pi)
+    )
     density = normal_pdf.mean(axis=2)  # (N_x, num_y)
 
     order = np.argsort(-density, axis=1)
@@ -157,7 +158,7 @@ def _pro_density_bands(
             y_mesh,
             enclosed,
             levels=[0.0, mass],
-            colors=[color],
+            colors=[PRO_COLOR],
             alpha=alpha,
         )
 

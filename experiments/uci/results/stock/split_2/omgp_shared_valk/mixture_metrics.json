@@ -1,9 +1,0 @@
-{
-  "dataset": "stock",
-  "split": 2,
-  "gp_sigma": 0.2972180915668112,
-  "mixture_nlpd": 0.34941779869296236,
-  "runtime": 67.45283254201058,
-  "occupied_components": 2.2600000000000002,
-  "selected_k": 3
-}

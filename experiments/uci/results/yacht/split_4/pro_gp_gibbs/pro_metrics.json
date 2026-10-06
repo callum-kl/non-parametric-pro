@@ -1,8 +1,0 @@
-{
-  "dataset": "yacht",
-  "split": 4,
-  "inducing": false,
-  "gp_sigma": 0.018665790003158503,
-  "pro_sigma": 0.050888439628051084,
-  "pro_nlpd": -1.3906439193834257
-}

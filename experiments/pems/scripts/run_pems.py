@@ -22,11 +22,6 @@ def main() -> None:
         "--n-jobs",
         default="5",
     )
-    parser.add_argument(
-        "--mixture-only",
-        action="store_true",
-        help="Only fit the OMGP baselines, reusing saved exact GP fits.",
-    )
     args = parser.parse_args()
 
     launcher = ["-m", "hydra/launcher=joblib", f"hydra.launcher.n_jobs={args.n_jobs}"]
@@ -36,10 +31,7 @@ def main() -> None:
             f"num_train={num_train}",
             f"seed={args.seed}",
         ]
-        scripts = (
-            ("fit_mixture.py",) if args.mixture_only else ("fit_exact_gp.py", "fit_pro.py")
-        )
-        for script in scripts:
+        for script in ("fit_exact_gp.py", "fit_pro.py"):
             _run([sys.executable, str(SCRIPT_DIR / script), *launcher, *overrides])
 
     _run([sys.executable, str(SCRIPT_DIR / "aggregate_results.py")])

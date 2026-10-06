@@ -1,8 +1,0 @@
-{
-  "dataset": "breastcancer",
-  "split": 4,
-  "inducing": false,
-  "gp_sigma": 0.6774699090457531,
-  "pro_sigma": 0.5938898487150519,
-  "pro_nlpd": 1.3249137056607818
-}

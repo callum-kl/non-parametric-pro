@@ -1,9 +1,0 @@
-{
-  "dataset": "whitewine",
-  "split": 1,
-  "gp_sigma": 0.7732529442763794,
-  "mixture_nlpd": 1.1407842526414416,
-  "runtime": 17.32919041599962,
-  "occupied_components": 1.0,
-  "selected_k": null
-}

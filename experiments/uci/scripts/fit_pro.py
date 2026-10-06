@@ -32,23 +32,25 @@ from non_parametric_pro.util import (
 log = logging.getLogger(__name__)
 
 
-def run_pro(
-    cfg: DictConfig,
-    key,
-    kernel,
-    inducing_basis,
-    x_train,
-    y_train,
-    x_test,
-    y_test,
-    *,
-    alpha: float,
-    per_point: bool = False,
-) -> tuple[float, float]:
-    """Adapt sigma on a train/val split of the training set, sample against the full
-    training set, and return (test NLPD, adapted sigma). With `per_point` the NLPD is
-    returned per test point."""
-    validate_r(cfg.num_particles, alpha)
+@hydra.main(version_base=None, config_path="../conf", config_name="fit_pro")
+def main(cfg: DictConfig) -> None:
+    mode = "inducing" if cfg.inducing else "exact GP"
+    log.info("PRO (%s): dataset=%s split=%d", mode, cfg.dataset, cfg.split)
+    validate_r(cfg.num_particles, cfg.alpha)
+
+    key = jr.PRNGKey(cfg.seed)
+    out_dir = pro_out_dir(cfg)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    kernel, gp_sigma_val, inducing_basis, scaler_x, scaler_y = load_gp_state(cfg)
+
+    example = load_uci_regression_dataset(cfg.dataset, split=cfg.split)
+    x_train = scaler_x.transform(example.x_train)
+    y_train = scaler_y.transform(example.y_train)
+    x_test = scaler_x.transform(example.x_test)
+    y_test = scaler_y.transform(example.y_test)
+    log.info("N_train=%d  N_test=%d", x_train.shape[0], x_test.shape[0])
+
     if cfg.inducing:
         basis_full, residual_std_full = compute_inducing_basis(
             inducing_basis, kernel, x_train
@@ -69,7 +71,7 @@ def run_pro(
         sigma=gpx.parameters.SigmoidBounded(
             cfg.sigma_init, low=cfg.sigma_min, high=cfg.sigma_max
         ),
-        alpha=alpha,
+        alpha=cfg.alpha,
         residual_std=None,
     )
     initial_position = jr.normal(pos_key, (basis_full.shape[1], cfg.num_particles))
@@ -103,7 +105,7 @@ def run_pro(
         basis=basis_full,
         step_size=None,
         sigma=adaptation_results.parameters.sigma,
-        alpha=alpha,
+        alpha=cfg.alpha,
         residual_std=residual_std_full,
     )
     key, sample_key = jr.split(key)
@@ -121,42 +123,15 @@ def run_pro(
     test_basis, test_cov = prediction_basis(
         kernel, x_train, x_test, pro_params, inducing_basis=inducing_basis
     )
-    nlpd = nlpd_pro(
-        y_test, test_basis, test_cov, particles, parameters=pro_params,
-        return_per_point=per_point,
-    )
-    return (np.asarray(nlpd) if per_point else float(nlpd)), adapted_sigma_val
-
-
-@hydra.main(version_base=None, config_path="../conf", config_name="fit_pro")
-def main(cfg: DictConfig) -> None:
-    mode = "inducing" if cfg.inducing else "exact GP"
-    log.info("PRO (%s): dataset=%s split=%d", mode, cfg.dataset, cfg.split)
-    validate_r(cfg.num_particles, cfg.alpha)
-
-    out_dir = pro_out_dir(cfg)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    kernel, gp_sigma_val, inducing_basis, scaler_x, scaler_y = load_gp_state(cfg)
-
-    example = load_uci_regression_dataset(cfg.dataset, split=cfg.split)
-    x_train = scaler_x.transform(example.x_train)
-    y_train = scaler_y.transform(example.y_train)
-    x_test = scaler_x.transform(example.x_test)
-    y_test = scaler_y.transform(example.y_test)
-    log.info("N_train=%d  N_test=%d", x_train.shape[0], x_test.shape[0])
-
-    pro_nlpd, adapted_sigma_val = run_pro(
-        cfg, jr.PRNGKey(cfg.seed), kernel, inducing_basis,
-        x_train, y_train, x_test, y_test, alpha=cfg.alpha,
-    )
     metrics = {
         "dataset": cfg.dataset,
         "split": cfg.split,
         "inducing": cfg.inducing,
         "gp_sigma": float(gp_sigma_val),
         "pro_sigma": adapted_sigma_val,
-        "pro_nlpd": pro_nlpd,
+        "pro_nlpd": float(
+            nlpd_pro(y_test, test_basis, test_cov, particles, parameters=pro_params)
+        ),
     }
     log.info("PRO  NLPD=%.4f", metrics["pro_nlpd"])
 

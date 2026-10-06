@@ -1,9 +1,0 @@
-{
-  "dataset": "concrete",
-  "split": 4,
-  "gp_sigma": 0.21376168355541653,
-  "mixture_nlpd": 0.0044239609012559755,
-  "runtime": 333.84259945800295,
-  "occupied_components": 3.54,
-  "selected_k": null
-}

@@ -1,9 +1,0 @@
-{
-  "dataset": "servo",
-  "split": 10,
-  "gp_sigma": 0.28372492276409833,
-  "mixture_nlpd": 0.05009324215668266,
-  "runtime": 0.353668584022671,
-  "occupied_components": 1.0,
-  "selected_k": null
-}
